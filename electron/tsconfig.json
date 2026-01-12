@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "commonjs",
+        "allowJs": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "noImplicitAny": true,
+        "baseUrl": ".",
+        "outDir": "../dist-electron",
+        "rootDir": "."
+    },
+    "include": [
+        "**/*"
+    ]
+}
