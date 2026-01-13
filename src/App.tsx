@@ -1822,135 +1822,139 @@ function App() {
                             </div>
                         </div>
                     ) : activeTab === 'checklist' ? (
-                        <div className="space-y-6">
-                            <div>
-                                <h1 className="text-3xl font-semibold tracking-tight mb-1">STIG Checklists</h1>
-                                <p className="text-gray-500">Select a STIG checklist to scan your system</p>
-                            </div>
+                        <div className="flex flex-col lg:flex-row gap-8 h-full">
+                            {/* LEFT COLUMN: My Workspace */}
+                            <div className="w-full lg:w-1/3 flex flex-col gap-6">
+                                <div>
+                                    <h2 className="text-2xl font-semibold tracking-tight mb-2">My Workspace</h2>
+                                    <p className="text-gray-500">Upload and manage your own STIG checklists.</p>
+                                </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {
-                                    [
-                                        { id: 'win11', name: 'Windows 11', sub: 'STIG V2R5 • OS', icon: Monitor, color: 'from-blue-500 to-blue-700', stats: '27 CAT I • 221 CAT II' },
-                                        { id: 'server2019', name: 'Server 2019', sub: 'STIG V3R6 • OS', icon: Server, color: 'from-purple-500 to-purple-700', stats: '18 CAT I • 195 CAT II' },
-                                        { id: 'edge', name: 'Microsoft Edge', sub: 'STIG V2R3 • Browser', icon: Globe, color: 'from-teal-400 to-teal-600', stats: '1 CAT I • 48 CAT II' },
-                                        { id: 'sql-instance', name: 'SQL Instance', sub: 'SQL 2022 • Core', icon: Database, color: 'from-orange-500 to-orange-700', stats: '10 CAT I • 50 CAT II' },
-                                        { id: 'sql-db', name: 'SQL Database', sub: 'SQL 2022 • Data', icon: Database, color: 'from-amber-500 to-amber-700', stats: '8 CAT I • 40 CAT II' },
-                                        { id: 'iis-server', name: 'IIS Server', sub: 'IIS 10.0 • Web', icon: Server, color: 'from-pink-500 to-pink-700', stats: '15 CAT I • 80 CAT II' },
-                                        { id: 'iis-site', name: 'IIS Site', sub: 'IIS 10.0 • Site', icon: Globe, color: 'from-rose-500 to-rose-700', stats: '12 CAT I • 60 CAT II' },
-                                        { id: 'ad-domain', name: 'AD Domain', sub: 'Active Directory', icon: Users, color: 'from-indigo-500 to-indigo-700', stats: '20 CAT I • 100 CAT II' },
-                                        { id: 'ad-forest', name: 'AD Forest', sub: 'Active Directory', icon: Users, color: 'from-violet-500 to-violet-700', stats: '5 CAT I • 20 CAT II' },
-                                        { id: 'defender', name: 'Defender', sub: 'Antivirus', icon: Shield, color: 'from-emerald-500 to-emerald-700', stats: '5 CAT I • 30 CAT II' },
-                                        { id: 'firewall', name: 'Firewall', sub: 'Network Security', icon: ShieldCheck, color: 'from-red-500 to-red-700', stats: '8 CAT I • 25 CAT II' }
-                                    ].map(stig => {
-                                        const meta = availableChecklists.find(c => c.id === stig.id);
-                                        const publishedDate = meta?.date || 'Unknown Date';
+                                <div className={`p-8 rounded-2xl border-2 border-dashed text-center transition-all ${darkMode ? 'border-gray-700 bg-gray-800/50 hover:bg-gray-800' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}>
+                                    <Upload className={`mx-auto size-12 mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+                                    <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Upload Checklist to Work On</h3>
+                                    <p className="text-sm text-gray-500 mb-6 max-w-xs mx-auto">Select a .ckl or .cklb file to open it in the editor. You can modify status, comments, and details.</p>
 
-                                        return (
-                                            <div
-                                                key={stig.id}
-                                                className={`group relative p-5 rounded-2xl border-2 text-left transition-all hover:shadow-lg flex flex-col h-full ${stigInfo.stigId === stig.id ? 'border-black bg-gray-50' : 'border-gray-200 bg-white'}`}
-                                            >
-                                                <div className="flex items-start gap-4 mb-4">
-                                                    <div className={`size-12 bg-gradient-to-br ${stig.color} rounded-xl flex items-center justify-center shadow-lg shrink-0`}>
-                                                        <stig.icon className="size-6 text-white" />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <h3 className="font-semibold text-base text-gray-900 mb-0.5 truncate">{stig.name}</h3>
-                                                        <p className="text-xs text-gray-500 mb-1">{stig.sub}</p>
-                                                        <p className="text-[10px] text-gray-400 font-medium">Published: {publishedDate}</p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mt-auto pt-4 border-t border-gray-100 flex gap-2">
-                                                    <button
-                                                        onClick={(e) => { e.preventDefault(); exportStig(stig.id, 'csv'); }}
-                                                        className="flex-1 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-700 transition-colors flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <FileSpreadsheet className="size-3.5" /> CSV
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => { e.preventDefault(); exportStig(stig.id, 'cklb'); }}
-                                                        className="flex-1 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-black text-xs font-semibold text-white transition-colors flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <Download className="size-3.5" /> CKLB
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })
-                                }
-                            </div>
-
-                            {/* My Workspace Section */}
-                            <div className="mt-12 mb-6 pt-6 border-t border-gray-100">
-                                <h2 className="text-2xl font-semibold tracking-tight mb-2">My Workspace</h2>
-                                <p className="text-gray-500 mb-6">Upload and manage your own STIG checklists. Edit findings, add comments, and export updates.</p>
-
-                                <div className={`p-8 rounded-2xl border-2 border-dashed mb-8 text-center transition-all ${darkMode ? 'border-gray-700 bg-gray-800/50 hover:bg-gray-800' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}>
-                                    <div className="max-w-md mx-auto">
-                                        <div className={`size-14 mx-auto mb-4 rounded-xl flex items-center justify-center ${darkMode ? 'bg-gray-700 text-blue-400' : 'bg-white shadow text-blue-600'}`}>
-                                            <Upload size={24} />
-                                        </div>
-                                        <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Upload Checklist to Work On</h3>
-                                        <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                            Select a .ckl or .cklb file to open it in the editor. You can modify status, comments, and details.
-                                        </p>
-                                        <label className="inline-block">
-                                            <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium cursor-pointer shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center gap-2">
-                                                <FileEdit size={18} /> Select Checklist File
-                                            </span>
-                                            <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={handleFileUpload} />
-                                        </label>
-                                    </div>
+                                    <label>
+                                        <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium cursor-pointer shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center gap-2 justify-center">
+                                            <FileEdit size={18} /> Select Checklist File
+                                        </span>
+                                        <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={handleFileUpload} />
+                                    </label>
                                 </div>
 
                                 {uploadedChecklists.length > 0 && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {uploadedChecklists.map(ckl => (
-                                            <div key={ckl.id} className={`group relative p-6 rounded-2xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                                <div className="flex items-start justify-between mb-4">
-                                                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
-                                                        <FileText size={24} />
+                                    <div className="flex flex-col gap-4">
+                                        <h3 className="font-semibold text-gray-500 uppercase text-xs tracking-wider">Open Files</h3>
+                                        <div className="grid gap-3">
+                                            {uploadedChecklists.map(ckl => (
+                                                <div key={ckl.id} className={`group relative p-4 rounded-xl border transition-all hover:shadow-md ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                    <div className="flex items-start justify-between mb-2">
+                                                        <div className={`p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                                                            <FileText size={20} />
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setUploadedChecklists(prev => prev.filter(c => c.id !== ckl.id));
+                                                            }}
+                                                            className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-red-900/30 text-gray-500 hover:text-red-400' : 'hover:bg-red-50 text-gray-400 hover:text-red-500'}`}
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
                                                     </div>
+
+                                                    <h3 className={`font-semibold text-sm mb-0.5 truncate ${darkMode ? 'text-gray-200' : 'text-gray-900'}`} title={ckl.filename}>{ckl.filename}</h3>
+                                                    <p className={`text-xs mb-3 truncate ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{ckl.hostname}</p>
+
+                                                    <div className="flex gap-2 mb-3">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${darkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-50 text-red-600'}`}>
+                                                            {ckl.findings.filter(f => f.status === 'Open').length} Open
+                                                        </span>
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-600'}`}>
+                                                            {ckl.findings.filter(f => f.status === 'NotAFinding' || f.status === 'Not_A_Finding').length} Pass
+                                                        </span>
+                                                    </div>
+
                                                     <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setUploadedChecklists(prev => prev.filter(c => c.id !== ckl.id));
+                                                        onClick={() => {
+                                                            const fileToEdit = JSON.parse(JSON.stringify(ckl)); // Deep clone
+                                                            setEditFile(fileToEdit);
+                                                            setEditMode('edit');
+                                                            setActiveTab('copy');
                                                         }}
-                                                        className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-red-900/30 text-gray-500 hover:text-red-400' : 'hover:bg-red-50 text-gray-400 hover:text-red-500'}`}
+                                                        className="w-full bg-black hover:bg-gray-800 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                                                     >
-                                                        <Trash2 size={18} />
+                                                        <FileEdit size={14} /> Open Editor
                                                     </button>
                                                 </div>
-
-                                                <h3 className={`font-semibold text-lg mb-1 truncate ${darkMode ? 'text-gray-200' : 'text-gray-900'}`} title={ckl.filename}>{ckl.filename}</h3>
-                                                <p className={`text-sm mb-4 truncate ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{ckl.hostname}</p>
-
-                                                <div className="flex gap-2 mb-6">
-                                                    <span className={`px-2.5 py-1 rounded text-xs font-medium ${darkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-50 text-red-600'}`}>
-                                                        {ckl.findings.filter(f => f.status === 'Open').length} Open
-                                                    </span>
-                                                    <span className={`px-2.5 py-1 rounded text-xs font-medium ${darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-600'}`}>
-                                                        {ckl.findings.filter(f => f.status === 'NotAFinding' || f.status === 'Not_A_Finding').length} Pass
-                                                    </span>
-                                                </div>
-
-                                                <button
-                                                    onClick={() => {
-                                                        const fileToEdit = JSON.parse(JSON.stringify(ckl)); // Deep clone
-                                                        setEditFile(fileToEdit);
-                                                        setEditMode('edit');
-                                                        setActiveTab('copy');
-                                                    }}
-                                                    className="w-full bg-black hover:bg-gray-800 text-white px-4 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                                                >
-                                                    <FileEdit size={16} /> Open Editor
-                                                </button>
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* RIGHT COLUMN: STIG Checklists - Flex 1 */}
+                            <div className="flex-1 flex flex-col gap-6">
+                                <div>
+                                    <h1 className="text-3xl font-semibold tracking-tight mb-1">STIG Checklists</h1>
+                                    <p className="text-gray-500">Select a STIG checklist to scan your system</p>
+                                </div>
+
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {
+                                        [
+                                            { id: 'win11', name: 'Windows 11', sub: 'STIG V2R5 • OS', icon: Monitor, color: 'from-blue-500 to-blue-700', stats: '27 CAT I • 221 CAT II' },
+                                            { id: 'server2019', name: 'Server 2019', sub: 'STIG V3R6 • OS', icon: Server, color: 'from-purple-500 to-purple-700', stats: '18 CAT I • 195 CAT II' },
+                                            { id: 'edge', name: 'Microsoft Edge', sub: 'STIG V2R3 • Browser', icon: Globe, color: 'from-teal-400 to-teal-600', stats: '1 CAT I • 48 CAT II' },
+                                            { id: 'sql-instance', name: 'SQL Instance', sub: 'SQL 2022 • Core', icon: Database, color: 'from-orange-500 to-orange-700', stats: '10 CAT I • 50 CAT II' },
+                                            { id: 'sql-db', name: 'SQL Database', sub: 'SQL 2022 • Data', icon: Database, color: 'from-amber-500 to-amber-700', stats: '8 CAT I • 40 CAT II' },
+                                            { id: 'iis-server', name: 'IIS Server', sub: 'IIS 10.0 • Web', icon: Server, color: 'from-pink-500 to-pink-700', stats: '15 CAT I • 80 CAT II' },
+                                            { id: 'iis-site', name: 'IIS Site', sub: 'IIS 10.0 • Site', icon: Globe, color: 'from-rose-500 to-rose-700', stats: '12 CAT I • 60 CAT II' },
+                                            { id: 'ad-domain', name: 'AD Domain', sub: 'Active Directory', icon: Users, color: 'from-indigo-500 to-indigo-700', stats: '20 CAT I • 100 CAT II' },
+                                            { id: 'ad-forest', name: 'AD Forest', sub: 'Active Directory', icon: Users, color: 'from-violet-500 to-violet-700', stats: '5 CAT I • 20 CAT II' },
+                                            { id: 'defender', name: 'Defender', sub: 'Antivirus', icon: Shield, color: 'from-emerald-500 to-emerald-700', stats: '5 CAT I • 30 CAT II' },
+                                            { id: 'firewall', name: 'Firewall', sub: 'Network Security', icon: ShieldCheck, color: 'from-red-500 to-red-700', stats: '8 CAT I • 25 CAT II' }
+                                        ].map(stig => {
+                                            const meta = availableChecklists.find(c => c.id === stig.id);
+                                            const publishedDate = meta?.date || 'Unknown Date';
+
+                                            return (
+                                                <div
+                                                    key={stig.id}
+                                                    className={`group relative p-5 rounded-2xl border-2 text-left transition-all hover:shadow-lg flex flex-col h-full ${stigInfo.stigId === stig.id ? 'border-black bg-gray-50' : 'border-gray-200 bg-white'}`}
+                                                >
+                                                    <div className="flex items-start gap-4 mb-4">
+                                                        <div className={`size-12 bg-gradient-to-br ${stig.color} rounded-xl flex items-center justify-center shadow-lg shrink-0`}>
+                                                            <stig.icon className="size-6 text-white" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <h3 className="font-semibold text-base text-gray-900 mb-0.5 truncate">{stig.name}</h3>
+                                                            <p className="text-xs text-gray-500 mb-1">{stig.sub}</p>
+                                                            <p className="text-[10px] text-gray-400 font-medium">Published: {publishedDate}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="mt-auto pt-4 border-t border-gray-100 flex gap-2">
+                                                        <button
+                                                            onClick={(e) => { e.preventDefault(); exportStig(stig.id, 'csv'); }}
+                                                            className="flex-1 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-700 transition-colors flex items-center justify-center gap-1.5"
+                                                        >
+                                                            <FileSpreadsheet className="size-3.5" /> CSV
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.preventDefault(); exportStig(stig.id, 'cklb'); }}
+                                                            className="flex-1 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-black text-xs font-semibold text-white transition-colors flex items-center justify-center gap-1.5"
+                                                        >
+                                                            <Download className="size-3.5" /> CKLB
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    }
+                                </div>
                             </div>
                         </div>
                     ) : activeTab === 'report' ? (
