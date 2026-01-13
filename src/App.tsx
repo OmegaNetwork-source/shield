@@ -3,7 +3,7 @@ import {
     ShieldCheck, Play, Camera, LayoutGrid, Settings,
     ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
-    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2
+    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -125,6 +125,9 @@ function App() {
     }, [uploadedChecklists]);
 
     // COPY Feature State
+    const [editMode, setEditMode] = useState<'edit' | 'copy'>('edit');
+    const [editFile, setEditFile] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [expandedEditIdx, setExpandedEditIdx] = useState<number | null>(null);
     const [copySource, setCopySource] = useState<typeof uploadedChecklists[0] | null>(null);
     const [copyTarget, setCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
     const [copyFields, setCopyFields] = useState({ status: true, comments: true, details: true });
@@ -1264,7 +1267,7 @@ function App() {
                     <SidebarItem icon={<FolderOpen size={18} />} label="Evidence Gallery" active={activeTab === 'evidence'} onClick={() => { setActiveTab('evidence'); loadEvidence(); }} darkMode={darkMode} />
                     <SidebarItem icon={<FileSpreadsheet size={18} />} label="Reports" active={activeTab === 'report'} onClick={() => setActiveTab('report')} darkMode={darkMode} />
                     <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
-                    <SidebarItem icon={<Copy size={18} />} label="Copy" active={activeTab === 'copy'} onClick={() => setActiveTab('copy')} darkMode={darkMode} />
+                    <SidebarItem icon={<FileEdit size={18} />} label="Edit" active={activeTab === 'copy'} onClick={() => setActiveTab('copy')} darkMode={darkMode} />
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
 
                     <div className={`pt-4 mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -2121,515 +2124,686 @@ function App() {
                         </div>
                     ) : activeTab === 'copy' ? (
                         <div className="h-[calc(100vh-100px)] flex flex-col">
-                            <div className="flex-none mb-4">
-                                <h1 className="text-2xl font-semibold tracking-tight">Checklist Operations</h1>
-                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Transfer data between checklists and perform bulk find & replace operations.</p>
+                            <div className="flex-none mb-4 flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-2xl font-semibold tracking-tight">Edit & Transfer</h1>
+                                    <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                                        {editMode === 'edit' ? 'Edit a checklist directly with find & replace, then export.' : 'Transfer data between two checklists.'}
+                                    </p>
+                                </div>
+                                <div className={`flex rounded-lg p-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                    <button onClick={() => setEditMode('edit')}
+                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${editMode === 'edit'
+                                            ? (darkMode ? 'bg-gray-700 text-white shadow' : 'bg-white text-gray-900 shadow')
+                                            : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900')}`}>
+                                        <FileEdit size={14} className="inline mr-2" />Edit
+                                    </button>
+                                    <button onClick={() => setEditMode('copy')}
+                                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${editMode === 'copy'
+                                            ? (darkMode ? 'bg-gray-700 text-white shadow' : 'bg-white text-gray-900 shadow')
+                                            : (darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-900')}`}>
+                                        <Copy size={14} className="inline mr-2" />Copy
+                                    </button>
+                                </div>
                             </div>
 
-                            <div className="flex-1 min-h-0 grid grid-cols-2 gap-6">
-                                {/* Left Panel: Source */}
-                                <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-                                    <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
-                                                <div className="font-bold text-xs uppercase">Source</div>
+                            {editMode === 'copy' ? (
+                                <>
+
+                                    <div className="flex-1 min-h-0 grid grid-cols-2 gap-6">
+                                        {/* Left Panel: Source */}
+                                        <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                            <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
+                                                        <div className="font-bold text-xs uppercase">Source</div>
+                                                    </div>
+                                                    {copySource && (
+                                                        <div className="text-sm">
+                                                            <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copySource.filename}</div>
+                                                            <div className="text-xs text-gray-500">{copySource.hostname}</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {copySource && (
+                                                    <button
+                                                        onClick={() => setCopySource(null)}
+                                                        className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2"
+                                                    >
+                                                        Change File
+                                                    </button>
+                                                )}
                                             </div>
+
+                                            {/* Source Find/Replace */}
                                             {copySource && (
-                                                <div className="text-sm">
-                                                    <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copySource.filename}</div>
-                                                    <div className="text-xs text-gray-500">{copySource.hostname}</div>
+                                                <div className="px-3 pb-2 flex items-center gap-2">
+                                                    <div className="flex items-center flex-1 gap-1 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Find..."
+                                                            className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                            value={sourceFindText}
+                                                            onChange={e => setSourceFindText(e.target.value)}
+                                                        />
+                                                        <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Replace..."
+                                                            className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                            value={sourceReplaceText}
+                                                            onChange={e => setSourceReplaceText(e.target.value)}
+                                                        />
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!copySource || !sourceFindText) return;
+                                                                const newSource = JSON.parse(JSON.stringify(copySource));
+                                                                let count = 0;
+                                                                newSource.findings.forEach((f: any) => {
+                                                                    if (f.comments && f.comments.includes(sourceFindText)) {
+                                                                        f.comments = f.comments.split(sourceFindText).join(sourceReplaceText);
+                                                                        count++;
+                                                                    }
+                                                                    if (f.findingDetails && f.findingDetails.includes(sourceFindText)) {
+                                                                        f.findingDetails = f.findingDetails.split(sourceFindText).join(sourceReplaceText);
+                                                                        count++;
+                                                                    }
+                                                                });
+                                                                setCopySource(newSource);
+                                                                alert(`Replaced in ${count} fields.`);
+                                                            }}
+                                                            disabled={!sourceFindText}
+                                                            className="px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
+                                                        >
+                                                            Go
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             )}
-                                        </div>
-                                        {copySource && (
-                                            <button
-                                                onClick={() => setCopySource(null)}
-                                                className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2"
-                                            >
-                                                Change File
-                                            </button>
-                                        )}
-                                    </div>
 
-                                    {/* Source Find/Replace */}
-                                    {copySource && (
-                                        <div className="px-3 pb-2 flex items-center gap-2">
-                                            <div className="flex items-center flex-1 gap-1 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Find..."
-                                                    className="bg-transparent text-xs px-2 py-1 w-full outline-none"
-                                                    value={sourceFindText}
-                                                    onChange={e => setSourceFindText(e.target.value)}
-                                                />
-                                                <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Replace..."
-                                                    className="bg-transparent text-xs px-2 py-1 w-full outline-none"
-                                                    value={sourceReplaceText}
-                                                    onChange={e => setSourceReplaceText(e.target.value)}
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        if (!copySource || !sourceFindText) return;
-                                                        const newSource = JSON.parse(JSON.stringify(copySource));
-                                                        let count = 0;
-                                                        newSource.findings.forEach((f: any) => {
-                                                            if (f.comments && f.comments.includes(sourceFindText)) {
-                                                                f.comments = f.comments.split(sourceFindText).join(sourceReplaceText);
-                                                                count++;
-                                                            }
-                                                            if (f.findingDetails && f.findingDetails.includes(sourceFindText)) {
-                                                                f.findingDetails = f.findingDetails.split(sourceFindText).join(sourceReplaceText);
-                                                                count++;
-                                                            }
-                                                        });
-                                                        setCopySource(newSource);
-                                                        alert(`Replaced in ${count} fields.`);
-                                                    }}
-                                                    disabled={!sourceFindText}
-                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
-                                                >
-                                                    Go
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="flex-1 overflow-hidden relative">
-                                        {!copySource ? (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>
-                                                    <FileSpreadsheet size={48} />
-                                                </div>
-                                                <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Master Checklist</h3>
-                                                <label className="inline-block mt-3">
-                                                    <span className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
-                                                        <Upload size={16} /> Choose Source
-                                                    </span>
-                                                    <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
-                                                        if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'source');
-                                                    }} />
-                                                </label>
-                                            </div>
-                                        ) : (
-                                            <div className="absolute inset-0 overflow-auto">
-                                                <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
-                                                        <tr>
-                                                            <th className="px-3 py-2 w-32">Rule ID</th>
-                                                            <th className="px-3 py-2 w-24">Status</th>
-                                                            <th className="px-3 py-2">Finding Details</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                                                        {copySource.findings.map((f, i) => (
-                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top`}>
-                                                                <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
-                                                                <td className="px-3 py-2">
-                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
-                                                                        f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
-                                                                            'bg-gray-100 text-gray-600'
-                                                                        }`}>{f.status}</span>
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    {expandedSourceIdx === i ? (
-                                                                        <div className="flex flex-col gap-2">
-                                                                            <textarea
-                                                                                className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                value={f.findingDetails || ''}
-                                                                                onChange={e => {
-                                                                                    const newSource = JSON.parse(JSON.stringify(copySource));
-                                                                                    newSource.findings[i].findingDetails = e.target.value;
-                                                                                    setCopySource(newSource);
-                                                                                }}
-                                                                            />
-                                                                            <button
-                                                                                onClick={() => setExpandedSourceIdx(null)}
-                                                                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-medium self-end"
-                                                                            >
-                                                                                Done
-                                                                            </button>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div
-                                                                            className="line-clamp-2 cursor-pointer hover:text-blue-600 hover:underline"
-                                                                            title="Click to expand and edit"
-                                                                            onClick={() => setExpandedSourceIdx(i)}
-                                                                        >
-                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Right Panel: Target */}
-                                <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-                                    <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-1.5 rounded-lg bg-purple-100 text-purple-600">
-                                                    <div className="font-bold text-xs uppercase">Target</div>
-                                                </div>
-                                                {copyTarget && (
-                                                    <div className="text-sm">
-                                                        <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copyTarget.filename}</div>
-                                                        <div className="text-xs text-gray-500">{copyTarget.hostname}</div>
+                                            <div className="flex-1 overflow-hidden relative">
+                                                {!copySource ? (
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                                        <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                            <FileSpreadsheet size={48} />
+                                                        </div>
+                                                        <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Master Checklist</h3>
+                                                        <label className="inline-block mt-3">
+                                                            <span className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
+                                                                <Upload size={16} /> Choose Source
+                                                            </span>
+                                                            <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
+                                                                if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'source');
+                                                            }} />
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <div className="absolute inset-0 overflow-auto">
+                                                        <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                                <tr>
+                                                                    <th className="px-3 py-2 w-32">Rule ID</th>
+                                                                    <th className="px-3 py-2 w-24">Status</th>
+                                                                    <th className="px-3 py-2">Finding Details</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                                                {copySource.findings.map((f, i) => (
+                                                                    <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top`}>
+                                                                        <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                                        <td className="px-3 py-2">
+                                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
+                                                                                f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                                                    'bg-gray-100 text-gray-600'
+                                                                                }`}>{f.status}</span>
+                                                                        </td>
+                                                                        <td className="px-3 py-2">
+                                                                            {expandedSourceIdx === i ? (
+                                                                                <div className="flex flex-col gap-2">
+                                                                                    <textarea
+                                                                                        className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                        value={f.findingDetails || ''}
+                                                                                        onChange={e => {
+                                                                                            const newSource = JSON.parse(JSON.stringify(copySource));
+                                                                                            newSource.findings[i].findingDetails = e.target.value;
+                                                                                            setCopySource(newSource);
+                                                                                        }}
+                                                                                    />
+                                                                                    <button
+                                                                                        onClick={() => setExpandedSourceIdx(null)}
+                                                                                        className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-medium self-end"
+                                                                                    >
+                                                                                        Done
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div
+                                                                                    className="line-clamp-2 cursor-pointer hover:text-blue-600 hover:underline"
+                                                                                    title="Click to expand and edit"
+                                                                                    onClick={() => setExpandedSourceIdx(i)}
+                                                                                >
+                                                                                    {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
+                                                                                </div>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
                                                     </div>
                                                 )}
                                             </div>
-                                            {copyTarget && (
-                                                <button
-                                                    onClick={() => setCopyTarget(null)}
-                                                    className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2"
-                                                >
-                                                    Change File
-                                                </button>
+                                        </div>
+
+                                        {/* Right Panel: Target */}
+                                        <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                            <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-1.5 rounded-lg bg-purple-100 text-purple-600">
+                                                            <div className="font-bold text-xs uppercase">Target</div>
+                                                        </div>
+                                                        {copyTarget && (
+                                                            <div className="text-sm">
+                                                                <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copyTarget.filename}</div>
+                                                                <div className="text-xs text-gray-500">{copyTarget.hostname}</div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {copyTarget && (
+                                                        <button
+                                                            onClick={() => setCopyTarget(null)}
+                                                            className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2"
+                                                        >
+                                                            Change File
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Tools Bar */}
+                                                {copyTarget && (
+                                                    <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                        <div className="flex items-center flex-1 gap-2 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Find..."
+                                                                className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                                value={findText}
+                                                                onChange={e => setFindText(e.target.value)}
+                                                            />
+                                                            <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Replace..."
+                                                                className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                                value={replaceText}
+                                                                onChange={e => setReplaceText(e.target.value)}
+                                                            />
+                                                            <button
+                                                                onClick={executeFindReplace}
+                                                                disabled={!findText}
+                                                                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
+                                                            >
+                                                                Replace All
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Comment+ Toolbar */}
+                                                        <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded-lg border border-green-200 dark:border-green-800">
+                                                            <span className="text-[10px] font-bold text-green-700 dark:text-green-400 px-2">+</span>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Prepend text to all details..."
+                                                                className="bg-transparent text-xs px-2 py-1 flex-1 outline-none min-w-[150px]"
+                                                                value={commentPlusText}
+                                                                onChange={e => setCommentPlusText(e.target.value)}
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (!copyTarget || !commentPlusText) return;
+                                                                    const newTarget = JSON.parse(JSON.stringify(copyTarget));
+                                                                    newTarget.findings.forEach((f: any) => {
+                                                                        const existing = f.findingDetails || '';
+                                                                        f.findingDetails = `${commentPlusText}\n\n${existing}`.trim();
+                                                                    });
+                                                                    setCopyTarget(newTarget);
+                                                                    setCommentPlusText('');
+                                                                    alert(`Prepended to all ${newTarget.findings.length} findings.`);
+                                                                }}
+                                                                disabled={!commentPlusText}
+                                                                className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold whitespace-nowrap disabled:opacity-50"
+                                                            >
+                                                                Apply All
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex-1 overflow-hidden relative">
+                                                {!copyTarget ? (
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                                        <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                            <FileText size={48} />
+                                                        </div>
+                                                        <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Target Checklist</h3>
+                                                        <label className="inline-block mt-3">
+                                                            <span className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
+                                                                <Upload size={16} /> Choose Target
+                                                            </span>
+                                                            <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
+                                                                if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'target');
+                                                            }} />
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <div className="absolute inset-0 overflow-auto">
+                                                        <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                                <tr>
+                                                                    <th className="px-3 py-2 w-32">Rule ID</th>
+                                                                    <th className="px-3 py-2 w-24">Status</th>
+                                                                    <th className="px-3 py-2">Finding Details</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                                                {copyTarget.findings.map((f, i) => (
+                                                                    <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top`}>
+                                                                        <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                                        <td className="px-3 py-2">
+                                                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
+                                                                                f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                                                    'bg-gray-100 text-gray-600'
+                                                                                }`}>{f.status}</span>
+                                                                        </td>
+                                                                        <td className="px-3 py-2">
+                                                                            {expandedTargetIdx === i ? (
+                                                                                <div className="flex flex-col gap-2">
+                                                                                    {/* Comment+ for single row */}
+                                                                                    <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded border border-green-200 dark:border-green-800">
+                                                                                        <input
+                                                                                            type="text"
+                                                                                            placeholder="Prepend text..."
+                                                                                            className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
+                                                                                            value={commentPlusText}
+                                                                                            onChange={e => setCommentPlusText(e.target.value)}
+                                                                                        />
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                if (!commentPlusText) return;
+                                                                                                const newTarget = JSON.parse(JSON.stringify(copyTarget));
+                                                                                                const existing = newTarget.findings[i].findingDetails || '';
+                                                                                                newTarget.findings[i].findingDetails = `${commentPlusText}\n\n${existing}`.trim();
+                                                                                                setCopyTarget(newTarget);
+                                                                                                setCommentPlusText('');
+                                                                                            }}
+                                                                                            disabled={!commentPlusText}
+                                                                                            className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold disabled:opacity-50"
+                                                                                        >
+                                                                                            Apply
+                                                                                        </button>
+                                                                                    </div>
+                                                                                    <textarea
+                                                                                        className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                        value={f.findingDetails || ''}
+                                                                                        onChange={e => {
+                                                                                            const newTarget = JSON.parse(JSON.stringify(copyTarget));
+                                                                                            newTarget.findings[i].findingDetails = e.target.value;
+                                                                                            setCopyTarget(newTarget);
+                                                                                        }}
+                                                                                    />
+                                                                                    <button
+                                                                                        onClick={() => setExpandedTargetIdx(null)}
+                                                                                        className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded font-medium self-end"
+                                                                                    >
+                                                                                        Done
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div
+                                                                                    className="line-clamp-2 cursor-pointer hover:text-purple-600 hover:underline"
+                                                                                    title="Click to expand and edit"
+                                                                                    onClick={() => setExpandedTargetIdx(i)}
+                                                                                >
+                                                                                    {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
+                                                                                </div>
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom Config Panel */}
+                                    {copySource && copyTarget && (
+                                        <div className={`flex-none mt-4 p-4 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+                                            <div className="flex items-center gap-6">
+                                                <div className="font-semibold text-sm">Transfer:</div>
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                    <input type="checkbox" className="rounded text-blue-600" checked={copyFields.status} onChange={e => setCopyFields(f => ({ ...f, status: e.target.checked }))} />
+                                                    <span>Status</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                    <input type="checkbox" className="rounded text-blue-600" checked={copyFields.comments} onChange={e => setCopyFields(f => ({ ...f, comments: e.target.checked }))} />
+                                                    <span>Comments</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                    <input type="checkbox" className="rounded text-blue-600" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
+                                                    <span>Details</span>
+                                                </label>
+                                            </div>
+
+                                            <div className="flex items-center gap-4">
+                                                {copySuccess ? (
+                                                    <>
+                                                        <div className="text-green-600 font-medium text-sm flex items-center gap-2"><CheckCircle2 size={16} /> {copySuccess}</div>
+                                                        <button onClick={() => {
+                                                            // Build a proper CKLB export
+                                                            let exportData: any;
+
+                                                            if (copyTarget.rawJson) {
+                                                                // Use original JSON structure and update findings
+                                                                exportData = JSON.parse(JSON.stringify(copyTarget.rawJson));
+
+                                                                // Convert our internal status to CKLB format
+                                                                const toCklbStatus = (status: string): string => {
+                                                                    switch (status) {
+                                                                        case 'NotAFinding': return 'not_a_finding';
+                                                                        case 'Open': return 'open';
+                                                                        case 'Not_Applicable': return 'not_applicable';
+                                                                        case 'Not_Reviewed': return 'not_reviewed';
+                                                                        default: return status.toLowerCase().replace(/\s+/g, '_');
+                                                                    }
+                                                                };
+
+                                                                // Helper to find and update findings in the original structure
+                                                                const updateFindings = (obj: any): void => {
+                                                                    if (!obj) return;
+                                                                    if (Array.isArray(obj)) {
+                                                                        obj.forEach((item: any) => {
+                                                                            // Check if this looks like a finding
+                                                                            const itemId = item.vulnId || item.vulnNum || item.Vuln_Num || item.vuln_num ||
+                                                                                item.rule_id || item.group_id || item.ruleId || item.id;
+                                                                            if (itemId) {
+                                                                                // Find corresponding updated finding
+                                                                                const updated = copyTarget.findings.find(f =>
+                                                                                    f.vulnId === itemId || f.ruleId === itemId ||
+                                                                                    f.vulnId === item.vulnId || f.ruleId === item.ruleId ||
+                                                                                    f.vulnId === item.rule_id || f.ruleId === item.rule_id
+                                                                                );
+                                                                                if (updated) {
+                                                                                    // Update the status (convert to CKLB format)
+                                                                                    const cklbStatus = toCklbStatus(updated.status);
+                                                                                    if (item.status !== undefined) item.status = cklbStatus;
+                                                                                    if (item.STATUS !== undefined) item.STATUS = updated.status; // Keep original format for XML-style
+                                                                                    // Update comments
+                                                                                    if (updated.comments) {
+                                                                                        if (item.comments !== undefined) item.comments = updated.comments;
+                                                                                        if (item.COMMENTS !== undefined) item.COMMENTS = updated.comments;
+                                                                                    }
+                                                                                    // Update finding details
+                                                                                    if (updated.findingDetails) {
+                                                                                        if (item.finding_details !== undefined) item.finding_details = updated.findingDetails;
+                                                                                        if (item.findingDetails !== undefined) item.findingDetails = updated.findingDetails;
+                                                                                        if (item.FINDING_DETAILS !== undefined) item.FINDING_DETAILS = updated.findingDetails;
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            updateFindings(item);
+                                                                        });
+                                                                    } else if (typeof obj === 'object') {
+                                                                        for (const key in obj) {
+                                                                            updateFindings(obj[key]);
+                                                                        }
+                                                                    }
+                                                                };
+
+                                                                updateFindings(exportData);
+                                                            } else {
+                                                                // Fallback: construct basic CKLB structure
+                                                                exportData = {
+                                                                    title: copyTarget.stigName,
+                                                                    id: copyTarget.id,
+                                                                    target_data: {
+                                                                        target_type: "Computing",
+                                                                        host_name: copyTarget.hostname,
+                                                                        ip_address: "",
+                                                                        mac_address: "",
+                                                                        fqdn: "",
+                                                                        comments: "",
+                                                                        role: "None",
+                                                                        is_web_database: false,
+                                                                        technology_area: "",
+                                                                        web_db_site: "",
+                                                                        web_db_instance: ""
+                                                                    },
+                                                                    stigs: [{
+                                                                        stig_name: copyTarget.stigName,
+                                                                        display_name: copyTarget.stigName,
+                                                                        stig_id: copyTarget.stigName,
+                                                                        version: 1,
+                                                                        release_info: "",
+                                                                        uuid: copyTarget.id,
+                                                                        reference_identifier: "",
+                                                                        size: copyTarget.findings.length,
+                                                                        rules: copyTarget.findings.map(f => ({
+                                                                            uuid: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                                                            stig_uuid: copyTarget.id,
+                                                                            group_id: f.vulnId,
+                                                                            rule_id: f.ruleId || f.vulnId,
+                                                                            rule_id_src: f.ruleId || f.vulnId,
+                                                                            weight: "10.0",
+                                                                            classification: "UNCLASSIFIED",
+                                                                            severity: f.severity || "medium",
+                                                                            rule_version: f.ruleId || "",
+                                                                            group_title: f.title,
+                                                                            rule_title: f.title,
+                                                                            fix_text: f.fixText || "",
+                                                                            false_positives: "",
+                                                                            false_negatives: "",
+                                                                            documentable: "false",
+                                                                            mitigations: "",
+                                                                            potential_impacts: "",
+                                                                            third_party_tools: "",
+                                                                            mitigation_control: "",
+                                                                            responsibility: "",
+                                                                            security_override_guidance: "",
+                                                                            check_content_ref: { name: "", href: "" },
+                                                                            legacy_ids: [],
+                                                                            ccis: f.ccis || [],
+                                                                            group_tree: [{ id: f.vulnId, title: f.vulnId, description: "" }],
+                                                                            createdAt: new Date().toISOString(),
+                                                                            updatedAt: new Date().toISOString(),
+                                                                            status: f.status === 'NotAFinding' ? 'not_a_finding' :
+                                                                                f.status === 'Open' ? 'open' :
+                                                                                    f.status === 'Not_Applicable' ? 'not_applicable' : 'not_reviewed',
+                                                                            finding_details: f.findingDetails || "",
+                                                                            comments: f.comments || "",
+                                                                            severity_override: "",
+                                                                            severity_justification: ""
+                                                                        }))
+                                                                    }],
+                                                                    active: true,
+                                                                    mode: 1,
+                                                                    has_path: true,
+                                                                    cklb_version: "2.0"
+                                                                };
+                                                            }
+
+                                                            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                                                            const url = URL.createObjectURL(blob);
+                                                            const a = document.createElement('a');
+                                                            a.href = url;
+                                                            a.download = `${copyTarget.filename.replace(/\.(ckl|cklb|xml|json)$/i, '')}_updated.cklb`;
+                                                            document.body.appendChild(a);
+                                                            a.click();
+                                                            document.body.removeChild(a);
+                                                            URL.revokeObjectURL(url);
+                                                        }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                                            <Download size={16} /> Download
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <button onClick={executeCopy} className="bg-black hover:bg-gray-800 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                                        <Copy size={16} /> Transfer Data
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                /* EDIT MODE - Single file */
+                                <div className="flex-1 min-h-0 flex flex-col">
+                                    <div className={`flex-1 flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                        <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
+                                                        <div className="font-bold text-xs uppercase">Checklist</div>
+                                                    </div>
+                                                    {editFile && (
+                                                        <div className="text-sm">
+                                                            <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{editFile.filename}</div>
+                                                            <div className="text-xs text-gray-500">{editFile.hostname}</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {editFile && (
+                                                    <button onClick={() => setEditFile(null)} className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2">Change File</button>
+                                                )}
+                                            </div>
+
+                                            {editFile && (
+                                                <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                    <div className="flex items-center flex-1 gap-1 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                        <input type="text" placeholder="Find..." className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
+                                                            value={findText} onChange={e => setFindText(e.target.value)} />
+                                                        <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
+                                                        <input type="text" placeholder="Replace..." className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
+                                                            value={replaceText} onChange={e => setReplaceText(e.target.value)} />
+                                                        <button onClick={() => {
+                                                            if (!editFile || !findText) return;
+                                                            const newFile = JSON.parse(JSON.stringify(editFile));
+                                                            let count = 0;
+                                                            newFile.findings.forEach((f: any) => {
+                                                                if (f.comments?.includes(findText)) { f.comments = f.comments.split(findText).join(replaceText); count++; }
+                                                                if (f.findingDetails?.includes(findText)) { f.findingDetails = f.findingDetails.split(findText).join(replaceText); count++; }
+                                                            });
+                                                            setEditFile(newFile);
+                                                            alert(`Replaced in ${count} fields.`);
+                                                        }} disabled={!findText} className="px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50">
+                                                            Replace All
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded-lg border border-green-200 dark:border-green-800">
+                                                        <span className="text-[10px] font-bold text-green-700 dark:text-green-400 px-2">+</span>
+                                                        <input type="text" placeholder="Prepend to all..." className="bg-transparent text-xs px-2 py-1 flex-1 outline-none min-w-[120px]"
+                                                            value={commentPlusText} onChange={e => setCommentPlusText(e.target.value)} />
+                                                        <button onClick={() => {
+                                                            if (!editFile || !commentPlusText) return;
+                                                            const newFile = JSON.parse(JSON.stringify(editFile));
+                                                            newFile.findings.forEach((f: any) => { f.findingDetails = `${commentPlusText}\n\n${f.findingDetails || ''}`.trim(); });
+                                                            setEditFile(newFile);
+                                                            setCommentPlusText('');
+                                                            alert(`Prepended to all ${newFile.findings.length} findings.`);
+                                                        }} disabled={!commentPlusText} className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold whitespace-nowrap disabled:opacity-50">
+                                                            Apply All
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
 
-                                        {/* Tools Bar */}
-                                        {copyTarget && (
-                                            <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                <div className="flex items-center flex-1 gap-2 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Find..."
-                                                        className="bg-transparent text-xs px-2 py-1 w-full outline-none"
-                                                        value={findText}
-                                                        onChange={e => setFindText(e.target.value)}
-                                                    />
-                                                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></div>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Replace..."
-                                                        className="bg-transparent text-xs px-2 py-1 w-full outline-none"
-                                                        value={replaceText}
-                                                        onChange={e => setReplaceText(e.target.value)}
-                                                    />
-                                                    <button
-                                                        onClick={executeFindReplace}
-                                                        disabled={!findText}
-                                                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
-                                                    >
-                                                        Replace All
-                                                    </button>
+                                        <div className="flex-1 overflow-hidden relative">
+                                            {!editFile ? (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                                    <FileEdit className={`size-16 mb-4 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                                                    <h3 className={`font-medium mb-2 text-lg ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload a Checklist to Edit</h3>
+                                                    <p className={`text-sm mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Use find & replace, prepend text, and edit findings directly</p>
+                                                    <label className="inline-block mt-3">
+                                                        <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
+                                                            <Upload size={16} /> Choose Checklist
+                                                        </span>
+                                                        <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={async (e) => {
+                                                            if (e.target.files?.[0]) { const parsed = await parseCklFile(e.target.files[0]); if (parsed) setEditFile(parsed); }
+                                                        }} />
+                                                    </label>
                                                 </div>
-
-                                                {/* Comment+ Toolbar */}
-                                                <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded-lg border border-green-200 dark:border-green-800">
-                                                    <span className="text-[10px] font-bold text-green-700 dark:text-green-400 px-2">+</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Prepend text to all details..."
-                                                        className="bg-transparent text-xs px-2 py-1 flex-1 outline-none min-w-[150px]"
-                                                        value={commentPlusText}
-                                                        onChange={e => setCommentPlusText(e.target.value)}
-                                                    />
-                                                    <button
-                                                        onClick={() => {
-                                                            if (!copyTarget || !commentPlusText) return;
-                                                            const newTarget = JSON.parse(JSON.stringify(copyTarget));
-                                                            newTarget.findings.forEach((f: any) => {
-                                                                const existing = f.findingDetails || '';
-                                                                f.findingDetails = `${commentPlusText}\n\n${existing}`.trim();
-                                                            });
-                                                            setCopyTarget(newTarget);
-                                                            setCommentPlusText('');
-                                                            alert(`Prepended to all ${newTarget.findings.length} findings.`);
-                                                        }}
-                                                        disabled={!commentPlusText}
-                                                        className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold whitespace-nowrap disabled:opacity-50"
-                                                    >
-                                                        Apply All
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex-1 overflow-hidden relative">
-                                        {!copyTarget ? (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>
-                                                    <FileText size={48} />
-                                                </div>
-                                                <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Target Checklist</h3>
-                                                <label className="inline-block mt-3">
-                                                    <span className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
-                                                        <Upload size={16} /> Choose Target
-                                                    </span>
-                                                    <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
-                                                        if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'target');
-                                                    }} />
-                                                </label>
-                                            </div>
-                                        ) : (
-                                            <div className="absolute inset-0 overflow-auto">
-                                                <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                    <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
-                                                        <tr>
-                                                            <th className="px-3 py-2 w-32">Rule ID</th>
-                                                            <th className="px-3 py-2 w-24">Status</th>
-                                                            <th className="px-3 py-2">Finding Details</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                                                        {copyTarget.findings.map((f, i) => (
-                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top`}>
-                                                                <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
-                                                                <td className="px-3 py-2">
-                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
-                                                                        f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
-                                                                            'bg-gray-100 text-gray-600'
-                                                                        }`}>{f.status}</span>
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    {expandedTargetIdx === i ? (
-                                                                        <div className="flex flex-col gap-2">
-                                                                            {/* Comment+ for single row */}
-                                                                            <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded border border-green-200 dark:border-green-800">
-                                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="Prepend text..."
-                                                                                    className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
-                                                                                    value={commentPlusText}
-                                                                                    onChange={e => setCommentPlusText(e.target.value)}
-                                                                                />
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        if (!commentPlusText) return;
-                                                                                        const newTarget = JSON.parse(JSON.stringify(copyTarget));
-                                                                                        const existing = newTarget.findings[i].findingDetails || '';
-                                                                                        newTarget.findings[i].findingDetails = `${commentPlusText}\n\n${existing}`.trim();
-                                                                                        setCopyTarget(newTarget);
-                                                                                        setCommentPlusText('');
-                                                                                    }}
-                                                                                    disabled={!commentPlusText}
-                                                                                    className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold disabled:opacity-50"
-                                                                                >
-                                                                                    Apply
-                                                                                </button>
+                                            ) : (
+                                                <div className="absolute inset-0 overflow-auto">
+                                                    <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                            <tr><th className="px-3 py-2 w-32">Rule ID</th><th className="px-3 py-2 w-24">Status</th><th className="px-3 py-2">Finding Details</th></tr>
+                                                        </thead>
+                                                        <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                                            {editFile.findings.map((f, i) => (
+                                                                <tr key={i} className="group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top">
+                                                                    <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                                    <td className="px-3 py-2">
+                                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' : f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{f.status}</span>
+                                                                    </td>
+                                                                    <td className="px-3 py-2">
+                                                                        {expandedEditIdx === i ? (
+                                                                            <div className="flex flex-col gap-2">
+                                                                                <textarea className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                    value={f.findingDetails || ''} onChange={e => { const newFile = JSON.parse(JSON.stringify(editFile)); newFile.findings[i].findingDetails = e.target.value; setEditFile(newFile); }} />
+                                                                                <button onClick={() => setExpandedEditIdx(null)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-medium self-end">Done</button>
                                                                             </div>
-                                                                            <textarea
-                                                                                className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                value={f.findingDetails || ''}
-                                                                                onChange={e => {
-                                                                                    const newTarget = JSON.parse(JSON.stringify(copyTarget));
-                                                                                    newTarget.findings[i].findingDetails = e.target.value;
-                                                                                    setCopyTarget(newTarget);
-                                                                                }}
-                                                                            />
-                                                                            <button
-                                                                                onClick={() => setExpandedTargetIdx(null)}
-                                                                                className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded font-medium self-end"
-                                                                            >
-                                                                                Done
-                                                                            </button>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div
-                                                                            className="line-clamp-2 cursor-pointer hover:text-purple-600 hover:underline"
-                                                                            title="Click to expand and edit"
-                                                                            onClick={() => setExpandedTargetIdx(i)}
-                                                                        >
-                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Bottom Config Panel */}
-                            {copySource && copyTarget && (
-                                <div className={`flex-none mt-4 p-4 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                                    <div className="flex items-center gap-6">
-                                        <div className="font-semibold text-sm">Transfer:</div>
-                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="checkbox" className="rounded text-blue-600" checked={copyFields.status} onChange={e => setCopyFields(f => ({ ...f, status: e.target.checked }))} />
-                                            <span>Status</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="checkbox" className="rounded text-blue-600" checked={copyFields.comments} onChange={e => setCopyFields(f => ({ ...f, comments: e.target.checked }))} />
-                                            <span>Comments</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                            <input type="checkbox" className="rounded text-blue-600" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
-                                            <span>Details</span>
-                                        </label>
+                                                                        ) : (
+                                                                            <div className="line-clamp-2 cursor-pointer hover:text-blue-600 hover:underline" onClick={() => setExpandedEditIdx(i)}>
+                                                                                {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    <div className="flex items-center gap-4">
-                                        {copySuccess ? (
-                                            <>
-                                                <div className="text-green-600 font-medium text-sm flex items-center gap-2"><CheckCircle2 size={16} /> {copySuccess}</div>
-                                                <button onClick={() => {
-                                                    // Build a proper CKLB export
-                                                    let exportData: any;
-
-                                                    if (copyTarget.rawJson) {
-                                                        // Use original JSON structure and update findings
-                                                        exportData = JSON.parse(JSON.stringify(copyTarget.rawJson));
-
-                                                        // Convert our internal status to CKLB format
-                                                        const toCklbStatus = (status: string): string => {
-                                                            switch (status) {
-                                                                case 'NotAFinding': return 'not_a_finding';
-                                                                case 'Open': return 'open';
-                                                                case 'Not_Applicable': return 'not_applicable';
-                                                                case 'Not_Reviewed': return 'not_reviewed';
-                                                                default: return status.toLowerCase().replace(/\s+/g, '_');
-                                                            }
-                                                        };
-
-                                                        // Helper to find and update findings in the original structure
-                                                        const updateFindings = (obj: any): void => {
-                                                            if (!obj) return;
-                                                            if (Array.isArray(obj)) {
-                                                                obj.forEach((item: any) => {
-                                                                    // Check if this looks like a finding
-                                                                    const itemId = item.vulnId || item.vulnNum || item.Vuln_Num || item.vuln_num ||
-                                                                        item.rule_id || item.group_id || item.ruleId || item.id;
-                                                                    if (itemId) {
-                                                                        // Find corresponding updated finding
-                                                                        const updated = copyTarget.findings.find(f =>
-                                                                            f.vulnId === itemId || f.ruleId === itemId ||
-                                                                            f.vulnId === item.vulnId || f.ruleId === item.ruleId ||
-                                                                            f.vulnId === item.rule_id || f.ruleId === item.rule_id
-                                                                        );
-                                                                        if (updated) {
-                                                                            // Update the status (convert to CKLB format)
-                                                                            const cklbStatus = toCklbStatus(updated.status);
-                                                                            if (item.status !== undefined) item.status = cklbStatus;
-                                                                            if (item.STATUS !== undefined) item.STATUS = updated.status; // Keep original format for XML-style
-                                                                            // Update comments
-                                                                            if (updated.comments) {
-                                                                                if (item.comments !== undefined) item.comments = updated.comments;
-                                                                                if (item.COMMENTS !== undefined) item.COMMENTS = updated.comments;
-                                                                            }
-                                                                            // Update finding details
-                                                                            if (updated.findingDetails) {
-                                                                                if (item.finding_details !== undefined) item.finding_details = updated.findingDetails;
-                                                                                if (item.findingDetails !== undefined) item.findingDetails = updated.findingDetails;
-                                                                                if (item.FINDING_DETAILS !== undefined) item.FINDING_DETAILS = updated.findingDetails;
-                                                                            }
-                                                                        }
+                                    {editFile && (
+                                        <div className={`flex-none mt-4 p-4 rounded-xl border flex items-center justify-end ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+                                            <button onClick={() => {
+                                                let exportData: any;
+                                                if (editFile.rawJson) {
+                                                    exportData = JSON.parse(JSON.stringify(editFile.rawJson));
+                                                    const toCklbStatus = (s: string) => s === 'NotAFinding' ? 'not_a_finding' : s === 'Open' ? 'open' : s === 'Not_Applicable' ? 'not_applicable' : 'not_reviewed';
+                                                    const updateFindings = (obj: any): void => {
+                                                        if (!obj) return;
+                                                        if (Array.isArray(obj)) {
+                                                            obj.forEach((item: any) => {
+                                                                const itemId = item.vulnId || item.vulnNum || item.rule_id || item.group_id || item.ruleId || item.id;
+                                                                if (itemId) {
+                                                                    const updated = editFile.findings.find(f => f.vulnId === itemId || f.ruleId === itemId);
+                                                                    if (updated) {
+                                                                        if (item.status !== undefined) item.status = toCklbStatus(updated.status);
+                                                                        if (updated.findingDetails) { if (item.finding_details !== undefined) item.finding_details = updated.findingDetails; if (item.findingDetails !== undefined) item.findingDetails = updated.findingDetails; }
                                                                     }
-                                                                    updateFindings(item);
-                                                                });
-                                                            } else if (typeof obj === 'object') {
-                                                                for (const key in obj) {
-                                                                    updateFindings(obj[key]);
                                                                 }
-                                                            }
-                                                        };
-
-                                                        updateFindings(exportData);
-                                                    } else {
-                                                        // Fallback: construct basic CKLB structure
-                                                        exportData = {
-                                                            title: copyTarget.stigName,
-                                                            id: copyTarget.id,
-                                                            target_data: {
-                                                                target_type: "Computing",
-                                                                host_name: copyTarget.hostname,
-                                                                ip_address: "",
-                                                                mac_address: "",
-                                                                fqdn: "",
-                                                                comments: "",
-                                                                role: "None",
-                                                                is_web_database: false,
-                                                                technology_area: "",
-                                                                web_db_site: "",
-                                                                web_db_instance: ""
-                                                            },
-                                                            stigs: [{
-                                                                stig_name: copyTarget.stigName,
-                                                                display_name: copyTarget.stigName,
-                                                                stig_id: copyTarget.stigName,
-                                                                version: 1,
-                                                                release_info: "",
-                                                                uuid: copyTarget.id,
-                                                                reference_identifier: "",
-                                                                size: copyTarget.findings.length,
-                                                                rules: copyTarget.findings.map(f => ({
-                                                                    uuid: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                                                                    stig_uuid: copyTarget.id,
-                                                                    group_id: f.vulnId,
-                                                                    rule_id: f.ruleId || f.vulnId,
-                                                                    rule_id_src: f.ruleId || f.vulnId,
-                                                                    weight: "10.0",
-                                                                    classification: "UNCLASSIFIED",
-                                                                    severity: f.severity || "medium",
-                                                                    rule_version: f.ruleId || "",
-                                                                    group_title: f.title,
-                                                                    rule_title: f.title,
-                                                                    fix_text: f.fixText || "",
-                                                                    false_positives: "",
-                                                                    false_negatives: "",
-                                                                    documentable: "false",
-                                                                    mitigations: "",
-                                                                    potential_impacts: "",
-                                                                    third_party_tools: "",
-                                                                    mitigation_control: "",
-                                                                    responsibility: "",
-                                                                    security_override_guidance: "",
-                                                                    check_content_ref: { name: "", href: "" },
-                                                                    legacy_ids: [],
-                                                                    ccis: f.ccis || [],
-                                                                    group_tree: [{ id: f.vulnId, title: f.vulnId, description: "" }],
-                                                                    createdAt: new Date().toISOString(),
-                                                                    updatedAt: new Date().toISOString(),
-                                                                    status: f.status === 'NotAFinding' ? 'not_a_finding' :
-                                                                        f.status === 'Open' ? 'open' :
-                                                                            f.status === 'Not_Applicable' ? 'not_applicable' : 'not_reviewed',
-                                                                    finding_details: f.findingDetails || "",
-                                                                    comments: f.comments || "",
-                                                                    severity_override: "",
-                                                                    severity_justification: ""
-                                                                }))
-                                                            }],
-                                                            active: true,
-                                                            mode: 1,
-                                                            has_path: true,
-                                                            cklb_version: "2.0"
-                                                        };
-                                                    }
-
-                                                    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                                                    const url = URL.createObjectURL(blob);
-                                                    const a = document.createElement('a');
-                                                    a.href = url;
-                                                    a.download = `${copyTarget.filename.replace(/\.(ckl|cklb|xml|json)$/i, '')}_updated.cklb`;
-                                                    document.body.appendChild(a);
-                                                    a.click();
-                                                    document.body.removeChild(a);
-                                                    URL.revokeObjectURL(url);
-                                                }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-                                                    <Download size={16} /> Download
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <button onClick={executeCopy} className="bg-black hover:bg-gray-800 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
-                                                <Copy size={16} /> Transfer Data
+                                                                updateFindings(item);
+                                                            });
+                                                        } else if (typeof obj === 'object') { for (const key in obj) updateFindings(obj[key]); }
+                                                    };
+                                                    updateFindings(exportData);
+                                                } else { exportData = editFile; }
+                                                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                                                const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url;
+                                                a.download = `${editFile.filename.replace(/\.(ckl|cklb|xml|json)$/i, '')}_edited.cklb`;
+                                                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                                            }} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                                <Download size={16} /> Export CKLB
                                             </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
