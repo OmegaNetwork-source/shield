@@ -1266,18 +1266,46 @@ function App() {
         XLSX.writeFile(wb, `POAM_Combined_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    // Stats
-    const passed = Array.from(results.values()).filter(r => r.status === 'pass').length;
-    const failed = Array.from(results.values()).filter(r => r.status === 'fail').length;
-    const manual = Array.from(results.values()).filter(r => r.status === 'notapplicable').length;
-    const total = rules.length;
-    const scanned = results.size;
-    const pending = total - scanned;
+    // Stats calculation (Dynamic based on mode)
+    const stats = useMemo(() => {
+        if (activeTab === 'copy' && editFile) {
+            return {
+                passed: editFile.findings.filter(f => f.status === 'NotAFinding').length,
+                failed: editFile.findings.filter(f => f.status === 'Open').length,
+                manual: editFile.findings.filter(f => f.status === 'Not_Applicable').length,
+                pending: editFile.findings.filter(f => f.status === 'Not_Reviewed').length
+            };
+        }
+        return {
+            passed: Array.from(results.values()).filter(r => r.status === 'pass').length,
+            failed: Array.from(results.values()).filter(r => r.status === 'fail').length,
+            manual: Array.from(results.values()).filter(r => r.status === 'notapplicable').length,
+            pending: rules.length - results.size
+        };
+    }, [results, rules.length, activeTab, editFile]);
 
-    // Severity counts
-    const highCount = rules.filter(r => r.severity === 'high').length;
-    const mediumCount = rules.filter(r => r.severity === 'medium').length;
-    const lowCount = rules.filter(r => r.severity === 'low').length;
+    const { passed, failed, manual, pending } = stats;
+
+    const total = (activeTab === 'copy' && editFile) ? editFile.findings.length : rules.length;
+    const scanned = (activeTab === 'copy' && editFile) ? editFile.findings.filter(f => f.status !== 'Not_Reviewed').length : results.size;
+
+    // Severity counts (Dynamic based on mode)
+    const severityCounts = useMemo(() => {
+        if (activeTab === 'copy' && editFile) {
+            return {
+                high: editFile.findings.filter(f => (f.severity || '').toLowerCase() === 'high' || (f.severity || '').toLowerCase() === 'cat i').length,
+                medium: editFile.findings.filter(f => (f.severity || '').toLowerCase() === 'medium' || (f.severity || '').toLowerCase() === 'cat ii').length,
+                low: editFile.findings.filter(f => (f.severity || '').toLowerCase() === 'low' || (f.severity || '').toLowerCase() === 'cat iii').length
+            };
+        }
+        return {
+            high: rules.filter(r => r.severity === 'high').length,
+            medium: rules.filter(r => r.severity === 'medium').length,
+            low: rules.filter(r => r.severity === 'low').length
+        };
+    }, [rules, activeTab, editFile]);
+
+    const { high: highCount, medium: mediumCount, low: lowCount } = severityCounts;
 
     const getSeverityIcon = (sev: string) => {
         switch (sev) {
@@ -1545,7 +1573,7 @@ function App() {
                         <button onClick={() => { setSelectedSeverity(null); setSelectedStatus(null); }} className={`w-full text-left px-4 py-2 text-sm rounded-lg transition-colors ${!selectedSeverity && !selectedStatus
                             ? (darkMode ? 'bg-gray-700 shadow-sm font-medium text-white' : 'bg-white shadow-sm font-medium')
                             : (darkMode ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-white/50')}`}>
-                            All Controls ({total})
+                            all controls ({editFile && activeTab === 'copy' ? editFile.findings.length : total})
                         </button>
                         <button onClick={() => { setSelectedSeverity('high'); setSelectedStatus(null); }} className={`w-full text-left px-4 py-2 text-sm rounded-lg transition-colors flex items-center gap-2 ${selectedSeverity === 'high'
                             ? (darkMode ? 'bg-gray-700 shadow-sm font-medium text-white' : 'bg-white shadow-sm font-medium')
@@ -1567,7 +1595,7 @@ function App() {
 
                 {/* CLICKABLE Stats Card */}
                 <div className={`p-4 rounded-xl border shadow-sm space-y-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-100'}`}>
-                    <div className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>Scan Results</div>
+                    <div className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>Current Status</div>
                     <div className="grid grid-cols-4 gap-1.5 text-center">
                         <button
                             onClick={() => { setSelectedStatus(selectedStatus === 'pass' ? null : 'pass'); setSelectedSeverity(null); }}
@@ -3092,7 +3120,7 @@ function App() {
                                                         <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                             <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                                 <tr>
-                                                                    <th className="px-3 py-2 w-32">Rule Info</th>
+                                                                    <th className="px-3 py-2 w-1/3">Rule Title</th>
                                                                     <th className="px-3 py-2 w-24">Severity</th>
                                                                     <th className="px-3 py-2 w-32">Status</th>
                                                                     <th className="px-3 py-2">Comments & Details</th>
@@ -3105,10 +3133,8 @@ function App() {
                                                                     .map((f, i) => (
                                                                         <tr key={f.origIdx} className="group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top">
                                                                             <td className="px-3 py-2 pt-3">
-                                                                                <div className="font-mono text-[10px] font-bold">{f.ruleId}</div>
-                                                                                <div className="text-[10px] text-gray-500">{f.vulnId}</div>
-                                                                                {f.groupId && <div className="text-[9px] text-gray-400">Grp: {f.groupId}</div>}
-                                                                                {f.legacyId && <div className="text-[9px] text-gray-400">Leg: {f.legacyId}</div>}
+                                                                                <div className={`text-xs font-medium mb-1 line-clamp-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{f.title}</div>
+                                                                                <div className="font-mono text-[10px] text-gray-400">{f.ruleId || f.vulnId}</div>
                                                                             </td>
                                                                             <td className="px-3 py-2 pt-2">
                                                                                 <select
@@ -3164,30 +3190,31 @@ function App() {
                                                                                     <div className="flex flex-col gap-3 mt-2 border-t border-gray-100 dark:border-gray-700 pt-4 animate-in fade-in zoom-in-95 duration-200">
 
                                                                                         {/* STIG Info Header Grid */}
-                                                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400">Group ID</div><div className="text-xs font-mono">{f.groupId || 'N/A'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400">Rule ID</div><div className="text-xs font-mono">{f.ruleId || 'N/A'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400">Legacy ID</div><div className="text-xs font-mono">{f.legacyId || 'N/A'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400">Classification</div><div className="text-xs font-mono">{f.classification || 'UNCLASSIFIED'}</div></div>
+                                                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Group ID</div><div className="text-xs font-mono dark:text-gray-300">{f.groupId || 'N/A'}</div></div>
+                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Rule ID</div><div className="text-xs font-mono dark:text-gray-300">{f.ruleId || 'N/A'}</div></div>
+                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Legacy ID</div><div className="text-xs font-mono dark:text-gray-300">{f.legacyId || 'N/A'}</div></div>
+                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Classification</div><div className="text-xs font-mono dark:text-gray-300">{f.classification || 'UNCLASSIFIED'}</div></div>
+                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">CCIs</div><div className="text-xs font-mono dark:text-gray-300 truncate" title={f.ccis?.join(', ')}>{(f.ccis?.length || 0) > 0 ? f.ccis?.[0] + (f.ccis!.length > 1 ? '...' : '') : 'N/A'}</div></div>
                                                                                         </div>
 
                                                                                         <div className="grid grid-cols-1 gap-4">
                                                                                             <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                <div className="font-bold text-xs uppercase text-gray-500 mb-1">Rule Title</div>
-                                                                                                <div className="text-xs font-medium">{f.title}</div>
+                                                                                                <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Rule Title</div>
+                                                                                                <div className="text-xs font-medium dark:text-gray-200">{f.title}</div>
                                                                                             </div>
                                                                                             <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                <div className="font-bold text-xs uppercase text-gray-500 mb-1">Discussion</div>
-                                                                                                <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap">{f.description}</div>
+                                                                                                <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Discussion</div>
+                                                                                                <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap dark:text-gray-300">{f.description}</div>
                                                                                             </div>
                                                                                             <div className="grid grid-cols-2 gap-4">
                                                                                                 <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                    <div className="font-bold text-xs uppercase text-gray-500 mb-1">Check Text</div>
-                                                                                                    <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap">{f.checkText}</div>
+                                                                                                    <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Check Text</div>
+                                                                                                    <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap dark:text-gray-300">{f.checkText}</div>
                                                                                                 </div>
                                                                                                 <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                    <div className="font-bold text-xs uppercase text-gray-500 mb-1">Fix Text</div>
-                                                                                                    <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap">{f.fixText}</div>
+                                                                                                    <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Fix Text</div>
+                                                                                                    <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap dark:text-gray-300">{f.fixText}</div>
                                                                                                 </div>
                                                                                             </div>
                                                                                         </div>
