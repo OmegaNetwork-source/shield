@@ -420,8 +420,13 @@ function App() {
                 if (!obj) return [];
                 if (Array.isArray(obj)) {
                     // Check if this array looks like findings (has common fields)
-                    if (obj.length > 0 && (obj[0].vulnId || obj[0].vulnNum || obj[0].ruleId || obj[0].Rule_ID || obj[0].STIG_ID || obj[0].vuln_num)) {
-                        return obj;
+                    if (obj.length > 0) {
+                        const s = obj[0];
+                        console.log('[Parser] Inspecting array item:', Object.keys(s));
+                        if (s.vulnId || s.vulnNum || s.ruleId || s.Rule_ID || s.STIG_ID || s.vuln_num || s.GROUP_ID) {
+                            console.log('[Parser] MATCH FOUND!');
+                            return obj;
+                        }
                     }
                     // Continue searching inside array items
                     for (const item of obj) {
@@ -431,6 +436,7 @@ function App() {
                     return [];
                 }
                 if (typeof obj === 'object') {
+                    console.log('[Parser] Searching object keys:', Object.keys(obj));
                     // Check specific known keys
                     if (obj.findings) return findFindings(obj.findings);
                     if (obj.vulns) return findFindings(obj.vulns);
@@ -486,6 +492,9 @@ function App() {
                     stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || 'Imported Checklist',
                     findings: mappedFindings
                 };
+            } else {
+                console.warn('[Parser] No findings array found in JSON structure.');
+                alert(`Debug: Parsed JSON but found no checklists. Top keys: ${Object.keys(json).join(', ')}. Check console for details.`);
             }
         } catch (e) {
             // Not JSON, fall through to XML
@@ -821,32 +830,32 @@ function App() {
 
     /* const generatePoam = () => {
         if (!poamChecklist) return;
-    
+     
         // Filter for OPEN findings
         const openFindings = poamChecklist.findings.filter(f => f.status === 'Open');
-    
+     
         if (openFindings.length === 0) {
             alert('No OPEN findings found in this checklist. POA&M is typically only required for open vulnerabilities.');
         }
-    
+     
         const wb = XLSX.utils.book_new();
-    
+     
         const poamRows = [['Control ID', 'Weakness Name', 'Weakness Description', 'Security Control', 'Asset ID', 'Severity', 'Status', 'Scheduled Completion', 'Resources Required', 'Milestones', 'Comments', 'Raw Severity']];
-    
+     
         openFindings.forEach(f => {
             // Map Severity
             let sev = f.severity?.toLowerCase() || 'medium';
             let cat = 'CAT II';
             let days = 90;
-    
+     
             if (sev === 'high') { cat = 'CAT I'; days = 30; }
             else if (sev === 'low') { cat = 'CAT III'; days = 365; }
-    
+     
             // Calc Date
             const date = new Date();
             date.setDate(date.getDate() + days);
             const completionDate = date.toISOString().split('T')[0];
-    
+     
             poamRows.push([
                 f.vulnId,
                 f.title,
@@ -862,7 +871,7 @@ function App() {
                 sev
             ]);
         });
-    
+     
         const sheet = XLSX.utils.aoa_to_sheet(poamRows);
         sheet['!cols'] = [
             { wch: 15 }, // ID
@@ -878,7 +887,7 @@ function App() {
             { wch: 40 }, // Comments
             { wch: 10 }  // Raw Sev
         ];
-    
+     
         XLSX.utils.book_append_sheet(wb, sheet, 'POA&M');
         XLSX.writeFile(wb, `POAM_${poamChecklist.hostname}_${new Date().toISOString().split('T')[0]}.xlsx`);
     }; */
