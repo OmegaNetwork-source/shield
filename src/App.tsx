@@ -64,6 +64,7 @@ function App() {
     const [compareBase, setCompareBase] = useState<typeof uploadedChecklists[0] | null>(null);
     const [compareNew, setCompareNew] = useState<typeof uploadedChecklists[0] | null>(null);
     const [comparisonDiffs, setComparisonDiffs] = useState<any[] | null>(null);
+    const [compareFilter, setCompareFilter] = useState<'all' | 'status' | 'new' | 'removed'>('all');
 
     // POA&M State
     const [poamChecklists, setPoamChecklists] = useState<typeof uploadedChecklists>([]);
@@ -1534,7 +1535,7 @@ function App() {
                                             <span className="bg-black hover:bg-black/80 text-white px-4 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
                                                 <Upload size={14} /> Upload New
                                             </span>
-                                            <input type="file" className="hidden" accept=".ckl,.cklb" onChange={(e) => handleCompareUpload(e, 'new')} />
+                                            <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => handleCompareUpload(e, 'new')} />
                                         </label>
                                     </div>
                                 </div>
@@ -1561,38 +1562,62 @@ function App() {
                                         </button>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        {comparisonDiffs.map((diff, idx) => (
-                                            <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-                                                <div className="flex items-start gap-3">
-                                                    <div className={`mt-1 p-1.5 rounded-lg ${diff.type === 'New Rule' ? 'bg-blue-100 text-blue-600' :
-                                                        diff.type === 'Removed Rule' ? 'bg-red-100 text-red-600' :
-                                                            'bg-amber-100 text-amber-600'
-                                                        }`}>
-                                                        {diff.type === 'New Rule' ? <Info size={16} /> : diff.type === 'Removed Rule' ? <Trash2 size={16} /> : <GitCompare size={16} />}
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <span className="font-mono text-sm font-semibold">{diff.vulnId}</span>
-                                                            <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${diff.severity === 'CAT I' ? 'bg-red-100 text-red-600' :
-                                                                diff.severity === 'CAT II' ? 'bg-amber-50 text-amber-600' :
-                                                                    'bg-blue-50 text-blue-600'
-                                                                }`}>{diff.severity}</span>
-                                                            <span className="text-xs text-gray-400 uppercase font-medium tracking-wide">{diff.type}</span>
-                                                        </div>
-                                                        <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{diff.title}</div>
-                                                    </div>
-                                                </div>
-                                                <div className="text-right text-sm">
-                                                    <div className="text-gray-500 text-xs uppercase mb-0.5">Change</div>
-                                                    <div className="font-mono">
-                                                        <span className="line-through text-gray-400">{diff.oldStatus}</span>
-                                                        <span className="mx-2 text-gray-400">→</span>
-                                                        <span className={`font-semibold ${diff.newStatus === 'Open' ? 'text-red-600' : 'text-green-600'}`}>{diff.newStatus}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                    {/* Filters */}
+                                    <div className="flex gap-2">
+                                        {(['all', 'status', 'new', 'removed'] as const).map(f => (
+                                            <button
+                                                key={f}
+                                                onClick={() => setCompareFilter(f)}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${compareFilter === f
+                                                    ? 'bg-black text-white'
+                                                    : darkMode ? 'bg-gray-700 text-gray-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                                    }`}
+                                            >
+                                                {f === 'all' ? 'All Changes' : f === 'status' ? 'Status Changes' : f === 'new' ? 'New Rules' : 'Removed Rules'}
+                                            </button>
                                         ))}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {comparisonDiffs
+                                            .filter(diff => {
+                                                if (compareFilter === 'all') return true;
+                                                if (compareFilter === 'status') return diff.type === 'Status Change';
+                                                if (compareFilter === 'new') return diff.type === 'New Rule';
+                                                if (compareFilter === 'removed') return diff.type === 'Removed Rule';
+                                                return true;
+                                            })
+                                            .map((diff, idx) => (
+                                                <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className={`mt-1 p-1.5 rounded-lg ${diff.type === 'New Rule' ? 'bg-blue-100 text-blue-600' :
+                                                            diff.type === 'Removed Rule' ? 'bg-red-100 text-red-600' :
+                                                                'bg-amber-100 text-amber-600'
+                                                            }`}>
+                                                            {diff.type === 'New Rule' ? <Info size={16} /> : diff.type === 'Removed Rule' ? <Trash2 size={16} /> : <GitCompare size={16} />}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="font-mono text-sm font-semibold">{diff.vulnId}</span>
+                                                                <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${diff.severity === 'CAT I' ? 'bg-red-100 text-red-600' :
+                                                                    diff.severity === 'CAT II' ? 'bg-amber-50 text-amber-600' :
+                                                                        'bg-blue-50 text-blue-600'
+                                                                    }`}>{diff.severity}</span>
+                                                                <span className="text-xs text-gray-400 uppercase font-medium tracking-wide">{diff.type}</span>
+                                                            </div>
+                                                            <div className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{diff.title}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right text-sm">
+                                                        <div className="text-gray-500 text-xs uppercase mb-0.5">Change</div>
+                                                        <div className="font-mono">
+                                                            <span className="line-through text-gray-400">{diff.oldStatus}</span>
+                                                            <span className="mx-2 text-gray-400">→</span>
+                                                            <span className={`font-semibold ${diff.newStatus === 'Open' ? 'text-red-600' : 'text-green-600'}`}>{diff.newStatus}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         {comparisonDiffs.length === 0 && (
                                             <div className="text-center py-10 text-gray-400">
                                                 <GitCompare className="mx-auto size-12 mb-3 opacity-20" />
