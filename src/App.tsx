@@ -144,6 +144,13 @@ function App() {
     const [expandedTargetIdx, setExpandedTargetIdx] = useState<number | null>(null);
     const [commentPlusText, setCommentPlusText] = useState('');
 
+    // Batch Tools State
+    const [showBatchTools, setShowBatchTools] = useState(false);
+    const [batchFind, setBatchFind] = useState('');
+    const [batchReplace, setBatchReplace] = useState('');
+    const [batchPrepend, setBatchPrepend] = useState('');
+    const [batchField, setBatchField] = useState<'details' | 'comments'>('comments');
+
     // POA&M State
     const [acasData, setAcasData] = useState<any[]>([]);
     const [poamConfig, setPoamConfig] = useState({
@@ -3132,6 +3139,12 @@ function App() {
                                                         className="bg-transparent text-xs outline-none flex-1 dark:text-gray-200"
                                                     />
                                                 </div>
+                                                <button
+                                                    onClick={() => setShowBatchTools(!showBatchTools)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm transition-colors ${showBatchTools ? 'bg-purple-600 text-white' : (darkMode ? 'bg-gray-800 text-gray-300 border border-gray-600' : 'bg-white text-gray-700 border border-gray-200')}`}
+                                                >
+                                                    <Settings size={12} /> Batch Tools
+                                                </button>
                                                 <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm">
                                                     <Upload size={12} /> Import
                                                     <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" multiple onChange={async (e) => {
@@ -3149,6 +3162,98 @@ function App() {
                                                 </label>
                                             </div>
                                         </div>
+
+                                        {/* Batch Tools Panel */}
+                                        {showBatchTools && editFile && (
+                                            <div className={`p-3 border-b grid grid-cols-2 gap-4 ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
+                                                {/* Find & Replace */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-[10px] font-bold uppercase text-gray-400 w-12 text-right">Replace</div>
+                                                    <div className={`flex items-center flex-1 rounded border px-2 py-1 gap-2 ${darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300'}`}>
+                                                        <Search size={12} className="text-gray-400" />
+                                                        <input value={batchFind} onChange={e => setBatchFind(e.target.value)} placeholder="Find..." className="bg-transparent text-xs outline-none w-20" />
+                                                        <div className="w-px h-3 bg-gray-300 dark:bg-gray-600" />
+                                                        <input value={batchReplace} onChange={e => setBatchReplace(e.target.value)} placeholder="Replace..." className="bg-transparent text-xs outline-none flex-1" />
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!batchFind) return;
+                                                                const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                let count = 0;
+                                                                newFile.findings.forEach((f: any) => {
+                                                                    // Only apply to visible filtered items? No, typically Find/Replace applies to ALL or filtered. 
+                                                                    // Let's apply to filtered only to be safe? The user sees filtered list.
+                                                                    // Filter logic:
+                                                                    const matchesFilter = (filterStatus === 'All' || f.status === filterStatus) &&
+                                                                        (filterSeverity === 'All' || f.severity === filterSeverity) &&
+                                                                        (!findText || f.title.toLowerCase().includes(findText.toLowerCase()) || (f.ruleId || '').toLowerCase().includes(findText.toLowerCase()));
+
+                                                                    if (matchesFilter) {
+                                                                        if (batchField === 'comments' && f.comments?.includes(batchFind)) {
+                                                                            f.comments = f.comments.split(batchFind).join(batchReplace);
+                                                                            count++;
+                                                                        }
+                                                                        if (batchField === 'details' && f.findingDetails?.includes(batchFind)) {
+                                                                            f.findingDetails = f.findingDetails.split(batchFind).join(batchReplace);
+                                                                            count++;
+                                                                        }
+                                                                    }
+                                                                });
+                                                                setEditFile(newFile);
+                                                                alert(`Replaced ${count} occurrences in ${batchField}.`);
+                                                            }}
+                                                            className="text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded hover:bg-blue-700"
+                                                        >
+                                                            GO
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Prepend */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-[10px] font-bold uppercase text-gray-400 w-12 text-right">Prepend</div>
+                                                    <div className={`flex items-center flex-1 rounded border px-2 py-1 gap-2 ${darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300'}`}>
+                                                        <FileText size={12} className="text-gray-400" />
+                                                        <input value={batchPrepend} onChange={e => setBatchPrepend(e.target.value)} placeholder="Add text to start..." className="bg-transparent text-xs outline-none flex-1" />
+                                                        <select
+                                                            value={batchField}
+                                                            onChange={e => setBatchField(e.target.value as any)}
+                                                            className="bg-transparent text-[10px] font-bold uppercase text-gray-500 outline-none"
+                                                        >
+                                                            <option value="comments">Comments</option>
+                                                            <option value="details">Details</option>
+                                                        </select>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!batchPrepend) return;
+                                                                const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                let count = 0;
+                                                                newFile.findings.forEach((f: any) => {
+                                                                    const matchesFilter = (filterStatus === 'All' || f.status === filterStatus) &&
+                                                                        (filterSeverity === 'All' || f.severity === filterSeverity) &&
+                                                                        (!findText || f.title.toLowerCase().includes(findText.toLowerCase()) || (f.ruleId || '').toLowerCase().includes(findText.toLowerCase()));
+
+                                                                    if (matchesFilter) {
+                                                                        if (batchField === 'comments') {
+                                                                            f.comments = `${batchPrepend}\n${f.comments || ''}`;
+                                                                            count++;
+                                                                        }
+                                                                        if (batchField === 'details') {
+                                                                            f.findingDetails = `${batchPrepend}\n${f.findingDetails || ''}`;
+                                                                            count++;
+                                                                        }
+                                                                    }
+                                                                });
+                                                                setEditFile(newFile);
+                                                                alert(`Prepended text to ${count} findings.`);
+                                                            }}
+                                                            className="text-[10px] font-bold bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700"
+                                                        >
+                                                            Add
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Main Split View */}
                                         <div className="flex-1 flex overflow-hidden">
