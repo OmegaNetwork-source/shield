@@ -15,8 +15,38 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Scrollbar to be invisible/minimal */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 0px;
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
   background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  /* gray-300 */
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+  /* gray-400 */
+}
+
+/* Dark mode scrollbar support if needed - usually handled by changing colors */
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
+    /* gray-600 */
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #6b7280;
+    /* gray-500 */
+  }
 }
