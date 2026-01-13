@@ -497,10 +497,13 @@ function App() {
                     return '';
                 };
 
+                const extractedHostname = json.hostname || json.HOST_NAME || findValue(json, 'HOST_NAME') || findValue(json, 'target_name') || findValue(json, 'host_name') || findValue(json, 'system_name') || findValue(json, 'name');
+                console.log(`[Parser] Extracted Hostname for ${file.name}:`, extractedHostname);
+
                 return {
                     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     filename: file.name,
-                    hostname: json.hostname || json.HOST_NAME || findValue(json, 'HOST_NAME') || findValue(json, 'target_name') || findValue(json, 'host_name') || findValue(json, 'system_name') || findValue(json, 'name') || 'Unknown Host',
+                    hostname: extractedHostname || file.name.replace(/\.(ckl|cklb|json|xml)$/i, ''), // Fallback to filename
                     stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || 'Imported Checklist',
                     findings: mappedFindings
                 };
