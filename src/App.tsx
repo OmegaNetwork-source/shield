@@ -3,7 +3,7 @@ import {
     ShieldCheck, Play, Camera, LayoutGrid, Settings,
     ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
-    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield
+    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -68,6 +68,8 @@ function App() {
     const [showHostModal, setShowHostModal] = useState(false);
     const [showStigModal, setShowStigModal] = useState(false);
     const [isSummaryExpanded, setIsSummaryExpanded] = useState(true);
+    const [copying, setCopying] = useState(false);
+    const [selectedStigChart, setSelectedStigChart] = useState<any | null>(null);
 
     // Calculate Report Summary for UI
     const reportSummary = useMemo(() => {
@@ -1607,74 +1609,163 @@ function App() {
                                                     <FileSpreadsheet className={`size-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
                                                     <span className={`font-semibold text-sm uppercase tracking-wide ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Current Environment Summary</span>
                                                 </div>
-                                                <button className={`p-1 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-400'}`}>
-                                                    {isSummaryExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setCopying(true);
+                                                            // Create a temporary table for copying
+                                                            const table = document.getElementById('summary-table');
+                                                            if (table) {
+                                                                const range = document.createRange();
+                                                                range.selectNode(table);
+                                                                window.getSelection()?.removeAllRanges();
+                                                                window.getSelection()?.addRange(range);
+                                                                document.execCommand('copy');
+                                                                window.getSelection()?.removeAllRanges();
+                                                            }
+                                                            setTimeout(() => setCopying(false), 2000);
+                                                        }}
+                                                        className={`p-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-medium ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                                                    >
+                                                        {copying ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
+                                                        {copying ? 'Copied!' : 'Copy Table'}
+                                                    </button>
+                                                    <button className={`p-1 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-400'}`}>
+                                                        {isSummaryExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             {/* Table Content */}
                                             {isSummaryExpanded && (
-                                                <div className="overflow-x-auto w-full rounded-b-xl">
-                                                    <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                <div className="overflow-x-auto w-full rounded-b-xl relative">
+                                                    <table id="summary-table" className={`w-full text-sm text-left whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                         <thead className={`text-xs uppercase ${darkMode ? 'bg-gray-800/50 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                             <tr>
-                                                                <th className="px-4 py-3 font-medium border-r dark:border-gray-700" rowSpan={2}>STIG Name</th>
+                                                                <th className="px-4 py-3 font-medium border-r dark:border-gray-700 sticky left-0 bg-inherit z-10 drop-shadow-sm min-w-[200px]" rowSpan={2}>STIG Name</th>
                                                                 <th className="px-4 py-3 text-center font-medium border-r dark:border-gray-700" rowSpan={2}>Instances</th>
                                                                 <th className="px-4 py-3 text-center font-medium border-r dark:border-gray-700" rowSpan={2}>Controls</th>
-                                                                <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-red-500" colSpan={5}>CAT I</th>
-                                                                <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-amber-500" colSpan={5}>CAT II</th>
-                                                                <th className="px-4 py-2 text-center font-medium text-blue-500" colSpan={5}>CAT III</th>
+                                                                <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-red-500 bg-red-50/50 dark:bg-red-900/10" colSpan={5}>CAT I</th>
+                                                                <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-amber-500 bg-amber-50/50 dark:bg-amber-900/10" colSpan={5}>CAT II</th>
+                                                                <th className="px-4 py-2 text-center font-medium text-blue-500 bg-blue-50/50 dark:bg-blue-900/10" colSpan={5}>CAT III</th>
                                                             </tr>
                                                             <tr>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">%</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Total</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">NaF</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">N/A</th>
-                                                                <th className="px-2 py-2 text-center border-r dark:border-gray-700 w-12 text-xs opacity-70">Open</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-red-50/50 dark:bg-red-900/10">%</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-red-50/50 dark:bg-red-900/10">Total</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-red-50/50 dark:bg-red-900/10">NaF</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-red-50/50 dark:bg-red-900/10">N/A</th>
+                                                                <th className="px-2 py-2 text-center border-r dark:border-gray-700 w-12 text-xs opacity-70 bg-red-50/50 dark:bg-red-900/10">Open</th>
 
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">%</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Total</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">NaF</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">N/A</th>
-                                                                <th className="px-2 py-2 text-center border-r dark:border-gray-700 w-12 text-xs opacity-70">Open</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-amber-50/50 dark:bg-amber-900/10">%</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-amber-50/50 dark:bg-amber-900/10">Total</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-amber-50/50 dark:bg-amber-900/10">NaF</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-amber-50/50 dark:bg-amber-900/10">N/A</th>
+                                                                <th className="px-2 py-2 text-center border-r dark:border-gray-700 w-12 text-xs opacity-70 bg-amber-50/50 dark:bg-amber-900/10">Open</th>
 
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">%</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Total</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">NaF</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">N/A</th>
-                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Open</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-blue-50/50 dark:bg-blue-900/10">%</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-blue-50/50 dark:bg-blue-900/10">Total</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-blue-50/50 dark:bg-blue-900/10">NaF</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-blue-50/50 dark:bg-blue-900/10">N/A</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70 bg-blue-50/50 dark:bg-blue-900/10">Open</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                                                             {reportSummary.map((row, i) => (
                                                                 <tr key={i} className={`transition-colors ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50'}`}>
-                                                                    <td className="px-4 py-3 font-medium max-w-[200px] truncate border-r dark:border-gray-700" title={row.name}>{row.name}</td>
+                                                                    <td
+                                                                        className="px-4 py-3 font-medium max-w-[250px] truncate border-r dark:border-gray-700 sticky left-0 bg-inherit z-10 cursor-pointer hover:text-blue-500 hover:underline"
+                                                                        title="Click to view Chart"
+                                                                        onClick={() => setSelectedStigChart(row)}
+                                                                    >
+                                                                        {row.name}
+                                                                    </td>
                                                                     <td className="px-4 py-3 text-center border-r dark:border-gray-700">{row.instances}</td>
                                                                     <td className="px-4 py-3 text-center border-r dark:border-gray-700">{row.controls}</td>
 
-                                                                    <td className="px-2 py-3 text-center font-medium">{row.cat1.pct}</td>
-                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat1.total}</td>
-                                                                    <td className="px-2 py-3 text-center text-green-600">{row.cat1.naf}</td>
-                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat1.na}</td>
-                                                                    <td className={`px-2 py-3 text-center font-bold border-r dark:border-gray-700 ${row.cat1.open > 0 ? 'text-red-500 bg-red-500/10' : 'text-gray-300'}`}>{row.cat1.open}</td>
+                                                                    <td className="px-2 py-3 text-center font-medium bg-red-50/30 dark:bg-red-900/5">{row.cat1.pct}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400 bg-red-50/30 dark:bg-red-900/5">{row.cat1.total}</td>
+                                                                    <td className="px-2 py-3 text-center text-green-600 bg-red-50/30 dark:bg-red-900/5">{row.cat1.naf}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400 bg-red-50/30 dark:bg-red-900/5">{row.cat1.na}</td>
+                                                                    <td className={`px-2 py-3 text-center font-bold border-r dark:border-gray-700 bg-red-50/30 dark:bg-red-900/5 ${row.cat1.open > 0 ? 'text-red-500' : 'text-gray-300'}`}>{row.cat1.open}</td>
 
-                                                                    <td className="px-2 py-3 text-center font-medium">{row.cat2.pct}</td>
-                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat2.total}</td>
-                                                                    <td className="px-2 py-3 text-center text-green-600">{row.cat2.naf}</td>
-                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat2.na}</td>
-                                                                    <td className={`px-2 py-3 text-center font-bold border-r dark:border-gray-700 ${row.cat2.open > 0 ? 'text-amber-500 bg-amber-500/10' : 'text-gray-300'}`}>{row.cat2.open}</td>
+                                                                    <td className="px-2 py-3 text-center font-medium bg-amber-50/30 dark:bg-amber-900/5">{row.cat2.pct}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400 bg-amber-50/30 dark:bg-amber-900/5">{row.cat2.total}</td>
+                                                                    <td className="px-2 py-3 text-center text-green-600 bg-amber-50/30 dark:bg-amber-900/5">{row.cat2.naf}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400 bg-amber-50/30 dark:bg-amber-900/5">{row.cat2.na}</td>
+                                                                    <td className={`px-2 py-3 text-center font-bold border-r dark:border-gray-700 bg-amber-50/30 dark:bg-amber-900/5 ${row.cat2.open > 0 ? 'text-amber-500' : 'text-gray-300'}`}>{row.cat2.open}</td>
 
-                                                                    <td className="px-2 py-3 text-center font-medium">{row.cat3.pct}</td>
-                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat3.total}</td>
-                                                                    <td className="px-2 py-3 text-center text-green-600">{row.cat3.naf}</td>
-                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat3.na}</td>
-                                                                    <td className={`px-2 py-3 text-center font-bold ${row.cat3.open > 0 ? 'text-blue-500 bg-blue-500/10' : 'text-gray-300'}`}>{row.cat3.open}</td>
+                                                                    <td className="px-2 py-3 text-center font-medium bg-blue-50/30 dark:bg-blue-900/5">{row.cat3.pct}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400 bg-blue-50/30 dark:bg-blue-900/5">{row.cat3.total}</td>
+                                                                    <td className="px-2 py-3 text-center text-green-600 bg-blue-50/30 dark:bg-blue-900/5">{row.cat3.naf}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400 bg-blue-50/30 dark:bg-blue-900/5">{row.cat3.na}</td>
+                                                                    <td className={`px-2 py-3 text-center font-bold bg-blue-50/30 dark:bg-blue-900/5 ${row.cat3.open > 0 ? 'text-blue-500' : 'text-gray-300'}`}>{row.cat3.open}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
                                                     </table>
                                                 </div>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {/* Pie Chart Modal */}
+                                    {selectedStigChart && (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedStigChart(null)}>
+                                            <div className={`w-full max-w-lg p-6 rounded-2xl shadow-xl ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`} onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <div>
+                                                        <h3 className="text-xl font-bold">{selectedStigChart.name}</h3>
+                                                        <div className="text-sm opacity-60">Compliance Overview</div>
+                                                    </div>
+                                                    <button onClick={() => setSelectedStigChart(null)} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                                                        <XCircle className="size-6 text-gray-400" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                                    <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                                                        <div className="text-xs uppercase tracking-wide opacity-70 mb-1">CAT I Compliance</div>
+                                                        <div className="text-4xl font-bold text-red-500">{selectedStigChart.cat1.pct}</div>
+                                                        <div className="text-xs mt-1 text-gray-400">{selectedStigChart.cat1.open} Open Findings</div>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                                                        <div className="text-xs uppercase tracking-wide opacity-70 mb-1">CAT II Compliance</div>
+                                                        <div className="text-4xl font-bold text-amber-500">{selectedStigChart.cat2.pct}</div>
+                                                        <div className="text-xs mt-1 text-gray-400">{selectedStigChart.cat2.open} Open Findings</div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center gap-3 p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800">
+                                                        <div className="size-10 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center text-red-600 dark:text-red-200 font-bold">I</div>
+                                                        <div className="flex-1">
+                                                            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-red-500" style={{ width: selectedStigChart.cat1.pct }}></div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-12 text-right font-medium">{selectedStigChart.cat1.pct}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800">
+                                                        <div className="size-10 rounded-full bg-amber-100 dark:bg-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-200 font-bold">II</div>
+                                                        <div className="flex-1">
+                                                            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-amber-500" style={{ width: selectedStigChart.cat2.pct }}></div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-12 text-right font-medium">{selectedStigChart.cat2.pct}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800">
+                                                        <div className="size-10 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-200 font-bold">III</div>
+                                                        <div className="flex-1">
+                                                            <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                                                <div className="h-full bg-blue-500" style={{ width: selectedStigChart.cat3.pct }}></div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-12 text-right font-medium">{selectedStigChart.cat3.pct}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 
