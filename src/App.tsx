@@ -460,14 +460,14 @@ function App() {
             if (rawFindings.length > 0) {
                 // Map raw findings to our schema
                 const mappedFindings = rawFindings.map((f: any) => ({
-                    vulnId: f.vulnId || f.vulnNum || f.Vuln_Num || f.vuln_num || f.id || 'Unknown',
-                    status: f.status || f.STATUS || f.Status || 'Not_Reviewed',
+                    vulnId: f.vulnId || f.vulnNum || f.Vuln_Num || f.vuln_num || f.id || f.rule_id || f.group_id || f.ruleId || 'Unknown',
+                    status: f.status || f.STATUS || f.Status || (f.finding_details) || 'Not_Reviewed',
                     severity: f.severity || f.Severity || f.sev || 'medium',
-                    title: f.title || f.Rule_Title || f.rule_title || f.ruleTitle || 'Unknown Title',
+                    title: f.title || f.Rule_Title || f.rule_title || f.ruleTitle || f.group_title || 'Unknown Title',
                     comments: f.comments || f.COMMENTS || f.comment || '',
-                    ruleId: f.ruleId || f.Rule_ID || f.STIG_ID || f.rule_id || '',
-                    fixText: f.fixText || f.Fix_Text || f.fix_text || f.fix || '',
-                    description: f.description || f.Vuln_Discuss || f.desc || '',
+                    ruleId: f.ruleId || f.Rule_ID || f.STIG_ID || f.rule_id || f.group_id || '',
+                    fixText: f.fixText || f.Fix_Text || f.fix_text || f.fix || f.check_content || '',
+                    description: f.description || f.Vuln_Discuss || f.desc || f.discussion || '',
                     ccis: Array.isArray(f.ccis) ? f.ccis : []
                 }));
 
