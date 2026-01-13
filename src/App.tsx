@@ -423,7 +423,7 @@ function App() {
                     if (obj.length > 0) {
                         const s = obj[0];
                         console.log('[Parser] Inspecting array item:', Object.keys(s));
-                        if (s.vulnId || s.vulnNum || s.ruleId || s.Rule_ID || s.STIG_ID || s.vuln_num || s.GROUP_ID) {
+                        if (s.vulnId || s.vulnNum || s.ruleId || s.Rule_ID || s.STIG_ID || s.vuln_num || s.GROUP_ID || s.id || s.rule_id || s.rule) {
                             console.log('[Parser] MATCH FOUND!');
                             return obj;
                         }
@@ -439,8 +439,10 @@ function App() {
                     console.log('[Parser] Searching object keys:', Object.keys(obj));
                     // Check specific known keys
                     if (obj.findings) return findFindings(obj.findings);
+                    if (obj.rules) return findFindings(obj.rules);
                     if (obj.vulns) return findFindings(obj.vulns);
                     if (obj.stigs) return findFindings(obj.stigs);
+                    if (obj['evaluate-stig']) return findFindings(obj['evaluate-stig']);
                     if (obj.checklist) return findFindings(obj.checklist);
                     if (obj.STIG_DATA) return findFindings(obj.STIG_DATA);
 
