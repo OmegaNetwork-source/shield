@@ -59,6 +59,7 @@ function App() {
             findingDetails?: string;
             ccis?: string[];
         }>;
+        rawJson?: any; // Preserve original JSON for proper CKLB export
     }>>([]);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
@@ -652,7 +653,8 @@ function App() {
                     filename: file.name,
                     hostname: extractedHostname || file.name.replace(/\.(ckl|cklb|json|xml)$/i, ''), // Fallback to filename
                     stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || findValue(json, 'STIG') || findValue(json, 'stig_name') || findValue(json, 'display_name') || findValue(json, 'title') || 'Imported Checklist',
-                    findings: mappedFindings
+                    findings: mappedFindings,
+                    rawJson: json // Preserve original for valid CKLB export
                 };
             } else {
                 console.warn('[Parser] No findings array found in JSON structure.');
@@ -2477,11 +2479,131 @@ function App() {
                                             <>
                                                 <div className="text-green-600 font-medium text-sm flex items-center gap-2"><CheckCircle2 size={16} /> {copySuccess}</div>
                                                 <button onClick={() => {
-                                                    const blob = new Blob([JSON.stringify(copyTarget, null, 2)], { type: 'application/json' });
+                                                    // Build a proper CKLB export
+                                                    let exportData: any;
+
+                                                    if (copyTarget.rawJson) {
+                                                        // Use original JSON structure and update findings
+                                                        exportData = JSON.parse(JSON.stringify(copyTarget.rawJson));
+
+                                                        // Helper to find and update findings in the original structure
+                                                        const updateFindings = (obj: any): void => {
+                                                            if (!obj) return;
+                                                            if (Array.isArray(obj)) {
+                                                                obj.forEach((item: any) => {
+                                                                    // Check if this looks like a finding
+                                                                    const itemId = item.vulnId || item.vulnNum || item.Vuln_Num || item.vuln_num ||
+                                                                        item.rule_id || item.group_id || item.ruleId || item.id;
+                                                                    if (itemId) {
+                                                                        // Find corresponding updated finding
+                                                                        const updated = copyTarget.findings.find(f =>
+                                                                            f.vulnId === itemId || f.ruleId === itemId ||
+                                                                            f.vulnId === item.vulnId || f.ruleId === item.ruleId ||
+                                                                            f.vulnId === item.rule_id || f.ruleId === item.rule_id
+                                                                        );
+                                                                        if (updated) {
+                                                                            // Update the status
+                                                                            if (item.status !== undefined) item.status = updated.status;
+                                                                            if (item.STATUS !== undefined) item.STATUS = updated.status;
+                                                                            // Update comments
+                                                                            if (updated.comments) {
+                                                                                if (item.comments !== undefined) item.comments = updated.comments;
+                                                                                if (item.COMMENTS !== undefined) item.COMMENTS = updated.comments;
+                                                                            }
+                                                                            // Update finding details
+                                                                            if (updated.findingDetails) {
+                                                                                if (item.finding_details !== undefined) item.finding_details = updated.findingDetails;
+                                                                                if (item.findingDetails !== undefined) item.findingDetails = updated.findingDetails;
+                                                                                if (item.FINDING_DETAILS !== undefined) item.FINDING_DETAILS = updated.findingDetails;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    updateFindings(item);
+                                                                });
+                                                            } else if (typeof obj === 'object') {
+                                                                for (const key in obj) {
+                                                                    updateFindings(obj[key]);
+                                                                }
+                                                            }
+                                                        };
+
+                                                        updateFindings(exportData);
+                                                    } else {
+                                                        // Fallback: construct basic CKLB structure
+                                                        exportData = {
+                                                            title: copyTarget.stigName,
+                                                            id: copyTarget.id,
+                                                            target_data: {
+                                                                target_type: "Computing",
+                                                                host_name: copyTarget.hostname,
+                                                                ip_address: "",
+                                                                mac_address: "",
+                                                                fqdn: "",
+                                                                comments: "",
+                                                                role: "None",
+                                                                is_web_database: false,
+                                                                technology_area: "",
+                                                                web_db_site: "",
+                                                                web_db_instance: ""
+                                                            },
+                                                            stigs: [{
+                                                                stig_name: copyTarget.stigName,
+                                                                display_name: copyTarget.stigName,
+                                                                stig_id: copyTarget.stigName,
+                                                                version: 1,
+                                                                release_info: "",
+                                                                uuid: copyTarget.id,
+                                                                reference_identifier: "",
+                                                                size: copyTarget.findings.length,
+                                                                rules: copyTarget.findings.map(f => ({
+                                                                    uuid: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                                                    stig_uuid: copyTarget.id,
+                                                                    group_id: f.vulnId,
+                                                                    rule_id: f.ruleId || f.vulnId,
+                                                                    rule_id_src: f.ruleId || f.vulnId,
+                                                                    weight: "10.0",
+                                                                    classification: "UNCLASSIFIED",
+                                                                    severity: f.severity || "medium",
+                                                                    rule_version: f.ruleId || "",
+                                                                    group_title: f.title,
+                                                                    rule_title: f.title,
+                                                                    fix_text: f.fixText || "",
+                                                                    false_positives: "",
+                                                                    false_negatives: "",
+                                                                    documentable: "false",
+                                                                    mitigations: "",
+                                                                    potential_impacts: "",
+                                                                    third_party_tools: "",
+                                                                    mitigation_control: "",
+                                                                    responsibility: "",
+                                                                    security_override_guidance: "",
+                                                                    check_content_ref: { name: "", href: "" },
+                                                                    legacy_ids: [],
+                                                                    ccis: f.ccis || [],
+                                                                    group_tree: [{ id: f.vulnId, title: f.vulnId, description: "" }],
+                                                                    createdAt: new Date().toISOString(),
+                                                                    updatedAt: new Date().toISOString(),
+                                                                    status: f.status === 'NotAFinding' ? 'not_a_finding' :
+                                                                        f.status === 'Open' ? 'open' :
+                                                                            f.status === 'Not_Applicable' ? 'not_applicable' : 'not_reviewed',
+                                                                    finding_details: f.findingDetails || "",
+                                                                    comments: f.comments || "",
+                                                                    severity_override: "",
+                                                                    severity_justification: ""
+                                                                }))
+                                                            }],
+                                                            active: true,
+                                                            mode: 1,
+                                                            has_path: true,
+                                                            cklb_version: "2.0"
+                                                        };
+                                                    }
+
+                                                    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
                                                     const url = URL.createObjectURL(blob);
                                                     const a = document.createElement('a');
                                                     a.href = url;
-                                                    a.download = `${copyTarget.filename.replace('.ckl', '').replace('.xml', '')}_updated.cklb`;
+                                                    a.download = `${copyTarget.filename.replace(/\.(ckl|cklb|xml|json)$/i, '')}_updated.cklb`;
                                                     document.body.appendChild(a);
                                                     a.click();
                                                     document.body.removeChild(a);
