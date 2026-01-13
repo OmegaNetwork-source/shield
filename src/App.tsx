@@ -134,6 +134,7 @@ function App() {
     const [sourceReplaceText, setSourceReplaceText] = useState('');
     const [expandedSourceIdx, setExpandedSourceIdx] = useState<number | null>(null);
     const [expandedTargetIdx, setExpandedTargetIdx] = useState<number | null>(null);
+    const [commentPlusText, setCommentPlusText] = useState('');
 
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
         const parsed = await parseCklFile(file);
@@ -2215,29 +2216,26 @@ function App() {
                                                 <table className={`w-full text-xs text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                         <tr>
-                                                            <th className="px-3 py-2">Rule ID</th>
-                                                            <th className="px-3 py-2">Status</th>
-                                                            <th className="px-3 py-2">Comments</th>
-                                                            <th className="px-3 py-2">Details</th>
+                                                            <th className="px-3 py-2 w-32">Rule ID</th>
+                                                            <th className="px-3 py-2 w-24">Status</th>
+                                                            <th className="px-3 py-2">Finding Details</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                                                         {copySource.findings.map((f, i) => (
-                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30`}>
-                                                                <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top`}>
+                                                                <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
                                                                 <td className="px-3 py-2">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
                                                                         f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
                                                                             'bg-gray-100 text-gray-600'
                                                                         }`}>{f.status}</span>
                                                                 </td>
-                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
-                                                                <td className="px-3 py-2 max-w-[250px]">
+                                                                <td className="px-3 py-2">
                                                                     {expandedSourceIdx === i ? (
-                                                                        <div className="flex flex-col gap-1">
+                                                                        <div className="flex flex-col gap-2">
                                                                             <textarea
-                                                                                className={`w-full text-xs p-2 rounded border resize-none ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                rows={4}
+                                                                                className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                                                                                 value={f.findingDetails || ''}
                                                                                 onChange={e => {
                                                                                     const newSource = JSON.parse(JSON.stringify(copySource));
@@ -2247,18 +2245,18 @@ function App() {
                                                                             />
                                                                             <button
                                                                                 onClick={() => setExpandedSourceIdx(null)}
-                                                                                className="text-xs text-blue-600 hover:text-blue-700 font-medium self-end"
+                                                                                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-medium self-end"
                                                                             >
                                                                                 Done
                                                                             </button>
                                                                         </div>
                                                                     ) : (
                                                                         <div
-                                                                            className="truncate cursor-pointer hover:text-blue-600"
-                                                                            title="Click to edit"
+                                                                            className="line-clamp-2 cursor-pointer hover:text-blue-600 hover:underline"
+                                                                            title="Click to expand and edit"
                                                                             onClick={() => setExpandedSourceIdx(i)}
                                                                         >
-                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add</span>}
+                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
                                                                         </div>
                                                                     )}
                                                                 </td>
@@ -2323,6 +2321,35 @@ function App() {
                                                         Replace All
                                                     </button>
                                                 </div>
+
+                                                {/* Comment+ Toolbar */}
+                                                <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded-lg border border-green-200 dark:border-green-800">
+                                                    <span className="text-[10px] font-bold text-green-700 dark:text-green-400 px-2">+</span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Prepend text to all details..."
+                                                        className="bg-transparent text-xs px-2 py-1 flex-1 outline-none min-w-[150px]"
+                                                        value={commentPlusText}
+                                                        onChange={e => setCommentPlusText(e.target.value)}
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!copyTarget || !commentPlusText) return;
+                                                            const newTarget = JSON.parse(JSON.stringify(copyTarget));
+                                                            newTarget.findings.forEach((f: any) => {
+                                                                const existing = f.findingDetails || '';
+                                                                f.findingDetails = `${commentPlusText}\n\n${existing}`.trim();
+                                                            });
+                                                            setCopyTarget(newTarget);
+                                                            setCommentPlusText('');
+                                                            alert(`Prepended to all ${newTarget.findings.length} findings.`);
+                                                        }}
+                                                        disabled={!commentPlusText}
+                                                        className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold whitespace-nowrap disabled:opacity-50"
+                                                    >
+                                                        Apply All
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -2348,29 +2375,50 @@ function App() {
                                                 <table className={`w-full text-xs text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                         <tr>
-                                                            <th className="px-3 py-2">Rule ID</th>
-                                                            <th className="px-3 py-2">Status</th>
-                                                            <th className="px-3 py-2">Comments</th>
-                                                            <th className="px-3 py-2">Details</th>
+                                                            <th className="px-3 py-2 w-32">Rule ID</th>
+                                                            <th className="px-3 py-2 w-24">Status</th>
+                                                            <th className="px-3 py-2">Finding Details</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                                                         {copyTarget.findings.map((f, i) => (
-                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30`}>
-                                                                <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top`}>
+                                                                <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
                                                                 <td className="px-3 py-2">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
                                                                         f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
                                                                             'bg-gray-100 text-gray-600'
                                                                         }`}>{f.status}</span>
                                                                 </td>
-                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
-                                                                <td className="px-3 py-2 max-w-[250px]">
+                                                                <td className="px-3 py-2">
                                                                     {expandedTargetIdx === i ? (
-                                                                        <div className="flex flex-col gap-1">
+                                                                        <div className="flex flex-col gap-2">
+                                                                            {/* Comment+ for single row */}
+                                                                            <div className="flex items-center gap-1 bg-green-50 dark:bg-green-900/20 p-1 rounded border border-green-200 dark:border-green-800">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    placeholder="Prepend text..."
+                                                                                    className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
+                                                                                    value={commentPlusText}
+                                                                                    onChange={e => setCommentPlusText(e.target.value)}
+                                                                                />
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        if (!commentPlusText) return;
+                                                                                        const newTarget = JSON.parse(JSON.stringify(copyTarget));
+                                                                                        const existing = newTarget.findings[i].findingDetails || '';
+                                                                                        newTarget.findings[i].findingDetails = `${commentPlusText}\n\n${existing}`.trim();
+                                                                                        setCopyTarget(newTarget);
+                                                                                        setCommentPlusText('');
+                                                                                    }}
+                                                                                    disabled={!commentPlusText}
+                                                                                    className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold disabled:opacity-50"
+                                                                                >
+                                                                                    Apply
+                                                                                </button>
+                                                                            </div>
                                                                             <textarea
-                                                                                className={`w-full text-xs p-2 rounded border resize-none ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                rows={4}
+                                                                                className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                                                                                 value={f.findingDetails || ''}
                                                                                 onChange={e => {
                                                                                     const newTarget = JSON.parse(JSON.stringify(copyTarget));
@@ -2380,18 +2428,18 @@ function App() {
                                                                             />
                                                                             <button
                                                                                 onClick={() => setExpandedTargetIdx(null)}
-                                                                                className="text-xs text-purple-600 hover:text-purple-700 font-medium self-end"
+                                                                                className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded font-medium self-end"
                                                                             >
                                                                                 Done
                                                                             </button>
                                                                         </div>
                                                                     ) : (
                                                                         <div
-                                                                            className="truncate cursor-pointer hover:text-purple-600"
-                                                                            title="Click to edit"
+                                                                            className="line-clamp-2 cursor-pointer hover:text-purple-600 hover:underline"
+                                                                            title="Click to expand and edit"
                                                                             onClick={() => setExpandedTargetIdx(i)}
                                                                         >
-                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add</span>}
+                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
                                                                         </div>
                                                                     )}
                                                                 </td>
