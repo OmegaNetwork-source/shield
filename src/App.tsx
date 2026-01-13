@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     ShieldCheck, Play, Camera, LayoutGrid, Settings,
-    ChevronRight, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
+    ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
     Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield
 } from 'lucide-react';
@@ -67,6 +67,7 @@ function App() {
     const [compareFilter, setCompareFilter] = useState<'all' | 'status' | 'new' | 'removed'>('all');
     const [showHostModal, setShowHostModal] = useState(false);
     const [showStigModal, setShowStigModal] = useState(false);
+    const [isSummaryExpanded, setIsSummaryExpanded] = useState(true);
 
     // Calculate Report Summary for UI
     const reportSummary = useMemo(() => {
@@ -1596,65 +1597,84 @@ function App() {
 
                                     {/* Summary Table */}
                                     {reportSummary.length > 0 && (
-                                        <div className={`overflow-x-auto rounded-xl border mb-6 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                            <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                <thead className={`text-xs uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
-                                                    <tr>
-                                                        <th className="px-4 py-3 font-medium" rowSpan={2}>STIG Name</th>
-                                                        <th className="px-4 py-3 text-center font-medium" rowSpan={2}>Instances</th>
-                                                        <th className="px-4 py-3 text-center font-medium" rowSpan={2}>Controls</th>
-                                                        <th className="px-4 py-2 text-center border-l dark:border-gray-700 font-medium" colSpan={5}>CAT I</th>
-                                                        <th className="px-4 py-2 text-center border-l dark:border-gray-700 font-medium" colSpan={5}>CAT II</th>
-                                                        <th className="px-4 py-2 text-center border-l dark:border-gray-700 font-medium" colSpan={5}>CAT III</th>
-                                                    </tr>
-                                                    <tr>
-                                                        <th className="px-2 py-2 text-center border-l dark:border-gray-700 w-12">%</th>
-                                                        <th className="px-2 py-2 text-center w-12">Total</th>
-                                                        <th className="px-2 py-2 text-center w-12">NaF</th>
-                                                        <th className="px-2 py-2 text-center w-12">N/A</th>
-                                                        <th className="px-2 py-2 text-center w-12">Open</th>
+                                        <div className={`rounded-xl border mb-6 transition-all ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                            {/* Collapsible Header */}
+                                            <div
+                                                className={`px-4 py-3 flex items-center justify-between cursor-pointer border-b ${darkMode ? 'border-gray-700 hover:bg-gray-700/50' : 'border-gray-100 hover:bg-gray-50'}`}
+                                                onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <FileSpreadsheet className={`size-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                                                    <span className={`font-semibold text-sm uppercase tracking-wide ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Current Environment Summary</span>
+                                                </div>
+                                                <button className={`p-1 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-400'}`}>
+                                                    {isSummaryExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                </button>
+                                            </div>
 
-                                                        <th className="px-2 py-2 text-center border-l dark:border-gray-700 w-12">%</th>
-                                                        <th className="px-2 py-2 text-center w-12">Total</th>
-                                                        <th className="px-2 py-2 text-center w-12">NaF</th>
-                                                        <th className="px-2 py-2 text-center w-12">N/A</th>
-                                                        <th className="px-2 py-2 text-center w-12">Open</th>
+                                            {/* Table Content */}
+                                            {isSummaryExpanded && (
+                                                <div className="overflow-x-auto w-full rounded-b-xl">
+                                                    <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                        <thead className={`text-xs uppercase ${darkMode ? 'bg-gray-800/50 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                            <tr>
+                                                                <th className="px-4 py-3 font-medium border-r dark:border-gray-700" rowSpan={2}>STIG Name</th>
+                                                                <th className="px-4 py-3 text-center font-medium border-r dark:border-gray-700" rowSpan={2}>Instances</th>
+                                                                <th className="px-4 py-3 text-center font-medium border-r dark:border-gray-700" rowSpan={2}>Controls</th>
+                                                                <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-red-500" colSpan={5}>CAT I</th>
+                                                                <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-amber-500" colSpan={5}>CAT II</th>
+                                                                <th className="px-4 py-2 text-center font-medium text-blue-500" colSpan={5}>CAT III</th>
+                                                            </tr>
+                                                            <tr>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">%</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Total</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">NaF</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">N/A</th>
+                                                                <th className="px-2 py-2 text-center border-r dark:border-gray-700 w-12 text-xs opacity-70">Open</th>
 
-                                                        <th className="px-2 py-2 text-center border-l dark:border-gray-700 w-12">%</th>
-                                                        <th className="px-2 py-2 text-center w-12">Total</th>
-                                                        <th className="px-2 py-2 text-center w-12">NaF</th>
-                                                        <th className="px-2 py-2 text-center w-12">N/A</th>
-                                                        <th className="px-2 py-2 text-center w-12">Open</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                                    {reportSummary.map((row, i) => (
-                                                        <tr key={i} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}>
-                                                            <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={row.name}>{row.name}</td>
-                                                            <td className="px-4 py-3 text-center">{row.instances}</td>
-                                                            <td className="px-4 py-3 text-center">{row.controls}</td>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">%</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Total</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">NaF</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">N/A</th>
+                                                                <th className="px-2 py-2 text-center border-r dark:border-gray-700 w-12 text-xs opacity-70">Open</th>
 
-                                                            <td className="px-2 py-3 text-center border-l dark:border-gray-700 font-medium">{row.cat1.pct}</td>
-                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat1.total}</td>
-                                                            <td className="px-2 py-3 text-center text-green-600">{row.cat1.naf}</td>
-                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat1.na}</td>
-                                                            <td className={`px-2 py-3 text-center font-bold ${row.cat1.open > 0 ? 'text-red-500 bg-red-50 dark:bg-red-900/20' : 'text-gray-300'}`}>{row.cat1.open}</td>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">%</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Total</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">NaF</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">N/A</th>
+                                                                <th className="px-2 py-2 text-center w-12 text-xs opacity-70">Open</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                            {reportSummary.map((row, i) => (
+                                                                <tr key={i} className={`transition-colors ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50'}`}>
+                                                                    <td className="px-4 py-3 font-medium max-w-[200px] truncate border-r dark:border-gray-700" title={row.name}>{row.name}</td>
+                                                                    <td className="px-4 py-3 text-center border-r dark:border-gray-700">{row.instances}</td>
+                                                                    <td className="px-4 py-3 text-center border-r dark:border-gray-700">{row.controls}</td>
 
-                                                            <td className="px-2 py-3 text-center border-l dark:border-gray-700 font-medium">{row.cat2.pct}</td>
-                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat2.total}</td>
-                                                            <td className="px-2 py-3 text-center text-green-600">{row.cat2.naf}</td>
-                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat2.na}</td>
-                                                            <td className={`px-2 py-3 text-center font-bold ${row.cat2.open > 0 ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-gray-300'}`}>{row.cat2.open}</td>
+                                                                    <td className="px-2 py-3 text-center font-medium">{row.cat1.pct}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat1.total}</td>
+                                                                    <td className="px-2 py-3 text-center text-green-600">{row.cat1.naf}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat1.na}</td>
+                                                                    <td className={`px-2 py-3 text-center font-bold border-r dark:border-gray-700 ${row.cat1.open > 0 ? 'text-red-500 bg-red-500/10' : 'text-gray-300'}`}>{row.cat1.open}</td>
 
-                                                            <td className="px-2 py-3 text-center border-l dark:border-gray-700 font-medium">{row.cat3.pct}</td>
-                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat3.total}</td>
-                                                            <td className="px-2 py-3 text-center text-green-600">{row.cat3.naf}</td>
-                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat3.na}</td>
-                                                            <td className={`px-2 py-3 text-center font-bold ${row.cat3.open > 0 ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-300'}`}>{row.cat3.open}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                                                    <td className="px-2 py-3 text-center font-medium">{row.cat2.pct}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat2.total}</td>
+                                                                    <td className="px-2 py-3 text-center text-green-600">{row.cat2.naf}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat2.na}</td>
+                                                                    <td className={`px-2 py-3 text-center font-bold border-r dark:border-gray-700 ${row.cat2.open > 0 ? 'text-amber-500 bg-amber-500/10' : 'text-gray-300'}`}>{row.cat2.open}</td>
+
+                                                                    <td className="px-2 py-3 text-center font-medium">{row.cat3.pct}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat3.total}</td>
+                                                                    <td className="px-2 py-3 text-center text-green-600">{row.cat3.naf}</td>
+                                                                    <td className="px-2 py-3 text-center text-gray-400">{row.cat3.na}</td>
+                                                                    <td className={`px-2 py-3 text-center font-bold ${row.cat3.open > 0 ? 'text-blue-500 bg-blue-500/10' : 'text-gray-300'}`}>{row.cat3.open}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
