@@ -130,6 +130,8 @@ function App() {
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
     const [findText, setFindText] = useState('');
     const [replaceText, setReplaceText] = useState('');
+    const [copyUsername, setCopyUsername] = useState('');
+    const [copyMergeDetails, setCopyMergeDetails] = useState(false);
 
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
         const parsed = await parseCklFile(file);
@@ -191,13 +193,29 @@ function App() {
                     updated = true;
                 }
                 if (copyFields.details && (sourceFinding.description || sourceFinding.findingDetails)) {
-                    // Copy finding details if available, falling back to description if strictly needed but usually findingDetails is what users want
-                    if (sourceFinding.findingDetails) {
-                        targetFinding.findingDetails = sourceFinding.findingDetails;
+                    const sourceDetails = sourceFinding.findingDetails || sourceFinding.description || '';
+                    if (sourceDetails) {
+                        if (copyMergeDetails) {
+                            const now = new Date();
+                            const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+                            const userStr = copyUsername ? `-${copyUsername.toUpperCase()}` : '';
+                            const header = `${dateStr}${userStr}`;
+
+                            // Format: HEADER - [Source Content] \n [Existing Content]
+                            const existing = targetFinding.findingDetails || '';
+                            // Avoid double stacking if already transferred
+                            if (!existing.startsWith(header)) {
+                                targetFinding.findingDetails = `${header}- ${sourceDetails}\n\n${existing}`;
+                            } else {
+                                targetFinding.findingDetails = sourceDetails;
+                            }
+                        } else {
+                            targetFinding.findingDetails = sourceDetails;
+                        }
                         updated = true;
                     }
-                    if (updated) updateCount++;
                 }
+                if (updated) updateCount++;
             }
         });
 
@@ -2177,8 +2195,8 @@ function App() {
                                                                 <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ruleId || f.vulnId}</td>
                                                                 <td className="px-3 py-2">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
-                                                                            f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
-                                                                                'bg-gray-100 text-gray-600'
+                                                                        f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                                            'bg-gray-100 text-gray-600'
                                                                         }`}>{f.status}</span>
                                                                 </td>
                                                                 <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
@@ -2281,8 +2299,8 @@ function App() {
                                                                 <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ruleId || f.vulnId}</td>
                                                                 <td className="px-3 py-2">
                                                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
-                                                                            f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
-                                                                                'bg-gray-100 text-gray-600'
+                                                                        f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                                            'bg-gray-100 text-gray-600'
                                                                         }`}>{f.status}</span>
                                                                 </td>
                                                                 <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
