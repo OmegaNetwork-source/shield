@@ -2486,6 +2486,17 @@ function App() {
                                                         // Use original JSON structure and update findings
                                                         exportData = JSON.parse(JSON.stringify(copyTarget.rawJson));
 
+                                                        // Convert our internal status to CKLB format
+                                                        const toCklbStatus = (status: string): string => {
+                                                            switch (status) {
+                                                                case 'NotAFinding': return 'not_a_finding';
+                                                                case 'Open': return 'open';
+                                                                case 'Not_Applicable': return 'not_applicable';
+                                                                case 'Not_Reviewed': return 'not_reviewed';
+                                                                default: return status.toLowerCase().replace(/\s+/g, '_');
+                                                            }
+                                                        };
+
                                                         // Helper to find and update findings in the original structure
                                                         const updateFindings = (obj: any): void => {
                                                             if (!obj) return;
@@ -2502,9 +2513,10 @@ function App() {
                                                                             f.vulnId === item.rule_id || f.ruleId === item.rule_id
                                                                         );
                                                                         if (updated) {
-                                                                            // Update the status
-                                                                            if (item.status !== undefined) item.status = updated.status;
-                                                                            if (item.STATUS !== undefined) item.STATUS = updated.status;
+                                                                            // Update the status (convert to CKLB format)
+                                                                            const cklbStatus = toCklbStatus(updated.status);
+                                                                            if (item.status !== undefined) item.status = cklbStatus;
+                                                                            if (item.STATUS !== undefined) item.STATUS = updated.status; // Keep original format for XML-style
                                                                             // Update comments
                                                                             if (updated.comments) {
                                                                                 if (item.comments !== undefined) item.comments = updated.comments;
