@@ -2365,6 +2365,66 @@ function App() {
                 </div>
             </main >
 
+            {/* Source Preview Modal */}
+            {showSourcePreview && copySource && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowSourcePreview(false)}>
+                    <div className={`w-full max-w-5xl h-[80vh] flex flex-col rounded-2xl shadow-xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+                        <div className={`flex items-center justify-between p-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <div>
+                                <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{copySource.filename}</h2>
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copySource.hostname} • {copySource.findings.length} findings</p>
+                            </div>
+                            <button onClick={() => setShowSourcePreview(false)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                <X size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-auto p-6">
+                            <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                <thead className={`text-xs uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                    <tr>
+                                        <th className="px-4 py-3 rounded-tl-lg">Rule ID</th>
+                                        <th className="px-4 py-3">Status</th>
+                                        <th className="px-4 py-3">Severity</th>
+                                        <th className="px-4 py-3 w-1/3">Comments</th>
+                                        <th className="px-4 py-3 w-1/3 rounded-tr-lg">Finding Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                    {copySource.findings.map((f, i) => (
+                                        <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/50`}>
+                                            <td className="px-4 py-3 font-mono text-xs">{f.ruleId || f.vulnId}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
+                                                        f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                            'bg-gray-100 text-gray-600'
+                                                    }`}>
+                                                    {f.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${f.severity === 'high' || f.severity === 'CAT I' ? 'bg-red-50 text-red-600' :
+                                                        f.severity === 'medium' || f.severity === 'CAT II' ? 'bg-amber-50 text-amber-600' :
+                                                            'bg-blue-50 text-blue-600'
+                                                    }`}>
+                                                    {f.severity}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="max-h-20 overflow-y-auto whitespace-pre-wrap text-xs">{f.comments || <span className="opacity-30 italic">No comments</span>}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="max-h-20 overflow-y-auto whitespace-pre-wrap text-xs font-mono bg-gray-50 dark:bg-gray-900/50 p-2 rounded">{f.findingDetails || <span className="opacity-30 italic">No details</span>}</div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* DETAIL MODAL */}
             {
                 selectedRule && (
