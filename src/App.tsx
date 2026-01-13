@@ -1344,7 +1344,15 @@ function App() {
     };
 
     const generatePoamProject = () => {
-        if (poamChecklists.length === 0 && acasData.length === 0) return;
+        console.group("🚀 Starting POA&M Generation");
+        console.log("Input Checklists:", poamChecklists.length);
+        console.log("Input ACAS Entries:", acasData.length);
+
+        if (poamChecklists.length === 0 && acasData.length === 0) {
+            console.warn("⚠️ No data loaded (Checklists or ACAS), aborting generation.");
+            console.groupEnd();
+            return;
+        }
 
         const POAM_HEADERS = [
             'POA&M Item ID', 'Control Vulnerability Description', 'Controls / APs', 'Office/Org', 'Security Checks',
@@ -1385,21 +1393,29 @@ function App() {
         };
 
         // Process STIGs
-        poamChecklists.forEach(checklist => {
-            checklist.findings.forEach(finding => {
-                if (finding.status !== 'Open') return;
+        console.group("Processing STIG Checklists");
+        poamChecklists.forEach((checklist, cIdx) => {
+            console.log(`[STIG ${cIdx + 1}/${poamChecklists.length}] processing: ${checklist.filename}`);
+            console.log(`- Findings count: ${checklist.findings.length}`);
+
+            let openFound = 0;
+            let skipped = 0;
+
+            checklist.findings.forEach((finding, fIdx) => {
+                // DEBUG: Log the first few findings to check their structure and status
+                if (fIdx < 3) {
+                    console.log(`  - Finding #${fIdx} [${finding.ruleId}]: Status='${finding.status}', Severity='${finding.severity}'`);
+                }
+
+                if (finding.status !== 'Open') {
+                    skipped++;
+                    return;
+                }
+                openFound++;
 
                 const controlVulnDesc = finding.title || '';
-                const cciField = finding.ccis?.join('\n') || ''; // Assuming ccis is array
-                const nistControl = extractNist(cciField); // Logic might need adjustment if cci is array of strings. 
-                // Assuming ccis contains the full description line as in python "NIST ... :: CCI-123"
-                // If our parser strictly stored CCI numbers, this logic needs adapting.
-                // Our parser stores: `ccis: match[1]` from regex `CCI-[0-9]+`?
-                // Let's check parser. Step 2269: `ccis: Array.isArray(f.ccis) ? f.ccis : []`.
-                // XML parser usually extracts full CCI node text or just ID.
-                // I'll assume it might contain description or just ID.
-                // If just ID, Nist extraction won't work from CCI.
-                // But likely it's full text. I'll fallback gracefully.
+                const cciField = finding.ccis?.join('\n') || '';
+                const nistControl = extractNist(cciField);
 
                 const cciNumber = finding.ccis?.[0] ? extractCci(finding.ccis[0]) : '';
                 const comments = `${cciNumber}\n${finding.findingDetails || ''}`.trim();
@@ -1407,7 +1423,7 @@ function App() {
                 const securityChecks = `${finding.ruleId || ''}\n${finding.vulnId || ''}\n${finding.groupId || ''}`.trim();
                 const mappedDate = getCompletionDate(finding.severity, poamConfig.scheduledCompletionDate);
 
-                // Rows x4
+                // Rows x4 (Milestones)
                 poamConfig.milestones.forEach((m, idx) => {
                     const row: any = {};
                     POAM_HEADERS.forEach(h => row[h] = ''); // Init empty
@@ -1418,7 +1434,7 @@ function App() {
                     if (idx === 0) {
                         row['POA&M Item ID'] = poamId;
                         row['Control Vulnerability Description'] = controlVulnDesc;
-                        row['Controls / APs'] = nistControl; // Might be empty if parser doesn't get full text
+                        row['Controls / APs'] = nistControl;
                         row['Office/Org'] = poamConfig.officeOrg;
                         row['Security Checks'] = securityChecks;
                         row['Resources Required'] = poamConfig.resourcesRequired;
@@ -1439,58 +1455,81 @@ function App() {
                 });
                 poamId++;
             });
+            console.log(`- Result: ${openFound} 'Open' findings processed, ${skipped} skipped.`);
         });
+        console.groupEnd();
 
         // Process ACAS
-        acasData.forEach(r => {
-            const severity = r['Severity'] || r['C'];
-            // Script filter: No explicit filter in python `process_acas_file` loop?
-            // Python: `for idx, row in df.iterrows(): ...`
-            // It doesn't seem to filter by severity or open?
-            // Wait, Python script for STIG `if status.lower() != "open": continue`.
-            // For ACAS, no filter shown in the snippet. I'll parse all.
+        if (acasData.length > 0) {
+            console.group("Processing ACAS Data");
+            console.log(`Processing ${acasData.length} ACAS rows...`);
+            let acasProcessed = 0;
 
-            const controlVulnDesc = r['Synopsis'] || r['F'] || '';
-            const controlsAps = r['Control Family'] || r['I'] || '';
-            const securityChecks = `Plugin ID: ${r['Plugin'] || r['A'] || ''}`;
-            const recommendations = r['Steps to Remediate'] || r['H'] || '';
-            const devicesAffected = r['DNS Name'] || r['D'] || '';
-            const comments = r['Description'] || r['G'] || '';
-            const mitigations = r['Mitigation'] || r['J'] || '';
-            const mappedDate = getCompletionDate(severity, poamConfig.scheduledCompletionDate);
+            acasData.forEach((r, idx) => {
+                if (idx < 3) console.log(`  - ACAS Row #${idx}:`, r);
 
-            poamConfig.milestones.forEach((m, idx) => {
-                const row: any = {};
-                POAM_HEADERS.forEach(h => row[h] = '');
+                const severity = r['Severity'] || r['C'];
+                // Optional: Filter logic for ACAS could go here
 
-                row['Milestone ID'] = m.id;
-                row['Milestone with Completion Dates'] = m.text;
+                const controlVulnDesc = r['Synopsis'] || r['F'] || '';
+                const controlsAps = r['Control Family'] || r['I'] || '';
+                const securityChecks = `Plugin ID: ${r['Plugin'] || r['A'] || ''}`;
+                const recommendations = r['Steps to Remediate'] || r['H'] || '';
+                const devicesAffected = r['DNS Name'] || r['D'] || '';
+                const comments = r['Description'] || r['G'] || '';
+                const mitigations = r['Mitigation'] || r['J'] || '';
+                const mappedDate = getCompletionDate(severity, poamConfig.scheduledCompletionDate);
 
-                if (idx === 0) {
-                    row['POA&M Item ID'] = poamId;
-                    row['Control Vulnerability Description'] = controlVulnDesc;
-                    row['Controls / APs'] = controlsAps;
-                    row['Office/Org'] = poamConfig.officeOrg;
-                    row['Security Checks'] = securityChecks;
-                    row['Resources Required'] = poamConfig.resourcesRequired;
-                    row['Scheduled Completion Date'] = poamConfig.scheduledCompletionDate;
-                    row['Source Identifying Vulnerability'] = "ACAS";
-                    row['Status'] = poamConfig.status;
-                    row['Comments'] = comments;
-                    row['Raw Severity'] = severity;
-                    row['Devices Affected'] = devicesAffected;
-                    row['Mitigations'] = mitigations;
-                    row['Severity'] = severity;
-                    row['Relevance of Threat'] = severity;
-                    row['Likelihood'] = severity;
-                    row['Impact'] = severity;
-                    row['Residual Risk Level'] = severity;
-                    row['Recommendations'] = recommendations;
-                }
-                allRows.push(row);
+                poamConfig.milestones.forEach((m, idx) => {
+                    const row: any = {};
+                    POAM_HEADERS.forEach(h => row[h] = '');
+
+                    row['Milestone ID'] = m.id;
+                    row['Milestone with Completion Dates'] = m.text;
+
+                    if (idx === 0) {
+                        row['POA&M Item ID'] = poamId;
+                        row['Control Vulnerability Description'] = controlVulnDesc;
+                        row['Controls / APs'] = controlsAps;
+                        row['Office/Org'] = poamConfig.officeOrg;
+                        row['Security Checks'] = securityChecks;
+                        row['Resources Required'] = poamConfig.resourcesRequired;
+                        row['Scheduled Completion Date'] = poamConfig.scheduledCompletionDate;
+                        row['Source Identifying Vulnerability'] = "ACAS";
+                        row['Status'] = poamConfig.status;
+                        row['Comments'] = comments;
+                        row['Raw Severity'] = severity;
+                        row['Devices Affected'] = devicesAffected;
+                        row['Mitigations'] = mitigations;
+                        row['Severity'] = severity;
+                        row['Relevance of Threat'] = severity;
+                        row['Likelihood'] = severity;
+                        row['Impact'] = severity;
+                        row['Residual Risk Level'] = severity;
+                        row['Recommendations'] = recommendations;
+                    }
+                    allRows.push(row);
+                });
+                poamId++;
+                acasProcessed++;
             });
-            poamId++;
-        });
+            console.log(`- Result: ${acasProcessed} ACAS items processed.`);
+            console.groupEnd();
+        }
+
+        console.log(`✅ Generation Complete. Total Rows Created: ${allRows.length}`);
+        if (allRows.length > 0) {
+            console.log("Sample Row:", allRows[0]);
+        } else {
+            console.warn("⚠️ No rows were generated! Check if findings have 'Open' status.");
+        }
+
+        console.groupEnd();
+
+        if (allRows.length === 0) {
+            alert("Report generation skipped: No 'Open' findings found in the loaded checklists/scans.");
+            return;
+        }
 
         const ws = XLSX.utils.json_to_sheet(allRows);
         const wb = XLSX.utils.book_new();
