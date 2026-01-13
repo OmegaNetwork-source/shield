@@ -1799,22 +1799,76 @@ function App() {
                                 }
                             </div>
 
-                            {/* Current Selection */}
-                            {/* Currently Loaded (Hidden or repurposed if needed, but user just wants export for now) */}
-                            {/* 
-                            <div className="bg-gray-50 rounded-xl border border-gray-100 p-6 opacity-50 pointer-events-none">
-                                <div className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Currently Loaded</div>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="text-xl font-semibold text-gray-900">{stigInfo.version}</div>
-                                        <div className="text-sm text-gray-500">{stigInfo.ruleCount} security controls</div>
+                            {/* My Workspace Section */}
+                            <div className="mt-12 mb-6 pt-6 border-t border-gray-100">
+                                <h2 className="text-2xl font-semibold tracking-tight mb-2">My Workspace</h2>
+                                <p className="text-gray-500 mb-6">Upload and manage your own STIG checklists. Edit findings, add comments, and export updates.</p>
+
+                                <div className={`p-8 rounded-2xl border-2 border-dashed mb-8 text-center transition-all ${darkMode ? 'border-gray-700 bg-gray-800/50 hover:bg-gray-800' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}>
+                                    <div className="max-w-md mx-auto">
+                                        <div className={`size-14 mx-auto mb-4 rounded-xl flex items-center justify-center ${darkMode ? 'bg-gray-700 text-blue-400' : 'bg-white shadow text-blue-600'}`}>
+                                            <Upload size={24} />
+                                        </div>
+                                        <h3 className={`text-lg font-medium mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Upload Checklist to Work On</h3>
+                                        <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            Select a .ckl or .cklb file to open it in the editor. You can modify status, comments, and details.
+                                        </p>
+                                        <label className="inline-block">
+                                            <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-medium cursor-pointer shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center gap-2">
+                                                <FileEdit size={18} /> Select Checklist File
+                                            </span>
+                                            <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={handleFileUpload} />
+                                        </label>
                                     </div>
-                                    <button className="bg-gray-200 text-gray-400 px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2 cursor-not-allowed">
-                                        <Play className="size-4" /> Go to Scanner
-                                    </button>
                                 </div>
+
+                                {uploadedChecklists.length > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {uploadedChecklists.map(ckl => (
+                                            <div key={ckl.id} className={`group relative p-6 rounded-2xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <div className="flex items-start justify-between mb-4">
+                                                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+                                                        <FileText size={24} />
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setUploadedChecklists(prev => prev.filter(c => c.id !== ckl.id));
+                                                        }}
+                                                        className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-red-900/30 text-gray-500 hover:text-red-400' : 'hover:bg-red-50 text-gray-400 hover:text-red-500'}`}
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                </div>
+
+                                                <h3 className={`font-semibold text-lg mb-1 truncate ${darkMode ? 'text-gray-200' : 'text-gray-900'}`} title={ckl.filename}>{ckl.filename}</h3>
+                                                <p className={`text-sm mb-4 truncate ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{ckl.hostname}</p>
+
+                                                <div className="flex gap-2 mb-6">
+                                                    <span className={`px-2.5 py-1 rounded text-xs font-medium ${darkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-50 text-red-600'}`}>
+                                                        {ckl.findings.filter(f => f.status === 'Open').length} Open
+                                                    </span>
+                                                    <span className={`px-2.5 py-1 rounded text-xs font-medium ${darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-600'}`}>
+                                                        {ckl.findings.filter(f => f.status === 'NotAFinding' || f.status === 'Not_A_Finding').length} Pass
+                                                    </span>
+                                                </div>
+
+                                                <button
+                                                    onClick={() => {
+                                                        const fileToEdit = JSON.parse(JSON.stringify(ckl)); // Deep clone
+                                                        setEditFile(fileToEdit);
+                                                        setEditMode('edit');
+                                                        setActiveTab('copy');
+                                                    }}
+                                                    className="w-full bg-black hover:bg-gray-800 text-white px-4 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                                                >
+                                                    <FileEdit size={16} /> Open Editor
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                            */}
                         </div>
                     ) : activeTab === 'report' ? (
                         /* REPORT GENERATOR */
@@ -2956,26 +3010,106 @@ function App() {
                                                 <div className="absolute inset-0 overflow-auto">
                                                     <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                         <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
-                                                            <tr><th className="px-3 py-2 w-32">Rule ID</th><th className="px-3 py-2 w-24">Status</th><th className="px-3 py-2">Finding Details</th></tr>
+                                                            <tr>
+                                                                <th className="px-3 py-2 w-24">Rule ID</th>
+                                                                <th className="px-3 py-2 w-24">Severity</th>
+                                                                <th className="px-3 py-2 w-32">Status</th>
+                                                                <th className="px-3 py-2">Comments & Details</th>
+                                                            </tr>
                                                         </thead>
                                                         <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                                                             {editFile.findings.map((f, i) => (
                                                                 <tr key={i} className="group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top">
-                                                                    <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{f.ruleId || f.vulnId}</td>
-                                                                    <td className="px-3 py-2">
-                                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' : f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{f.status}</span>
+                                                                    <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap pt-3">
+                                                                        {f.ruleId || f.vulnId}
+                                                                        <div className="text-[10px] text-gray-400 mt-1">{f.vulnId}</div>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 pt-2">
+                                                                        <select
+                                                                            value={f.severity}
+                                                                            onChange={e => {
+                                                                                const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                newFile.findings[i].severity = e.target.value;
+                                                                                setEditFile(newFile);
+                                                                            }}
+                                                                            className={`w-full bg-transparent border rounded px-1 py-1 text-xs outline-none focus:border-blue-500 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}
+                                                                        >
+                                                                            <option value="high">High / CAT I</option>
+                                                                            <option value="medium">Medium / CAT II</option>
+                                                                            <option value="low">Low / CAT III</option>
+                                                                        </select>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 pt-2">
+                                                                        <select
+                                                                            value={f.status}
+                                                                            onChange={e => {
+                                                                                const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                newFile.findings[i].status = e.target.value;
+                                                                                setEditFile(newFile);
+                                                                            }}
+                                                                            className={`w-full bg-transparent border rounded px-1 py-1 text-xs outline-none focus:border-blue-500 font-medium ${f.status === 'Open' ? 'text-red-500 border-red-200' :
+                                                                                f.status === 'NotAFinding' ? 'text-green-500 border-green-200' :
+                                                                                    'text-gray-500 border-gray-300'
+                                                                                }`}
+                                                                        >
+                                                                            <option value="Open">Open</option>
+                                                                            <option value="NotAFinding">Not A Finding</option>
+                                                                            <option value="Not_Reviewed">Not Reviewed</option>
+                                                                            <option value="Not_Applicable">Not Applicable</option>
+                                                                        </select>
                                                                     </td>
                                                                     <td className="px-3 py-2">
+                                                                        {/* Comments Field (Always Visible) */}
+                                                                        <div className="mb-2">
+                                                                            <label className="text-[10px] uppercase font-bold text-gray-400">Comments</label>
+                                                                            <textarea
+                                                                                className={`w-full text-xs p-2 rounded border resize-y min-h-[60px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                value={f.comments || ''}
+                                                                                onChange={e => {
+                                                                                    const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                    newFile.findings[i].comments = e.target.value;
+                                                                                    setEditFile(newFile);
+                                                                                }}
+                                                                                placeholder="Add comments here..."
+                                                                            />
+                                                                        </div>
+
                                                                         {expandedEditIdx === i ? (
-                                                                            <div className="flex flex-col gap-2">
-                                                                                <textarea className={`w-full text-xs p-3 rounded border resize-y min-h-[150px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                    value={f.findingDetails || ''} onChange={e => { const newFile = JSON.parse(JSON.stringify(editFile)); newFile.findings[i].findingDetails = e.target.value; setEditFile(newFile); }} />
-                                                                                <button onClick={() => setExpandedEditIdx(null)} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded font-medium self-end">Done</button>
+                                                                            <div className="flex flex-col gap-3 mt-2 border-t border-gray-100 dark:border-gray-700 pt-2 animate-in fade-in zoom-in-95 duration-200">
+                                                                                <div className="grid grid-cols-2 gap-4">
+                                                                                    <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
+                                                                                        <div className="font-bold mb-1 text-gray-500">Discussion</div>
+                                                                                        <div className="max-h-32 overflow-y-auto whitespace-pre-wrap">{f.description}</div>
+                                                                                    </div>
+                                                                                    <div className="bg-gray-50 dark:bg-gray-800 p-2 rounded text-xs">
+                                                                                        <div className="font-bold mb-1 text-gray-500">Fix Text</div>
+                                                                                        <div className="max-h-32 overflow-y-auto whitespace-pre-wrap">{f.fixText}</div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="text-[10px] uppercase font-bold text-gray-400">Finding Details</label>
+                                                                                    <textarea
+                                                                                        className={`w-full text-xs p-2 rounded border resize-y min-h-[100px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                        value={f.findingDetails || ''}
+                                                                                        onChange={e => {
+                                                                                            const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                            newFile.findings[i].findingDetails = e.target.value;
+                                                                                            setEditFile(newFile);
+                                                                                        }}
+                                                                                        placeholder="Technical details / evidence..."
+                                                                                    />
+                                                                                </div>
+                                                                                <button onClick={() => setExpandedEditIdx(null)} className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1 rounded font-medium self-start">
+                                                                                    Collapse Details
+                                                                                </button>
                                                                             </div>
                                                                         ) : (
-                                                                            <div className="line-clamp-2 cursor-pointer hover:text-blue-600 hover:underline" onClick={() => setExpandedEditIdx(i)}>
-                                                                                {f.findingDetails || <span className="opacity-30 italic">Click to add details</span>}
-                                                                            </div>
+                                                                            <button
+                                                                                onClick={() => setExpandedEditIdx(i)}
+                                                                                className="text-[10px] font-medium text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1"
+                                                                            >
+                                                                                <Info size={12} /> Show Discussion, Fix Text & Evidence
+                                                                            </button>
                                                                         )}
                                                                     </td>
                                                                 </tr>
@@ -3003,7 +3137,19 @@ function App() {
                                                                     const updated = editFile.findings.find(f => f.vulnId === itemId || f.ruleId === itemId);
                                                                     if (updated) {
                                                                         if (item.status !== undefined) item.status = toCklbStatus(updated.status);
-                                                                        if (updated.findingDetails) { if (item.finding_details !== undefined) item.finding_details = updated.findingDetails; if (item.findingDetails !== undefined) item.findingDetails = updated.findingDetails; }
+                                                                        if (updated.findingDetails) {
+                                                                            if (item.finding_details !== undefined) item.finding_details = updated.findingDetails;
+                                                                            if (item.findingDetails !== undefined) item.findingDetails = updated.findingDetails;
+                                                                            if (item.FINDING_DETAILS !== undefined) item.FINDING_DETAILS = updated.findingDetails;
+                                                                        }
+                                                                        if (updated.comments) {
+                                                                            if (item.comments !== undefined) item.comments = updated.comments;
+                                                                            if (item.COMMENTS !== undefined) item.COMMENTS = updated.comments;
+                                                                        }
+                                                                        if (updated.severity) {
+                                                                            if (item.severity !== undefined) item.severity = updated.severity;
+                                                                            if (item.SEVERITY !== undefined) item.SEVERITY = updated.severity;
+                                                                        }
                                                                     }
                                                                 }
                                                                 updateFindings(item);
