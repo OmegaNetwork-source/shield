@@ -4,7 +4,7 @@ import {
     ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
     Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target,
-    Filter, Search
+    Filter, Search, FolderClosed, FolderTree
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -1142,13 +1142,67 @@ function App() {
 
         const newChecklists: typeof uploadedChecklists = [];
         for (const file of Array.from(files)) {
-            if (file.name.endsWith('.ckl') || file.name.endsWith('.cklb')) {
+            const name = file.name.toLowerCase();
+            if (name.endsWith('.ckl') || name.endsWith('.cklb') || name.endsWith('.json') || name.endsWith('.xml')) {
                 const parsed = await parseCklFile(file);
                 if (parsed) newChecklists.push(parsed);
             }
         }
 
         setPoamChecklists(prev => [...prev, ...newChecklists]);
+        e.target.value = '';
+    };
+
+    const handleBulkFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files) return;
+
+        const fileList = Array.from(files);
+        console.log(`Starting bulk upload for ${fileList.length} files...`);
+
+        let stigCount = 0;
+        let acasCount = 0;
+        const newChecklists: any[] = [];
+        const newAcasRows: any[] = [];
+
+        for (const file of fileList) {
+            const name = file.name.toLowerCase();
+            // STIG Checklists (.ckl, .cklb, .json, .xml)
+            if (name.endsWith('.ckl') || name.endsWith('.cklb') || name.endsWith('.json') || name.endsWith('.xml')) {
+                const parsed = await parseCklFile(file);
+                if (parsed && parsed.findings && parsed.findings.length > 0) {
+                    newChecklists.push(parsed);
+                    stigCount++;
+                }
+            }
+            // ACAS CSV
+            else if (name.endsWith('.csv')) {
+                try {
+                    const text = await file.text();
+                    const wb = XLSX.read(text, { type: 'string' });
+                    const sheet = wb.Sheets[wb.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet);
+                    newAcasRows.push(...json);
+                    acasCount++;
+                } catch (err) {
+                    console.error("Error reading ACAS CSV in bulk folder", err);
+                }
+            }
+        }
+
+        if (newChecklists.length > 0) {
+            setPoamChecklists(prev => [...prev, ...newChecklists]);
+        }
+        if (newAcasRows.length > 0) {
+            setAcasData(prev => [...prev, ...newAcasRows]);
+        }
+
+        if (stigCount > 0 || acasCount > 0) {
+            alert(`Bulk Upload Complete!\n\n- Loaded ${stigCount} STIG checklists\n- Loaded ${acasCount} ACAS scan files\n\nAll findings will be consolidated into the POA&M.`);
+        } else {
+            alert("No valid STIG checklists or ACAS CSV files found in the selected folder.");
+        }
+
         e.target.value = '';
     };
 
@@ -3586,6 +3640,22 @@ function App() {
                             <div className="text-center">
                                 <h1 className="text-3xl font-semibold tracking-tight mb-2">POA&M Generator</h1>
                                 <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Generate a Plan of Action and Milestones (POA&M) document from multiple STIG checklists.</p>
+                            </div>
+
+                            <div className="flex justify-center -mt-2">
+                                <label className={`cursor-pointer px-6 py-3 rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-3 border ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400' : 'bg-black hover:bg-black/80 text-white border-gray-800'} active:scale-95`}>
+                                    <FolderTree size={20} /> Bulk Folder Upload
+                                    <input
+                                        type="file"
+                                        // @ts-ignore
+                                        webkitdirectory=""
+                                        // @ts-ignore
+                                        directory=""
+                                        multiple
+                                        className="hidden"
+                                        onChange={handleBulkFolderUpload}
+                                    />
+                                </label>
                             </div>
 
                             <div className="space-y-6">
