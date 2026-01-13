@@ -128,7 +128,8 @@ function App() {
     const [copyTarget, setCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
     const [copyFields, setCopyFields] = useState({ status: true, comments: true, details: true });
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
-    const [showSourcePreview, setShowSourcePreview] = useState(false);
+    const [findText, setFindText] = useState('');
+    const [replaceText, setReplaceText] = useState('');
 
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
         const parsed = await parseCklFile(file);
@@ -137,6 +138,31 @@ function App() {
             else setCopyTarget(parsed);
             setCopySuccess(null);
         }
+    };
+
+    const executeFindReplace = () => {
+        if (!copyTarget || !findText) return;
+        const newTarget = JSON.parse(JSON.stringify(copyTarget));
+        let count = 0;
+
+        newTarget.findings.forEach((f: any) => {
+            let modified = false;
+            // Search in Comments
+            if (f.comments && f.comments.includes(findText)) {
+                f.comments = f.comments.split(findText).join(replaceText);
+                modified = true;
+            }
+            // Search in Finding Details
+            if (f.findingDetails && f.findingDetails.includes(findText)) {
+                f.findingDetails = f.findingDetails.split(findText).join(replaceText);
+                modified = true;
+            }
+
+            if (modified) count++;
+        });
+
+        setCopyTarget(newTarget);
+        alert(`Replaced text in ${count} findings.`);
     };
 
     const executeCopy = () => {
@@ -2087,194 +2113,231 @@ function App() {
                             )}
                         </div>
                     ) : activeTab === 'copy' ? (
-                        <div className="space-y-6">
-                            <div>
-                                <h1 className="text-3xl font-semibold tracking-tight mb-1">Checklist Data Transfer</h1>
-                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Copy status, comments, and finding details from a completed master checklist to a new target checklist.</p>
+                        <div className="h-[calc(100vh-100px)] flex flex-col">
+                            <div className="flex-none mb-4">
+                                <h1 className="text-2xl font-semibold tracking-tight">Checklist Operations</h1>
+                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Transfer data between checklists and perform bulk find & replace operations.</p>
                             </div>
 
-                            {/* Upload Area */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
-                                {/* Connector Line (Visual only, hidden on mobile) */}
-                                <div className={`hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 p-2 rounded-full border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-600 text-gray-400' : 'bg-white border-gray-200 text-gray-400'}`}>
-                                    <ChevronRight />
-                                </div>
-
-                                {/* Source Card */}
-                                <div className={`p-6 rounded-2xl border-2 border-dashed relative flex flex-col items-center justify-center min-h-[200px] transition-all ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-                                    <div className="text-center w-full">
-                                        <div className={`mb-3 font-medium text-xs uppercase tracking-wider ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Source (From)</div>
-
-                                        {copySource ? (
-                                            <div className="animate-in fade-in zoom-in duration-300">
-                                                <div className={`mx-auto size-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg ${darkMode ? 'bg-blue-900/40 text-blue-400' : 'bg-white text-blue-600'}`}>
-                                                    <FileText size={32} />
-                                                </div>
-                                                <h3 className={`font-semibold text-lg truncate px-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copySource.filename}</h3>
-                                                <div className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copySource.hostname}</div>
-
-                                                <div className="flex justify-center gap-2 mb-4 text-xs">
-                                                    <span className="px-2 py-1 rounded-md bg-green-100 text-green-700 font-medium">
-                                                        {copySource.findings.filter(f => f.status === 'Open').length} Open
-                                                    </span>
-                                                    <span className="px-2 py-1 rounded-md bg-gray-200 text-gray-700 font-medium">
-                                                        {copySource.findings.length} Findings
-                                                    </span>
-                                                </div>
-
-                                                <div className="flex justify-center gap-3">
-                                                    <button
-                                                        onClick={() => setShowSourcePreview(true)}
-                                                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${darkMode ? 'border-gray-600 hover:bg-gray-700 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}
-                                                    >
-                                                        <Eye size={12} className="inline mr-1" /> View Details
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setCopySource(null)}
-                                                        className="text-xs text-red-500 hover:text-red-600 font-medium underline px-3 py-1.5"
-                                                    >
-                                                        Remove
-                                                    </button>
-                                                </div>
+                            <div className="flex-1 min-h-0 grid grid-cols-2 gap-4">
+                                {/* Left Panel: Source */}
+                                <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                    <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
+                                                <div className="font-bold text-xs uppercase">Source</div>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                    <FileSpreadsheet />
+                                            {copySource && (
+                                                <div className="text-sm">
+                                                    <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copySource.filename}</div>
+                                                    <div className="text-xs text-gray-500">{copySource.hostname}</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {copySource && (
+                                            <button
+                                                onClick={() => setCopySource(null)}
+                                                className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2"
+                                            >
+                                                Change File
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 overflow-hidden relative">
+                                        {!copySource ? (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                    <FileSpreadsheet size={48} />
                                                 </div>
                                                 <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Master Checklist</h3>
-                                                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>The fixed checklist to copy from</p>
-                                                <label className="inline-block">
-                                                    <span className="bg-black hover:bg-black/80 text-white px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2 transition-transform hover:scale-105 active:scale-95">
+                                                <label className="inline-block mt-3">
+                                                    <span className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
                                                         <Upload size={16} /> Choose Source
                                                     </span>
                                                     <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
                                                         if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'source');
                                                     }} />
                                                 </label>
-                                            </>
+                                            </div>
+                                        ) : (
+                                            <div className="absolute inset-0 overflow-auto">
+                                                <table className={`w-full text-xs text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                    <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                        <tr>
+                                                            <th className="px-3 py-2">Rule ID</th>
+                                                            <th className="px-3 py-2">Status</th>
+                                                            <th className="px-3 py-2">Comments</th>
+                                                            <th className="px-3 py-2">Details</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                                        {copySource.findings.map((f, i) => (
+                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30`}>
+                                                                <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                                <td className="px-3 py-2">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
+                                                                            f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                                                'bg-gray-100 text-gray-600'
+                                                                        }`}>{f.status}</span>
+                                                                </td>
+                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
+                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.findingDetails}>{f.findingDetails || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Target Card */}
-                                <div className={`p-6 rounded-2xl border-2 border-dashed relative flex flex-col items-center justify-center min-h-[200px] transition-all ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-                                    <div className="text-center w-full">
-                                        <div className={`mb-3 font-medium text-xs uppercase tracking-wider ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>Target (To)</div>
-
-                                        {copyTarget ? (
-                                            <div className="animate-in fade-in zoom-in duration-300">
-                                                <div className={`mx-auto size-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg ${darkMode ? 'bg-purple-900/40 text-purple-400' : 'bg-white text-purple-600'}`}>
-                                                    <FileText size={32} />
+                                {/* Right Panel: Target */}
+                                <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                    <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 rounded-lg bg-purple-100 text-purple-600">
+                                                    <div className="font-bold text-xs uppercase">Target</div>
                                                 </div>
-                                                <h3 className={`font-semibold text-lg truncate px-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copyTarget.filename}</h3>
-                                                <div className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copyTarget.hostname}</div>
-
-                                                <div className="flex justify-center gap-2 text-xs">
-                                                    <span className="px-2 py-1 rounded-md bg-gray-200 text-gray-700 font-medium">
-                                                        {copyTarget.findings.length} Findings
-                                                    </span>
-                                                </div>
-
+                                                {copyTarget && (
+                                                    <div className="text-sm">
+                                                        <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copyTarget.filename}</div>
+                                                        <div className="text-xs text-gray-500">{copyTarget.hostname}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {copyTarget && (
                                                 <button
                                                     onClick={() => setCopyTarget(null)}
-                                                    className="mt-6 text-xs text-red-500 hover:text-red-600 font-medium underline"
+                                                    className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2"
                                                 >
-                                                    Remove File
+                                                    Change File
                                                 </button>
+                                            )}
+                                        </div>
+
+                                        {/* Tools Bar */}
+                                        {copyTarget && (
+                                            <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                <div className="flex items-center flex-1 gap-2 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Find..."
+                                                        className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                        value={findText}
+                                                        onChange={e => setFindText(e.target.value)}
+                                                    />
+                                                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Replace..."
+                                                        className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                        value={replaceText}
+                                                        onChange={e => setReplaceText(e.target.value)}
+                                                    />
+                                                    <button
+                                                        onClick={executeFindReplace}
+                                                        disabled={!findText}
+                                                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
+                                                    >
+                                                        Replace All
+                                                    </button>
+                                                </div>
                                             </div>
-                                        ) : (
-                                            <>
-                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                    <FileText />
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 overflow-hidden relative">
+                                        {!copyTarget ? (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                    <FileText size={48} />
                                                 </div>
                                                 <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Target Checklist</h3>
-                                                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>The new checklist to update</p>
-                                                <label className="inline-block">
-                                                    <span className={`px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 ${darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border hover:bg-gray-50 text-gray-700'}`}>
+                                                <label className="inline-block mt-3">
+                                                    <span className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2">
                                                         <Upload size={16} /> Choose Target
                                                     </span>
                                                     <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
                                                         if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'target');
                                                     }} />
                                                 </label>
-                                            </>
+                                            </div>
+                                        ) : (
+                                            <div className="absolute inset-0 overflow-auto">
+                                                <table className={`w-full text-xs text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                    <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                        <tr>
+                                                            <th className="px-3 py-2">Rule ID</th>
+                                                            <th className="px-3 py-2">Status</th>
+                                                            <th className="px-3 py-2">Comments</th>
+                                                            <th className="px-3 py-2">Details</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                                                        {copyTarget.findings.map((f, i) => (
+                                                            <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30`}>
+                                                                <td className="px-3 py-2 font-mono whitespace-nowrap">{f.ruleId || f.vulnId}</td>
+                                                                <td className="px-3 py-2">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
+                                                                            f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
+                                                                                'bg-gray-100 text-gray-600'
+                                                                        }`}>{f.status}</span>
+                                                                </td>
+                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
+                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.findingDetails}>{f.findingDetails || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Configuration and Actions - Only Show when Both are Selected */}
+                            {/* Bottom Config Panel */}
                             {copySource && copyTarget && (
-                                <div className={`p-6 rounded-2xl border shadow-sm space-y-6 animate-in slide-in-from-bottom-4 duration-500 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
-                                    <div>
-                                        <h3 className={`font-semibold mb-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Transfer Configuration</h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${copyFields.status
-                                                ? (darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200')
-                                                : (darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-100')}`}>
-                                                <div className={`size-5 rounded flex items-center justify-center border ${copyFields.status ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-400 bg-transparent'}`}>
-                                                    {copyFields.status && <Check size={14} strokeWidth={3} />}
-                                                </div>
-                                                <input type="checkbox" className="hidden" checked={copyFields.status} onChange={e => setCopyFields(f => ({ ...f, status: e.target.checked }))} />
-                                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Finding Status</span>
-                                            </label>
-
-                                            <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${copyFields.comments
-                                                ? (darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200')
-                                                : (darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-100')}`}>
-                                                <div className={`size-5 rounded flex items-center justify-center border ${copyFields.comments ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-400 bg-transparent'}`}>
-                                                    {copyFields.comments && <Check size={14} strokeWidth={3} />}
-                                                </div>
-                                                <input type="checkbox" className="hidden" checked={copyFields.comments} onChange={e => setCopyFields(f => ({ ...f, comments: e.target.checked }))} />
-                                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Comments</span>
-                                            </label>
-
-                                            <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${copyFields.details
-                                                ? (darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200')
-                                                : (darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-100')}`}>
-                                                <div className={`size-5 rounded flex items-center justify-center border ${copyFields.details ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-400 bg-transparent'}`}>
-                                                    {copyFields.details && <Check size={14} strokeWidth={3} />}
-                                                </div>
-                                                <input type="checkbox" className="hidden" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
-                                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Finding Details</span>
-                                            </label>
-                                        </div>
+                                <div className={`flex-none mt-4 p-4 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
+                                    <div className="flex items-center gap-6">
+                                        <div className="font-semibold text-sm">Transfer:</div>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="checkbox" className="rounded text-blue-600" checked={copyFields.status} onChange={e => setCopyFields(f => ({ ...f, status: e.target.checked }))} />
+                                            <span>Status</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="checkbox" className="rounded text-blue-600" checked={copyFields.comments} onChange={e => setCopyFields(f => ({ ...f, comments: e.target.checked }))} />
+                                            <span>Comments</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <input type="checkbox" className="rounded text-blue-600" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
+                                            <span>Details</span>
+                                        </label>
                                     </div>
 
-                                    {/* Action Button */}
-                                    <div className="flex flex-col items-center gap-4">
-                                        {!copySuccess ? (
-                                            <button
-                                                onClick={executeCopy}
-                                                className="bg-black hover:bg-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white px-8 py-3 rounded-full text-lg font-bold shadow-xl transition-transform hover:scale-105 active:scale-95 flex items-center gap-2"
-                                            >
-                                                <Copy size={20} />
-                                                Transfer Data
-                                            </button>
-                                        ) : (
-                                            <div className="w-full text-center space-y-4">
-                                                <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-4 rounded-xl font-medium flex items-center justify-center gap-2">
-                                                    <CheckCircle2 size={20} />
-                                                    {copySuccess}
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        const blob = new Blob([JSON.stringify(copyTarget, null, 2)], { type: 'application/json' });
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = `${copyTarget.filename.replace('.ckl', '').replace('.xml', '')}_updated.cklb`;
-                                                        document.body.appendChild(a);
-                                                        a.click();
-                                                        document.body.removeChild(a);
-                                                        URL.revokeObjectURL(url);
-                                                    }}
-                                                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 mx-auto"
-                                                >
-                                                    <Download size={20} /> Download Updated CKLB
+                                    <div className="flex items-center gap-4">
+                                        {copySuccess ? (
+                                            <>
+                                                <div className="text-green-600 font-medium text-sm flex items-center gap-2"><CheckCircle2 size={16} /> {copySuccess}</div>
+                                                <button onClick={() => {
+                                                    const blob = new Blob([JSON.stringify(copyTarget, null, 2)], { type: 'application/json' });
+                                                    const url = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = `${copyTarget.filename.replace('.ckl', '').replace('.xml', '')}_updated.cklb`;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    URL.revokeObjectURL(url);
+                                                }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                                    <Download size={16} /> Download
                                                 </button>
-                                            </div>
+                                            </>
+                                        ) : (
+                                            <button onClick={executeCopy} className="bg-black hover:bg-gray-800 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
+                                                <Copy size={16} /> Transfer Data
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -2365,65 +2428,7 @@ function App() {
                 </div>
             </main >
 
-            {/* Source Preview Modal */}
-            {showSourcePreview && copySource && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowSourcePreview(false)}>
-                    <div className={`w-full max-w-5xl h-[80vh] flex flex-col rounded-2xl shadow-xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
-                        <div className={`flex items-center justify-between p-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                            <div>
-                                <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{copySource.filename}</h2>
-                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copySource.hostname} • {copySource.findings.length} findings</p>
-                            </div>
-                            <button onClick={() => setShowSourcePreview(false)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                <X size={20} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-auto p-6">
-                            <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                <thead className={`text-xs uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
-                                    <tr>
-                                        <th className="px-4 py-3 rounded-tl-lg">Rule ID</th>
-                                        <th className="px-4 py-3">Status</th>
-                                        <th className="px-4 py-3">Severity</th>
-                                        <th className="px-4 py-3 w-1/3">Comments</th>
-                                        <th className="px-4 py-3 w-1/3 rounded-tr-lg">Finding Details</th>
-                                    </tr>
-                                </thead>
-                                <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                                    {copySource.findings.map((f, i) => (
-                                        <tr key={i} className={`group hover:bg-gray-50 dark:hover:bg-gray-700/50`}>
-                                            <td className="px-4 py-3 font-mono text-xs">{f.ruleId || f.vulnId}</td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${f.status === 'Open' ? 'bg-red-100 text-red-700' :
-                                                        f.status === 'NotAFinding' ? 'bg-green-100 text-green-700' :
-                                                            'bg-gray-100 text-gray-600'
-                                                    }`}>
-                                                    {f.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${f.severity === 'high' || f.severity === 'CAT I' ? 'bg-red-50 text-red-600' :
-                                                        f.severity === 'medium' || f.severity === 'CAT II' ? 'bg-amber-50 text-amber-600' :
-                                                            'bg-blue-50 text-blue-600'
-                                                    }`}>
-                                                    {f.severity}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="max-h-20 overflow-y-auto whitespace-pre-wrap text-xs">{f.comments || <span className="opacity-30 italic">No comments</span>}</div>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="max-h-20 overflow-y-auto whitespace-pre-wrap text-xs font-mono bg-gray-50 dark:bg-gray-900/50 p-2 rounded">{f.findingDetails || <span className="opacity-30 italic">No details</span>}</div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Removed Source Preview Modal - details now inline */}
 
             {/* DETAIL MODAL */}
             {
