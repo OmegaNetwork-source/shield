@@ -508,10 +508,14 @@ function App() {
         const files = e.target.files;
         if (!files) return;
 
+        setIsGeneratingReport(true);
         const newChecklists: typeof uploadedChecklists = [];
 
-        for (const file of Array.from(files)) {
-            if (file.name.endsWith('.ckl') || file.name.endsWith('.cklb')) {
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+
+            // Only process likely checklist files
+            if (file.name.endsWith('.ckl') || file.name.endsWith('.xml') || file.name.endsWith('.cklb') || file.name.endsWith('.json')) {
                 const parsed = await parseCklFile(file);
                 if (parsed) {
                     newChecklists.push(parsed);
@@ -520,8 +524,11 @@ function App() {
         }
 
         setUploadedChecklists(prev => [...prev, ...newChecklists]);
+        setIsGeneratingReport(false);
         e.target.value = ''; // Reset input
     };
+
+
 
     // Generate Excel Report
     const generateExcelReport = () => {
@@ -750,32 +757,32 @@ function App() {
 
     /* const generatePoam = () => {
         if (!poamChecklist) return;
-
+    
         // Filter for OPEN findings
         const openFindings = poamChecklist.findings.filter(f => f.status === 'Open');
-
+    
         if (openFindings.length === 0) {
             alert('No OPEN findings found in this checklist. POA&M is typically only required for open vulnerabilities.');
         }
-
+    
         const wb = XLSX.utils.book_new();
-
+    
         const poamRows = [['Control ID', 'Weakness Name', 'Weakness Description', 'Security Control', 'Asset ID', 'Severity', 'Status', 'Scheduled Completion', 'Resources Required', 'Milestones', 'Comments', 'Raw Severity']];
-
+    
         openFindings.forEach(f => {
             // Map Severity
             let sev = f.severity?.toLowerCase() || 'medium';
             let cat = 'CAT II';
             let days = 90;
-
+    
             if (sev === 'high') { cat = 'CAT I'; days = 30; }
             else if (sev === 'low') { cat = 'CAT III'; days = 365; }
-
+    
             // Calc Date
             const date = new Date();
             date.setDate(date.getDate() + days);
             const completionDate = date.toISOString().split('T')[0];
-
+    
             poamRows.push([
                 f.vulnId,
                 f.title,
@@ -791,7 +798,7 @@ function App() {
                 sev
             ]);
         });
-
+    
         const sheet = XLSX.utils.aoa_to_sheet(poamRows);
         sheet['!cols'] = [
             { wch: 15 }, // ID
@@ -807,7 +814,7 @@ function App() {
             { wch: 40 }, // Comments
             { wch: 10 }  // Raw Sev
         ];
-
+    
         XLSX.utils.book_append_sheet(wb, sheet, 'POA&M');
         XLSX.writeFile(wb, `POAM_${poamChecklist.hostname}_${new Date().toISOString().split('T')[0]}.xlsx`);
     }; */
@@ -1295,7 +1302,7 @@ function App() {
                                     <Upload className={`size-12 mx-auto mb-3 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                     <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Upload Checklists</h3>
                                     <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Drag and drop .ckl or .cklb files, or click to browse
+                                        Drag and drop files, or select a folder of checklists
                                     </p>
                                     <label className="inline-flex items-center gap-2 bg-black hover:bg-black/80 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all cursor-pointer">
                                         <Upload className="size-4" />
@@ -1303,9 +1310,13 @@ function App() {
                                         <input
                                             type="file"
                                             multiple
-                                            accept=".ckl,.cklb"
+                                            accept=".ckl,.cklb,.xml,.json"
                                             className="hidden"
                                             onChange={handleCklFileUpload}
+                                            // @ts-ignore
+                                            webkitdirectory=""
+                                            // @ts-ignore
+                                            directory=""
                                         />
                                     </label>
                                 </div>
