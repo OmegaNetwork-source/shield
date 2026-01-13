@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
 import { STIG_PATHS } from './stig-paths';
 
 // Feature Flag: Check if running in Electron
@@ -1611,25 +1612,38 @@ function App() {
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <button
-                                                        onClick={(e) => {
+                                                        onClick={async (e) => {
                                                             e.stopPropagation();
                                                             setCopying(true);
-                                                            // Create a temporary table for copying
                                                             const table = document.getElementById('summary-table');
                                                             if (table) {
-                                                                const range = document.createRange();
-                                                                range.selectNode(table);
-                                                                window.getSelection()?.removeAllRanges();
-                                                                window.getSelection()?.addRange(range);
-                                                                document.execCommand('copy');
-                                                                window.getSelection()?.removeAllRanges();
+                                                                try {
+                                                                    const canvas = await html2canvas(table, {
+                                                                        backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+                                                                        scale: 2 // Retain high quality
+                                                                    });
+                                                                    canvas.toBlob(blob => {
+                                                                        if (blob) {
+                                                                            navigator.clipboard.write([
+                                                                                new ClipboardItem({ 'image/png': blob })
+                                                                            ]).then(() => {
+                                                                                setCopying(false);
+                                                                            }).catch(err => {
+                                                                                console.error('Copy failed', err);
+                                                                                setCopying(false);
+                                                                            });
+                                                                        }
+                                                                    });
+                                                                } catch (err) {
+                                                                    console.error('Capture failed', err);
+                                                                    setCopying(false);
+                                                                }
                                                             }
-                                                            setTimeout(() => setCopying(false), 2000);
                                                         }}
                                                         className={`p-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-medium ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
                                                     >
                                                         {copying ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
-                                                        {copying ? 'Copied!' : 'Copy Table'}
+                                                        {copying ? 'Copied Image!' : 'Copy as Image'}
                                                     </button>
                                                     <button className={`p-1 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-400'}`}>
                                                         {isSummaryExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
