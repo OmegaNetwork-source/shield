@@ -55,8 +55,11 @@ function App() {
             ruleId?: string;
             groupId?: string;
             fixText?: string;
+            checkText?: string;
             description?: string;
             findingDetails?: string;
+            legacyId?: string;
+            classification?: string;
             ccis?: string[];
         }>;
         rawJson?: any; // Preserve original JSON for proper CKLB export
@@ -976,7 +979,7 @@ function App() {
                 // Sanitize sheet name
                 const safeName = stigName.replace(/[[\]*?\/\\:]/g, '').substring(0, 31);
 
-                const detailData = [['Hostname', 'Vuln ID', 'Rule ID', 'Severity', 'Status', 'Title', 'Comments', 'Fix Text', 'Discussion', 'CCI']];
+                const detailData = [['Hostname', 'Vuln ID', 'Rule ID', 'STIG ID', 'Severity', 'Classification', 'Status', 'Title', 'Comments', 'CCIs', 'Fix Text', 'Discussion']];
 
                 checklists.forEach(ckl => {
                     ckl.findings.forEach(f => {
@@ -985,25 +988,38 @@ function App() {
                         else if (sev === 'medium') sev = 'CAT II';
                         else if (sev === 'low') sev = 'CAT III';
 
-                        const cciStr = f.ccis ? f.ccis.join(', ') : '';
-
                         detailData.push([
                             ckl.hostname,
                             f.vulnId,
                             f.ruleId || '',
+                            ckl.stigName,
                             sev,
+                            f.classification || 'UNCLASSIFIED',
                             f.status,
                             f.title,
                             f.comments,
+                            (f.ccis || []).join(', '),
                             f.fixText || '',
-                            f.description || '',
-                            cciStr
+                            f.description || ''
                         ]);
                     });
                 });
 
                 const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
-                detailSheet['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 40 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 20 }];
+                detailSheet['!cols'] = [
+                    { wch: 20 }, // Hostname
+                    { wch: 15 }, // Vuln ID
+                    { wch: 15 }, // Rule ID
+                    { wch: 30 }, // STIG ID
+                    { wch: 8 },  // Severity
+                    { wch: 15 }, // Classification
+                    { wch: 15 }, // Status
+                    { wch: 40 }, // Title
+                    { wch: 40 }, // Comments
+                    { wch: 20 }, // CCIs
+                    { wch: 40 }, // Fix Text
+                    { wch: 40 }  // Discussion
+                ];
 
                 // Append sheet
                 let uniqueSheetName = safeName;
