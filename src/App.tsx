@@ -1417,16 +1417,28 @@ function App() {
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const files = Array.from(e.target.files);
+        let successCount = 0;
+        let failCount = 0;
+
         for (const file of files) {
             const parsed = await parseCklFile(file);
-            if (parsed) {
+            if (parsed && parsed.findings.length > 0) {
                 setUploadedChecklists(prev => {
                     // Robust duplicate check: ensure unique combination of filename and hostname
                     if (prev.find(p => p.filename === parsed.filename && p.hostname === parsed.hostname)) return prev;
                     return [...prev, parsed];
                 });
+                successCount++;
+            } else {
+                failCount++;
+                console.warn(`File ${file.name} contained 0 valid findings or failed to parse.`);
             }
         }
+
+        if (failCount > 0) {
+            alert(`Loaded ${successCount} checklists. Failed to load ${failCount} files (invalid format or no content).`);
+        }
+
         // Reset input value to allow re-selecting the same file if needed
         e.target.value = '';
     };
@@ -2329,7 +2341,9 @@ function App() {
                         <div className="h-[calc(100vh-100px)] flex flex-col">
                             <div className="flex-none mb-4 flex items-center justify-between">
                                 <div>
-                                    <h1 className="text-2xl font-semibold tracking-tight">Edit & Transfer</h1>
+                                    <h1 className="text-2xl font-semibold tracking-tight">
+                                        {editMode === 'edit' && editFile ? `Editing: ${editFile.filename}` : 'Edit & Transfer'}
+                                    </h1>
                                     <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
                                         {editMode === 'edit' ? 'Edit a checklist directly with find & replace, then export.' : 'Transfer data between two checklists.'}
                                     </p>
