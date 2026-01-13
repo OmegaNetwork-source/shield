@@ -1657,7 +1657,7 @@ function App() {
                                                     <table id="summary-table" className={`w-full text-sm text-left whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                         <thead className={`text-xs uppercase ${darkMode ? 'bg-gray-800/50 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                             <tr>
-                                                                <th className="px-4 py-3 font-medium border-r dark:border-gray-700 sticky left-0 bg-inherit z-10 drop-shadow-sm min-w-[200px]" rowSpan={2}>STIG Name</th>
+                                                                <th className={`px-4 py-3 font-medium border-r dark:border-gray-700 sticky left-0 z-10 drop-shadow-sm min-w-[200px] ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`} rowSpan={2}>STIG Name</th>
                                                                 <th className="px-4 py-3 text-center font-medium border-r dark:border-gray-700" rowSpan={2}>Instances</th>
                                                                 <th className="px-4 py-3 text-center font-medium border-r dark:border-gray-700" rowSpan={2}>Controls</th>
                                                                 <th className="px-4 py-2 text-center border-r dark:border-gray-700 font-medium text-red-500 bg-red-50/50 dark:bg-red-900/10" colSpan={5}>CAT I</th>
@@ -1686,7 +1686,7 @@ function App() {
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                                                             {reportSummary.map((row, i) => (
-                                                                <tr key={i} className={`transition-colors ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50'}`}>
+                                                                <tr key={i} className={`transition-colors ${darkMode ? 'bg-gray-800 hover:bg-gray-700/30' : 'bg-white hover:bg-gray-50'}`}>
                                                                     <td
                                                                         className="px-4 py-3 font-medium border-r dark:border-gray-700 sticky left-0 bg-inherit z-10 cursor-pointer hover:text-blue-500 hover:underline border-b dark:border-gray-700"
                                                                         title="Click to view Chart"
