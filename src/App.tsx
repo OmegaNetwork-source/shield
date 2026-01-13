@@ -2332,6 +2332,23 @@ function App() {
                                             <input type="checkbox" className="rounded text-blue-600" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
                                             <span>Details</span>
                                         </label>
+
+                                        {/* Smart Merge Options */}
+                                        {copyFields.details && (
+                                            <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-300 dark:border-gray-600">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Initials (e.g. RG)"
+                                                    className={`w-28 text-xs px-2 py-1 rounded border outline-none ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                                                    value={copyUsername}
+                                                    onChange={e => setCopyUsername(e.target.value)}
+                                                />
+                                                <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap">
+                                                    <input type="checkbox" className="rounded text-blue-600" checked={copyMergeDetails} onChange={e => setCopyMergeDetails(e.target.checked)} />
+                                                    <span>Prepend Date/User</span>
+                                                </label>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="flex items-center gap-4">
