@@ -629,128 +629,198 @@ function App() {
         try {
             const workbook = XLSX.utils.book_new();
 
-            // === SUMMARY SHEET ===
-            const summaryData: any[][] = [
-                ['STIG Compliance Report', '', '', '', ''],
-                ['Generated:', new Date().toLocaleString(), '', '', ''],
-                ['Total Checklists:', uploadedChecklists.length, '', '', ''],
-                ['', '', '', '', ''],
-                ['STIG Name', 'Hostname', 'Open', 'Not a Finding', 'Not Reviewed', 'N/A', 'Total Findings'],
+            // 1. Group Checklists by STIG
+            const stigGroups = new Map<string, typeof uploadedChecklists>();
+            uploadedChecklists.forEach(ckl => {
+                const name = ckl.stigName || 'Unknown STIG';
+                if (!stigGroups.has(name)) stigGroups.set(name, []);
+                stigGroups.get(name)!.push(ckl);
+            });
+
+            // 2. Build Summary Data
+            // Headers matches the user's "Current Environment" image layout
+            const summaryHeader1 = [
+                'STIG', '# OF INSTANCES', 'GRAND TOTAL OF CONTROLS', 'OVERALL % COMPLETE',
+                'CAT I', '', '', '',  // Merged Header Concept
+                'CAT II % COMPLETE',
+                'CAT II', '', '', '', // Merged Header Concept
+                'CAT III % COMPLETE',
+                'CAT III', '', '', '' // Merged Header Concept
             ];
 
-            let totalOpen = 0, totalNaF = 0, totalNR = 0, totalNA = 0;
+            const summaryHeader2 = [
+                '', '', '', '',
+                'TOTAL', 'NOT A FINDING', 'NOT APPLICABLE', 'OPEN',
+                '',
+                'TOTAL', 'NOT A FINDING', 'NOT APPLICABLE', 'OPEN',
+                '',
+                'TOTAL', 'NOT A FINDING', 'NOT APPLICABLE', 'OPEN'
+            ];
 
-            uploadedChecklists.forEach(ckl => {
-                const open = ckl.findings.filter(f => f.status === 'Open').length;
-                const naf = ckl.findings.filter(f => f.status === 'NotAFinding' || f.status === 'Not_A_Finding').length;
-                const nr = ckl.findings.filter(f => f.status === 'Not_Reviewed').length;
-                const na = ckl.findings.filter(f => f.status === 'Not_Applicable').length;
+            const summaryRows: any[] = [];
+            let grantTotalInstances = 0;
+            let grandTotalControls = 0;
 
-                totalOpen += open;
-                totalNaF += naf;
-                totalNR += nr;
-                totalNA += na;
+            // Stats Aggregators for Grand Total Row
+            const grandStats = {
+                cat1: { total: 0, naf: 0, na: 0, open: 0 },
+                cat2: { total: 0, naf: 0, na: 0, open: 0 },
+                cat3: { total: 0, naf: 0, na: 0, open: 0 }
+            };
 
-                summaryData.push([ckl.stigName, ckl.hostname, open, naf, nr, na, ckl.findings.length]);
+            stigGroups.forEach((checklists, stigName) => {
+                const instances = checklists.length;
+                grantTotalInstances += instances;
+
+                // Aggregators for this STIG
+                const stats = {
+                    cat1: { total: 0, naf: 0, na: 0, open: 0 },
+                    cat2: { total: 0, naf: 0, na: 0, open: 0 },
+                    cat3: { total: 0, naf: 0, na: 0, open: 0 }
+                };
+
+                let totalControls = 0;
+
+                checklists.forEach(ckl => {
+                    ckl.findings.forEach(f => {
+                        totalControls++;
+                        grandTotalControls++;
+
+                        let cat = 'cat3';
+                        const sev = (f.severity || '').toLowerCase();
+                        if (sev === 'high' || sev === 'cat i') cat = 'cat1';
+                        else if (sev === 'medium' || sev === 'cat ii') cat = 'cat2';
+
+                        // Status Normalization (Already done in parser, but safe to check)
+                        const s = (f.status || '').toLowerCase().replace(/[\s_]/g, '');
+
+                        // Increment Total for this Cat
+                        stats[cat as keyof typeof stats].total++;
+                        grandStats[cat as keyof typeof stats].total++;
+
+                        if (s === 'open' || s === 'fail' || s === 'failed') {
+                            stats[cat as keyof typeof stats].open++;
+                            grandStats[cat as keyof typeof stats].open++;
+                        } else if (s === 'notafinding' || s === 'pass' || s === 'passed' || s === 'nf') {
+                            stats[cat as keyof typeof stats].naf++;
+                            grandStats[cat as keyof typeof stats].naf++;
+                        } else if (s === 'notapplicable' || s === 'na' || s === 'n/a') {
+                            stats[cat as keyof typeof stats].na++;
+                            grandStats[cat as keyof typeof stats].na++;
+                        }
+                    });
+                });
+
+                // Calculate Percentages
+                const calcPct = (s: typeof stats.cat1) => {
+                    if (s.total === 0) return '100%';
+                    const compliant = s.naf + s.na;
+                    return Math.round((compliant / s.total) * 100) + '%';
+                };
+
+                const overallTotal = stats.cat1.total + stats.cat2.total + stats.cat3.total;
+                const overallCompliant = (stats.cat1.naf + stats.cat1.na) + (stats.cat2.naf + stats.cat2.na) + (stats.cat3.naf + stats.cat3.na);
+                const overallPct = overallTotal === 0 ? '100%' : Math.round((overallCompliant / overallTotal) * 100) + '%';
+
+                summaryRows.push([
+                    stigName,
+                    instances,
+                    totalControls,
+                    overallPct,
+                    // CAT I
+                    stats.cat1.total, stats.cat1.naf, stats.cat1.na, stats.cat1.open,
+                    // CAT II
+                    calcPct(stats.cat2),
+                    stats.cat2.total, stats.cat2.naf, stats.cat2.na, stats.cat2.open,
+                    // CAT III
+                    calcPct(stats.cat3),
+                    stats.cat3.total, stats.cat3.naf, stats.cat3.na, stats.cat3.open
+                ]);
             });
 
-            summaryData.push(['', '', '', '', '', '', '']);
-            summaryData.push(['TOTALS', '', totalOpen, totalNaF, totalNR, totalNA, totalOpen + totalNaF + totalNR + totalNA]);
+            // Grand Total Row
+            summaryRows.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+            summaryRows.push([
+                'GRAND TOTAL',
+                grantTotalInstances,
+                grandTotalControls,
+                '',
+                // CAT I
+                grandStats.cat1.total, grandStats.cat1.naf, grandStats.cat1.na, grandStats.cat1.open,
+                // CAT II
+                '',
+                grandStats.cat2.total, grandStats.cat2.naf, grandStats.cat2.na, grandStats.cat2.open,
+                // CAT III
+                '',
+                grandStats.cat3.total, grandStats.cat3.naf, grandStats.cat3.na, grandStats.cat3.open
+            ]);
 
-            // Group by hostname
-            summaryData.push(['', '', '', '', '', '', '']);
-            summaryData.push(['=== GROUPED BY HOSTNAME ===', '', '', '', '', '', '']);
-            summaryData.push(['Hostname', 'STIGs', 'Open', 'Not a Finding', 'Not Reviewed', 'N/A', '']);
+            // Create Summary Sheet
+            const summarySheet = XLSX.utils.aoa_to_sheet([summaryHeader1, summaryHeader2, ...summaryRows]);
 
-            const hostGroups = new Map<string, typeof uploadedChecklists>();
-            uploadedChecklists.forEach(ckl => {
-                if (!hostGroups.has(ckl.hostname)) {
-                    hostGroups.set(ckl.hostname, []);
+            // Set Column Widths
+            summarySheet['!cols'] = [
+                { wch: 40 }, // STIG
+                { wch: 15 }, // Instances
+                { wch: 15 }, // Grand Total
+                { wch: 12 }, // Overall %
+                { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, // CAT I
+                { wch: 12 }, // CAT II %
+                { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, // CAT II
+                { wch: 12 }, // CAT III %
+                { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }  // CAT III
+            ];
+
+            XLSX.utils.book_append_sheet(workbook, summarySheet, 'CURRENT ENVIRONMENT');
+
+            // 3. Create Detail Sheets (One for each STIG Group)
+            stigGroups.forEach((checklists, stigName) => {
+                // Sanitize sheet name
+                const safeName = stigName.replace(/[[\]*?\/\\:]/g, '').substring(0, 31);
+
+                const detailData = [['Hostname', 'Vuln ID', 'Rule ID', 'Severity', 'Status', 'Title', 'Comments', 'Fix Text', 'Discussion', 'CCI']];
+
+                checklists.forEach(ckl => {
+                    ckl.findings.forEach(f => {
+                        let sev = f.severity?.toLowerCase() || '';
+                        if (sev === 'high') sev = 'CAT I';
+                        else if (sev === 'medium') sev = 'CAT II';
+                        else if (sev === 'low') sev = 'CAT III';
+
+                        const cciStr = f.ccis ? f.ccis.join(', ') : '';
+
+                        detailData.push([
+                            ckl.hostname,
+                            f.vulnId,
+                            f.ruleId,
+                            sev,
+                            f.status,
+                            f.title,
+                            f.comments,
+                            f.fixText,
+                            f.description,
+                            cciStr
+                        ]);
+                    });
+                });
+
+                const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
+                detailSheet['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 40 }, { wch: 40 }, { wch: 20 }, { wch: 20 }, { wch: 20 }];
+
+                // Append sheet
+                let uniqueSheetName = safeName;
+                let counter = 1;
+                while (workbook.Sheets[uniqueSheetName]) {
+                    uniqueSheetName = safeName.substring(0, 28) + ` (${counter++})`;
                 }
-                hostGroups.get(ckl.hostname)!.push(ckl);
+                XLSX.utils.book_append_sheet(workbook, detailSheet, uniqueSheetName);
             });
 
-            hostGroups.forEach((checklists, hostname) => {
-                const open = checklists.flatMap(c => c.findings).filter(f => f.status === 'Open').length;
-                const naf = checklists.flatMap(c => c.findings).filter(f => f.status === 'NotAFinding' || f.status === 'Not_A_Finding').length;
-                const nr = checklists.flatMap(c => c.findings).filter(f => f.status === 'Not_Reviewed').length;
-                const na = checklists.flatMap(c => c.findings).filter(f => f.status === 'Not_Applicable').length;
+            XLSX.writeFile(workbook, `STIG_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
 
-                summaryData.push([hostname, checklists.length, open, naf, nr, na, '']);
-            });
-
-            const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-            summarySheet['!cols'] = [{ wch: 40 }, { wch: 20 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 15 }];
-            XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-
-            // === INDIVIDUAL CHECKLIST SHEETS (Consolidated by STIG) ===
-            // Group by STIG Name
-            const stigGroups = new Map<string, any[]>();
-
-            uploadedChecklists.forEach(ckl => {
-                const stig = ckl.stigName || 'Unknown STIG';
-                if (!stigGroups.has(stig)) stigGroups.set(stig, []);
-
-                ckl.findings.forEach(f => {
-                    stigGroups.get(stig)!.push({ ...f, hostname: ckl.hostname });
-                });
-            });
-
-            stigGroups.forEach((findings, stigName) => {
-                const sheetData = [
-                    ['Hostname', 'Vuln ID', 'Rule ID', 'Severity', 'Status', 'Message/Comments', 'Title', 'Fix Text', 'Discussion', 'CCI', 'NIST 800-53 Rev 4', 'NIST 800-53 Rev 5'],
-                ];
-
-                findings.forEach(f => {
-                    // Severity Mapping: low -> CAT III, etc.
-                    let sev = f.severity?.toLowerCase() || '';
-                    if (sev === 'high') sev = 'CAT I';
-                    else if (sev === 'medium') sev = 'CAT II';
-                    else if (sev === 'low') sev = 'CAT III';
-
-                    // CCI Join
-                    const cciStr = f.ccis ? f.ccis.join(', ') : '';
-
-                    sheetData.push([
-                        f.hostname,
-                        f.vulnId,
-                        f.ruleId || '',
-                        sev,
-                        f.status,
-                        f.comments,
-                        f.title,
-                        f.fixText || '',
-                        f.description || '',
-                        cciStr,
-                        '', // NIST Rev 4
-                        ''  // NIST Rev 5
-                    ]);
-                });
-
-                const sheet = XLSX.utils.aoa_to_sheet(sheetData);
-                sheet['!cols'] = [
-                    { wch: 20 }, // Hostname
-                    { wch: 15 }, // Vuln ID
-                    { wch: 15 }, // Rule ID
-                    { wch: 10 }, // Severity
-                    { wch: 15 }, // Status
-                    { wch: 40 }, // Comments
-                    { wch: 40 }, // Title
-                    { wch: 50 }, // Fix Text
-                    { wch: 50 }, // Discussion
-                    { wch: 20 }, // CCI
-                    { wch: 15 }, // NIST 4
-                    { wch: 15 }, // NIST 5
-                ];
-
-                // Truncate sheet name to 31 chars (Excel limit)
-                // Clean name to remove invalid chars
-                const safeName = stigName.replace(/[\\/?*[\]]/g, '').substring(0, 31);
-                XLSX.utils.book_append_sheet(workbook, sheet, safeName);
-            });
-
-            // Save file
-            XLSX.writeFile(workbook, `STIG-Report-${new Date().toISOString().split('T')[0]}.xlsx`);
+        } catch (error) {
+            console.error('Report Generation Error:', error);
+            alert('Failed to generate report. Check console.');
         } finally {
             setIsGeneratingReport(false);
         }
