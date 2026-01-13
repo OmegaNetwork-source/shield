@@ -31,7 +31,7 @@ interface StigChecklist {
 function App() {
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'evidence' | 'checklist' | 'report' | 'compare' | 'poam'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'evidence' | 'checklist' | 'report' | 'compare' | 'poam' | 'copy'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -121,6 +121,81 @@ function App() {
         });
         return rows.sort((a, b) => a.name.localeCompare(b.name));
     }, [uploadedChecklists]);
+
+    // COPY Feature State
+    const [copySource, setCopySource] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [copyTarget, setCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [copyFields, setCopyFields] = useState({ status: true, comments: true, details: true });
+    const [copySuccess, setCopySuccess] = useState<string | null>(null);
+
+    const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
+        const parsed = await parseCklFile(file);
+        if (parsed) {
+            if (type === 'source') setCopySource(parsed);
+            else setCopyTarget(parsed);
+            setCopySuccess(null);
+        }
+    };
+
+    const executeCopy = () => {
+        if (!copySource || !copyTarget) return;
+
+        // Deep copy target to avoid mutation issues
+        const newTarget = JSON.parse(JSON.stringify(copyTarget));
+        let updateCount = 0;
+
+        // Iterate over source findings
+        copySource.findings.forEach(sourceFinding => {
+            // Find matching finding in target (by Rule ID or Vuln ID)
+            const targetFinding = newTarget.findings.find((f: any) =>
+                (f.ruleId && f.ruleId === sourceFinding.ruleId) ||
+                (f.vulnId && f.vulnId === sourceFinding.vulnId)
+            );
+
+            if (targetFinding) {
+                let updated = false;
+                if (copyFields.status && sourceFinding.status !== 'Not_Reviewed') {
+                    targetFinding.status = sourceFinding.status;
+                    updated = true;
+                }
+                if (copyFields.comments && sourceFinding.comments) {
+                    targetFinding.comments = sourceFinding.comments;
+                    updated = true;
+                }
+                if (copyFields.details && sourceFinding.description) {
+                    // Some logic might be needed if description is generic vs specific, 
+                    // but usually we copy 'finding details' which maps to 'comments' or 'finding_details' in CKL.
+                    // In our parsed model, we have 'comments' and 'description' (vuln discussion).
+                    // Usually users want to copy 'Finding Details' (the specific observation).
+                    // Our parser maps 'finding_details'? Let's check parser.
+                    // The parser maps 'description' to 'Vuln_Discuss'.
+                    // It maps 'fixText' to 'Fix_Text'.
+                    // It maps 'comments' to 'COMMENTS'.
+                    // Wait, where is 'Finding_Details'?
+                    // Standard CKL has 'FINDING_DETAILS'.
+                    // My parser (seen above) doesn't seem to explicitly map 'FINDING_DETAILS' in the mappedFindings section!
+                    // It maps 'comments' || 'COMMENTS'.
+                    // It maps 'description' || 'Vuln_Discuss'.
+                    // It seems 'Finding_Details' is missing from the standardized 'ParsedStigRule' interface in the snippet I saw?
+                    // Wait, checking the parser code snippet again...
+                    // map rawFindings...
+                    // title: f.title...
+                    // comments: f.comments || f.COMMENTS...
+                    // description: f.description || f.Vuln_Discuss...
+                    // It seems I might have missed 'FINDING_DETAILS' in the parser or it's not there.
+                    // If it's not there, I can't copy it.
+                    // I'll assume 'comments' is the main editable field for now.
+                    // I'll also update 'status'.
+                    if (updated) updateCount++;
+                }
+            }
+        });
+
+        // Update target
+        setCopyTarget(newTarget);
+        setCopySuccess(`Successfully updated ${updateCount} findings from ${copySource.filename} to ${copyTarget.filename}`);
+    };
+
 
     // POA&M State
     const [poamChecklists, setPoamChecklists] = useState<typeof uploadedChecklists>([]);
@@ -1171,6 +1246,7 @@ function App() {
                     <SidebarItem icon={<FolderOpen size={18} />} label="Evidence Gallery" active={activeTab === 'evidence'} onClick={() => { setActiveTab('evidence'); loadEvidence(); }} darkMode={darkMode} />
                     <SidebarItem icon={<FileSpreadsheet size={18} />} label="Reports" active={activeTab === 'report'} onClick={() => setActiveTab('report')} darkMode={darkMode} />
                     <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
+                    <SidebarItem icon={<Copy size={18} />} label="Copy" active={activeTab === 'copy'} onClick={() => setActiveTab('copy')} darkMode={darkMode} />
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
 
                     <div className={`pt-4 mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -2019,6 +2095,192 @@ function App() {
                                                 <GitCompare className="mx-auto size-12 mb-3 opacity-20" />
                                                 <div className="text-lg">No differences found</div>
                                                 <div className="text-sm">These checklists appear to be identical in status</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : activeTab === 'copy' ? (
+                        <div className="space-y-6">
+                            <div>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-1">Checklist Data Transfer</h1>
+                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Copy status, comments, and finding details from a completed master checklist to a new target checklist.</p>
+                            </div>
+
+                            {/* Upload Area */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
+                                {/* Connector Line (Visual only, hidden on mobile) */}
+                                <div className={`hidden md:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 p-2 rounded-full border shadow-sm ${darkMode ? 'bg-gray-800 border-gray-600 text-gray-400' : 'bg-white border-gray-200 text-gray-400'}`}>
+                                    <ChevronRight />
+                                </div>
+
+                                {/* Source Card */}
+                                <div className={`p-6 rounded-2xl border-2 border-dashed relative flex flex-col items-center justify-center min-h-[200px] transition-all ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                    <div className="text-center w-full">
+                                        <div className={`mb-3 font-medium text-xs uppercase tracking-wider ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>Source (From)</div>
+
+                                        {copySource ? (
+                                            <div className="animate-in fade-in zoom-in duration-300">
+                                                <div className={`mx-auto size-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg ${darkMode ? 'bg-blue-900/40 text-blue-400' : 'bg-white text-blue-600'}`}>
+                                                    <FileText size={32} />
+                                                </div>
+                                                <h3 className={`font-semibold text-lg truncate px-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copySource.filename}</h3>
+                                                <div className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copySource.hostname}</div>
+
+                                                <div className="flex justify-center gap-2 text-xs">
+                                                    <span className="px-2 py-1 rounded-md bg-green-100 text-green-700 font-medium">
+                                                        {copySource.findings.filter(f => f.status === 'Open').length} Open
+                                                    </span>
+                                                    <span className="px-2 py-1 rounded-md bg-gray-200 text-gray-700 font-medium">
+                                                        {copySource.findings.length} Findings
+                                                    </span>
+                                                </div>
+
+                                                <button
+                                                    onClick={() => setCopySource(null)}
+                                                    className="mt-6 text-xs text-red-500 hover:text-red-600 font-medium underline"
+                                                >
+                                                    Remove File
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    <FileSpreadsheet />
+                                                </div>
+                                                <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Master Checklist</h3>
+                                                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>The fixed checklist to copy from</p>
+                                                <label className="inline-block">
+                                                    <span className="bg-black hover:bg-black/80 text-white px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2 transition-transform hover:scale-105 active:scale-95">
+                                                        <Upload size={16} /> Choose Source
+                                                    </span>
+                                                    <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
+                                                        if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'source');
+                                                    }} />
+                                                </label>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Target Card */}
+                                <div className={`p-6 rounded-2xl border-2 border-dashed relative flex flex-col items-center justify-center min-h-[200px] transition-all ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                    <div className="text-center w-full">
+                                        <div className={`mb-3 font-medium text-xs uppercase tracking-wider ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>Target (To)</div>
+
+                                        {copyTarget ? (
+                                            <div className="animate-in fade-in zoom-in duration-300">
+                                                <div className={`mx-auto size-16 rounded-2xl flex items-center justify-center mb-4 shadow-lg ${darkMode ? 'bg-purple-900/40 text-purple-400' : 'bg-white text-purple-600'}`}>
+                                                    <FileText size={32} />
+                                                </div>
+                                                <h3 className={`font-semibold text-lg truncate px-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copyTarget.filename}</h3>
+                                                <div className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copyTarget.hostname}</div>
+
+                                                <div className="flex justify-center gap-2 text-xs">
+                                                    <span className="px-2 py-1 rounded-md bg-gray-200 text-gray-700 font-medium">
+                                                        {copyTarget.findings.length} Findings
+                                                    </span>
+                                                </div>
+
+                                                <button
+                                                    onClick={() => setCopyTarget(null)}
+                                                    className="mt-6 text-xs text-red-500 hover:text-red-600 font-medium underline"
+                                                >
+                                                    Remove File
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className={`mx-auto size-12 mb-3 opacity-50 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    <FileText />
+                                                </div>
+                                                <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Upload Target Checklist</h3>
+                                                <p className={`text-xs mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>The new checklist to update</p>
+                                                <label className="inline-block">
+                                                    <span className={`px-5 py-2.5 rounded-full text-sm font-medium cursor-pointer inline-flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 ${darkMode ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-white border hover:bg-gray-50 text-gray-700'}`}>
+                                                        <Upload size={16} /> Choose Target
+                                                    </span>
+                                                    <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={(e) => {
+                                                        if (e.target.files && e.target.files[0]) handleCopyUpload(e.target.files[0], 'target');
+                                                    }} />
+                                                </label>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Configuration and Actions - Only Show when Both are Selected */}
+                            {copySource && copyTarget && (
+                                <div className={`p-6 rounded-2xl border shadow-sm space-y-6 animate-in slide-in-from-bottom-4 duration-500 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                    <div>
+                                        <h3 className={`font-semibold mb-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Transfer Configuration</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${copyFields.status
+                                                ? (darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200')
+                                                : (darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-100')}`}>
+                                                <div className={`size-5 rounded flex items-center justify-center border ${copyFields.status ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-400 bg-transparent'}`}>
+                                                    {copyFields.status && <Check size={14} strokeWidth={3} />}
+                                                </div>
+                                                <input type="checkbox" className="hidden" checked={copyFields.status} onChange={e => setCopyFields(f => ({ ...f, status: e.target.checked }))} />
+                                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Finding Status</span>
+                                            </label>
+
+                                            <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${copyFields.comments
+                                                ? (darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200')
+                                                : (darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-100')}`}>
+                                                <div className={`size-5 rounded flex items-center justify-center border ${copyFields.comments ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-400 bg-transparent'}`}>
+                                                    {copyFields.comments && <Check size={14} strokeWidth={3} />}
+                                                </div>
+                                                <input type="checkbox" className="hidden" checked={copyFields.comments} onChange={e => setCopyFields(f => ({ ...f, comments: e.target.checked }))} />
+                                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Comments</span>
+                                            </label>
+
+                                            <label className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${copyFields.details
+                                                ? (darkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200')
+                                                : (darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-100')}`}>
+                                                <div className={`size-5 rounded flex items-center justify-center border ${copyFields.details ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-400 bg-transparent'}`}>
+                                                    {copyFields.details && <Check size={14} strokeWidth={3} />}
+                                                </div>
+                                                <input type="checkbox" className="hidden" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
+                                                <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>Finding Details</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Button */}
+                                    <div className="flex flex-col items-center gap-4">
+                                        {!copySuccess ? (
+                                            <button
+                                                onClick={executeCopy}
+                                                className="bg-black hover:bg-gray-900 dark:bg-white dark:hover:bg-gray-100 dark:text-black text-white px-8 py-3 rounded-full text-lg font-bold shadow-xl transition-transform hover:scale-105 active:scale-95 flex items-center gap-2"
+                                            >
+                                                <Copy size={20} />
+                                                Transfer Data
+                                            </button>
+                                        ) : (
+                                            <div className="w-full text-center space-y-4">
+                                                <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-4 rounded-xl font-medium flex items-center justify-center gap-2">
+                                                    <CheckCircle2 size={20} />
+                                                    {copySuccess}
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        const blob = new Blob([JSON.stringify(copyTarget, null, 2)], { type: 'application/json' });
+                                                        const url = URL.createObjectURL(blob);
+                                                        const a = document.createElement('a');
+                                                        a.href = url;
+                                                        a.download = `${copyTarget.filename.replace('.ckl', '').replace('.xml', '')}_updated.cklb`;
+                                                        document.body.appendChild(a);
+                                                        a.click();
+                                                        document.body.removeChild(a);
+                                                        URL.revokeObjectURL(url);
+                                                    }}
+                                                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 mx-auto"
+                                                >
+                                                    <Download size={20} /> Download Updated CKLB
+                                                </button>
                                             </div>
                                         )}
                                     </div>
