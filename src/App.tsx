@@ -3121,8 +3121,8 @@ function App() {
                                                             <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                                 <tr>
                                                                     <th className="px-3 py-2 w-1/3">Rule Title</th>
-                                                                    <th className="px-3 py-2 w-24">Severity</th>
-                                                                    <th className="px-3 py-2 w-32">Status</th>
+                                                                    <th className="px-3 py-2 w-32">Severity</th>
+                                                                    <th className="px-3 py-2 w-40">Status</th>
                                                                     <th className="px-3 py-2">Comments & Details</th>
                                                                 </tr>
                                                             </thead>
@@ -3187,7 +3187,7 @@ function App() {
                                                                                 </div>
 
                                                                                 {expandedEditIdx === f.origIdx ? (
-                                                                                    <div className="flex flex-col gap-3 mt-2 border-t border-gray-100 dark:border-gray-700 pt-4 animate-in fade-in zoom-in-95 duration-200">
+                                                                                    <div className="flex flex-col gap-3 mt-2 border-t border-gray-100 dark:border-gray-700 pt-4 animate-in fade-in zoom-in-95 duration-200 max-w-5xl mx-auto">
 
                                                                                         {/* STIG Info Header Grid */}
                                                                                         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
