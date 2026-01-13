@@ -1414,6 +1414,23 @@ function App() {
         XLSX.writeFile(wb, "POA&M_Generated.xlsx");
     };
 
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files) return;
+        const files = Array.from(e.target.files);
+        for (const file of files) {
+            const parsed = await parseCklFile(file);
+            if (parsed) {
+                setUploadedChecklists(prev => {
+                    // Robust duplicate check: ensure unique combination of filename and hostname
+                    if (prev.find(p => p.filename === parsed.filename && p.hostname === parsed.hostname)) return prev;
+                    return [...prev, parsed];
+                });
+            }
+        }
+        // Reset input value to allow re-selecting the same file if needed
+        e.target.value = '';
+    };
+
     if (isLoading) {
         return (
             <div className={`flex h-screen w-full items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
