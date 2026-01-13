@@ -484,6 +484,9 @@ function App() {
                     if (!obj) return '';
                     if (typeof obj === 'object') {
                         if (obj[key]) return obj[key];
+                        // special case for target_data
+                        if (obj.target_data && obj.target_data[key]) return obj.target_data[key];
+
                         for (const k in obj) {
                             if (typeof obj[k] === 'object') {
                                 const res = findValue(obj[k], key);
@@ -497,7 +500,7 @@ function App() {
                 return {
                     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     filename: file.name,
-                    hostname: json.hostname || json.HOST_NAME || findValue(json, 'HOST_NAME') || findValue(json, 'assetName') || 'Unknown Host',
+                    hostname: json.hostname || json.HOST_NAME || findValue(json, 'HOST_NAME') || findValue(json, 'target_name') || findValue(json, 'host_name') || findValue(json, 'system_name') || findValue(json, 'name') || 'Unknown Host',
                     stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || 'Imported Checklist',
                     findings: mappedFindings
                 };
