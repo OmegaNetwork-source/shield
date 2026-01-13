@@ -65,6 +65,8 @@ function App() {
     const [compareNew, setCompareNew] = useState<typeof uploadedChecklists[0] | null>(null);
     const [comparisonDiffs, setComparisonDiffs] = useState<any[] | null>(null);
     const [compareFilter, setCompareFilter] = useState<'all' | 'status' | 'new' | 'removed'>('all');
+    const [showHostModal, setShowHostModal] = useState(false);
+    const [showStigModal, setShowStigModal] = useState(false);
 
     // POA&M State
     const [poamChecklists, setPoamChecklists] = useState<typeof uploadedChecklists>([]);
@@ -1458,13 +1460,19 @@ function App() {
                                             </div>
                                             <div className={`text-xs uppercase ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Not Reviewed</div>
                                         </div>
-                                        <div className="text-center">
+                                        <div
+                                            className={`text-center p-2 rounded-lg transition-colors cursor-pointer ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100'}`}
+                                            onClick={() => setShowHostModal(true)}
+                                        >
                                             <div className="text-2xl font-bold text-blue-500">
                                                 {new Set(uploadedChecklists.map(c => c.hostname)).size}
                                             </div>
                                             <div className={`text-xs uppercase ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Unique Hosts</div>
                                         </div>
-                                        <div className="text-center">
+                                        <div
+                                            className={`text-center p-2 rounded-lg transition-colors cursor-pointer ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100'}`}
+                                            onClick={() => setShowStigModal(true)}
+                                        >
                                             <div className="text-2xl font-bold text-purple-500">
                                                 {new Set(uploadedChecklists.map(c => c.stigName)).size}
                                             </div>
@@ -1506,6 +1514,53 @@ function App() {
                                                 </div>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Detail Modals for Stats */}
+                            {showHostModal && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowHostModal(false)}>
+                                    <div className={`w-full max-w-md p-6 rounded-2xl shadow-xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Unique Hosts</h3>
+                                            <button onClick={() => setShowHostModal(false)} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                                                <XCircle className="size-5 text-gray-400" />
+                                            </button>
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto space-y-2">
+                                            {Array.from(new Set(uploadedChecklists.map(c => c.hostname))).sort().map(host => (
+                                                <div key={host} className={`p-3 rounded-lg text-sm font-mono ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                                                    {host}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center">
+                                            <span className="text-xs text-gray-500">{new Set(uploadedChecklists.map(c => c.hostname)).size} Total Hosts</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {showStigModal && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowStigModal(false)}>
+                                    <div className={`w-full max-w-md p-6 rounded-2xl shadow-xl ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Unique STIGs</h3>
+                                            <button onClick={() => setShowStigModal(false)} className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                                                <XCircle className="size-5 text-gray-400" />
+                                            </button>
+                                        </div>
+                                        <div className="max-h-60 overflow-y-auto space-y-2">
+                                            {Array.from(new Set(uploadedChecklists.map(c => c.stigName))).sort().map(stig => (
+                                                <div key={stig} className={`p-3 rounded-lg text-sm ${darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-50 text-gray-700'}`}>
+                                                    {stig}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center">
+                                            <span className="text-xs text-gray-500">{new Set(uploadedChecklists.map(c => c.stigName)).size} Total STIGs</span>
+                                        </div>
                                     </div>
                                 </div>
                             )}
