@@ -1822,9 +1822,9 @@ function App() {
                             </div>
                         </div>
                     ) : activeTab === 'checklist' ? (
-                        <div className="flex flex-col lg:flex-row gap-16 h-full items-start">
-                            {/* LEFT COLUMN: My Workspace */}
-                            <div className="w-full lg:w-1/3 max-w-md flex flex-col gap-6 flex-shrink-0">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 h-full items-start">
+                            {/* LEFT COLUMN: My Workspace - 3 or 4 cols */}
+                            <div className="col-span-12 md:col-span-4 xl:col-span-3 flex flex-col gap-6">
                                 <div>
                                     <h2 className="text-2xl font-semibold tracking-tight mb-2">My Workspace</h2>
                                     <p className="text-gray-500">Upload and manage your own STIG checklists.</p>
@@ -1894,8 +1894,8 @@ function App() {
                                 )}
                             </div>
 
-                            {/* RIGHT COLUMN: STIG Checklists - Flex 1 */}
-                            <div className="flex-1 flex flex-col gap-6">
+                            {/* RIGHT COLUMN: STIG Checklists - REST of cols */}
+                            <div className="col-span-12 md:col-span-8 xl:col-span-9 flex flex-col gap-6">
                                 <div>
                                     <h1 className="text-3xl font-semibold tracking-tight mb-1">STIG Checklists</h1>
                                     <p className="text-gray-500">Select a STIG checklist to scan your system</p>
