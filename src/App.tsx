@@ -410,21 +410,84 @@ function App() {
     const parseCklFile = async (file: File): Promise<typeof uploadedChecklists[0] | null> => {
         const content = await file.text();
 
-        // Handle JSON (CKLB)
-        if (content.trim().startsWith('{')) {
-            try {
-                const json = JSON.parse(content);
+        // 1. Try JSON Parsing (CKLB / Custom JSON)
+        try {
+            const json = JSON.parse(content);
+
+            // Helper to find the array of vulnerabilities recursively
+            const findFindings = (obj: any): any[] => {
+                if (!obj) return [];
+                if (Array.isArray(obj)) {
+                    // Check if this array looks like findings (has common fields)
+                    if (obj.length > 0 && (obj[0].vulnId || obj[0].vulnNum || obj[0].ruleId || obj[0].Rule_ID || obj[0].STIG_ID || obj[0].vuln_num)) {
+                        return obj;
+                    }
+                    // Continue searching inside array items
+                    for (const item of obj) {
+                        const result = findFindings(item);
+                        if (result.length > 0) return result;
+                    }
+                    return [];
+                }
+                if (typeof obj === 'object') {
+                    // Check specific known keys
+                    if (obj.findings) return findFindings(obj.findings);
+                    if (obj.vulns) return findFindings(obj.vulns);
+                    if (obj.stigs) return findFindings(obj.stigs);
+                    if (obj.checklist) return findFindings(obj.checklist);
+                    if (obj.STIG_DATA) return findFindings(obj.STIG_DATA);
+
+                    // Generic search in values
+                    for (const key in obj) {
+                        const result = findFindings(obj[key]);
+                        if (result.length > 0) return result;
+                    }
+                }
+                return [];
+            };
+
+            const rawFindings = findFindings(json);
+
+            if (rawFindings.length > 0) {
+                // Map raw findings to our schema
+                const mappedFindings = rawFindings.map((f: any) => ({
+                    vulnId: f.vulnId || f.vulnNum || f.Vuln_Num || f.vuln_num || f.id || 'Unknown',
+                    status: f.status || f.STATUS || f.Status || 'Not_Reviewed',
+                    severity: f.severity || f.Severity || f.sev || 'medium',
+                    title: f.title || f.Rule_Title || f.rule_title || f.ruleTitle || 'Unknown Title',
+                    comments: f.comments || f.COMMENTS || f.comment || '',
+                    ruleId: f.ruleId || f.Rule_ID || f.STIG_ID || f.rule_id || '',
+                    fixText: f.fixText || f.Fix_Text || f.fix_text || f.fix || '',
+                    description: f.description || f.Vuln_Discuss || f.desc || '',
+                    ccis: Array.isArray(f.ccis) ? f.ccis : []
+                }));
+
+                // Find hostname/stigName if possible
+                const findValue = (obj: any, key: string): string => {
+                    // simple search
+                    if (!obj) return '';
+                    if (typeof obj === 'object') {
+                        if (obj[key]) return obj[key];
+                        for (const k in obj) {
+                            if (typeof obj[k] === 'object') {
+                                const res = findValue(obj[k], key);
+                                if (res) return res;
+                            }
+                        }
+                    }
+                    return '';
+                };
+
                 return {
                     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     filename: file.name,
-                    hostname: json.hostname || 'Unknown',
-                    stigName: json.stigName || 'Unknown STIG',
-                    findings: Array.isArray(json.findings) ? json.findings : []
+                    hostname: json.hostname || json.HOST_NAME || findValue(json, 'HOST_NAME') || findValue(json, 'assetName') || 'Unknown Host',
+                    stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || 'Imported Checklist',
+                    findings: mappedFindings
                 };
-            } catch (e) {
-                console.error("Error parsing CKLB JSON:", e);
-                return null;
             }
+        } catch (e) {
+            // Not JSON, fall through to XML
         }
 
         try {
