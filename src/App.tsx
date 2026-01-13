@@ -1340,7 +1340,7 @@ function App() {
                     </p>
                 </div>
 
-                <div className="max-w-5xl mx-auto p-10">
+                <div className={`${activeTab === 'copy' ? 'w-full px-6' : 'max-w-5xl mx-auto'} p-10`}>
 
                     {activeTab === 'scan' ? (
                         <>
@@ -2124,7 +2124,7 @@ function App() {
                                 <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Transfer data between checklists and perform bulk find & replace operations.</p>
                             </div>
 
-                            <div className="flex-1 min-h-0 grid grid-cols-2 gap-4">
+                            <div className="flex-1 min-h-0 grid grid-cols-2 gap-6">
                                 {/* Left Panel: Source */}
                                 <div className={`flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                     <div className={`p-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
@@ -2213,7 +2213,7 @@ function App() {
                                             </div>
                                         ) : (
                                             <div className="absolute inset-0 overflow-auto">
-                                                <table className={`w-full text-xs text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                         <tr>
                                                             <th className="px-3 py-2 w-32">Rule ID</th>
@@ -2372,7 +2372,7 @@ function App() {
                                             </div>
                                         ) : (
                                             <div className="absolute inset-0 overflow-auto">
-                                                <table className={`w-full text-xs text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     <thead className={`uppercase sticky top-0 z-10 ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
                                                         <tr>
                                                             <th className="px-3 py-2 w-32">Rule ID</th>
