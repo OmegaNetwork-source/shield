@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     ShieldCheck, Play, Camera, LayoutGrid, Settings,
     ChevronRight, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
@@ -67,6 +67,56 @@ function App() {
     const [compareFilter, setCompareFilter] = useState<'all' | 'status' | 'new' | 'removed'>('all');
     const [showHostModal, setShowHostModal] = useState(false);
     const [showStigModal, setShowStigModal] = useState(false);
+
+    // Calculate Report Summary for UI
+    const reportSummary = useMemo(() => {
+        if (uploadedChecklists.length === 0) return [];
+
+        const groups = new Map<string, typeof uploadedChecklists>();
+        uploadedChecklists.forEach(ckl => {
+            const name = ckl.stigName || 'Unknown STIG';
+            if (!groups.has(name)) groups.set(name, []);
+            groups.get(name)!.push(ckl);
+        });
+
+        const rows: any[] = [];
+        groups.forEach((checklists, name) => {
+            const stats = {
+                cat1: { total: 0, naf: 0, na: 0, open: 0 },
+                cat2: { total: 0, naf: 0, na: 0, open: 0 },
+                cat3: { total: 0, naf: 0, na: 0, open: 0 }
+            };
+            let totalControls = 0;
+
+            checklists.forEach(ckl => {
+                ckl.findings.forEach(f => {
+                    totalControls++;
+                    let cat = 'cat3';
+                    const sev = (f.severity || '').toLowerCase();
+                    if (sev === 'high' || sev === 'cat i') cat = 'cat1';
+                    else if (sev === 'medium' || sev === 'cat ii') cat = 'cat2';
+
+                    const s = (f.status || '').toLowerCase().replace(/[\s_]/g, '');
+                    stats[cat as keyof typeof stats].total++;
+                    if (s === 'open' || s === 'fail' || s === 'failed') stats[cat as keyof typeof stats].open++;
+                    else if (s === 'notafinding' || s === 'pass' || s === 'passed' || s === 'nf') stats[cat as keyof typeof stats].naf++;
+                    else if (s === 'notapplicable' || s === 'na' || s === 'n/a') stats[cat as keyof typeof stats].na++;
+                });
+            });
+
+            const calcPct = (s: typeof stats.cat1) => s.total === 0 ? '100%' : Math.round(((s.naf + s.na) / s.total) * 100) + '%';
+
+            rows.push({
+                name,
+                instances: checklists.length,
+                controls: totalControls,
+                cat1: { ...stats.cat1, pct: calcPct(stats.cat1) },
+                cat2: { ...stats.cat2, pct: calcPct(stats.cat2) },
+                cat3: { ...stats.cat3, pct: calcPct(stats.cat3) }
+            });
+        });
+        return rows.sort((a, b) => a.name.localeCompare(b.name));
+    }, [uploadedChecklists]);
 
     // POA&M State
     const [poamChecklists, setPoamChecklists] = useState<typeof uploadedChecklists>([]);
@@ -1543,6 +1593,70 @@ function App() {
                                             <div className={`text-xs uppercase ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Unique STIGs</div>
                                         </div>
                                     </div>
+
+                                    {/* Summary Table */}
+                                    {reportSummary.length > 0 && (
+                                        <div className={`overflow-x-auto rounded-xl border mb-6 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                            <table className={`w-full text-sm text-left ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                <thead className={`text-xs uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-700'}`}>
+                                                    <tr>
+                                                        <th className="px-4 py-3 font-medium" rowSpan={2}>STIG Name</th>
+                                                        <th className="px-4 py-3 text-center font-medium" rowSpan={2}>Instances</th>
+                                                        <th className="px-4 py-3 text-center font-medium" rowSpan={2}>Controls</th>
+                                                        <th className="px-4 py-2 text-center border-l dark:border-gray-700 font-medium" colSpan={5}>CAT I</th>
+                                                        <th className="px-4 py-2 text-center border-l dark:border-gray-700 font-medium" colSpan={5}>CAT II</th>
+                                                        <th className="px-4 py-2 text-center border-l dark:border-gray-700 font-medium" colSpan={5}>CAT III</th>
+                                                    </tr>
+                                                    <tr>
+                                                        <th className="px-2 py-2 text-center border-l dark:border-gray-700 w-12">%</th>
+                                                        <th className="px-2 py-2 text-center w-12">Total</th>
+                                                        <th className="px-2 py-2 text-center w-12">NaF</th>
+                                                        <th className="px-2 py-2 text-center w-12">N/A</th>
+                                                        <th className="px-2 py-2 text-center w-12">Open</th>
+
+                                                        <th className="px-2 py-2 text-center border-l dark:border-gray-700 w-12">%</th>
+                                                        <th className="px-2 py-2 text-center w-12">Total</th>
+                                                        <th className="px-2 py-2 text-center w-12">NaF</th>
+                                                        <th className="px-2 py-2 text-center w-12">N/A</th>
+                                                        <th className="px-2 py-2 text-center w-12">Open</th>
+
+                                                        <th className="px-2 py-2 text-center border-l dark:border-gray-700 w-12">%</th>
+                                                        <th className="px-2 py-2 text-center w-12">Total</th>
+                                                        <th className="px-2 py-2 text-center w-12">NaF</th>
+                                                        <th className="px-2 py-2 text-center w-12">N/A</th>
+                                                        <th className="px-2 py-2 text-center w-12">Open</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {reportSummary.map((row, i) => (
+                                                        <tr key={i} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}>
+                                                            <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={row.name}>{row.name}</td>
+                                                            <td className="px-4 py-3 text-center">{row.instances}</td>
+                                                            <td className="px-4 py-3 text-center">{row.controls}</td>
+
+                                                            <td className="px-2 py-3 text-center border-l dark:border-gray-700 font-medium">{row.cat1.pct}</td>
+                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat1.total}</td>
+                                                            <td className="px-2 py-3 text-center text-green-600">{row.cat1.naf}</td>
+                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat1.na}</td>
+                                                            <td className={`px-2 py-3 text-center font-bold ${row.cat1.open > 0 ? 'text-red-500 bg-red-50 dark:bg-red-900/20' : 'text-gray-300'}`}>{row.cat1.open}</td>
+
+                                                            <td className="px-2 py-3 text-center border-l dark:border-gray-700 font-medium">{row.cat2.pct}</td>
+                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat2.total}</td>
+                                                            <td className="px-2 py-3 text-center text-green-600">{row.cat2.naf}</td>
+                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat2.na}</td>
+                                                            <td className={`px-2 py-3 text-center font-bold ${row.cat2.open > 0 ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'text-gray-300'}`}>{row.cat2.open}</td>
+
+                                                            <td className="px-2 py-3 text-center border-l dark:border-gray-700 font-medium">{row.cat3.pct}</td>
+                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat3.total}</td>
+                                                            <td className="px-2 py-3 text-center text-green-600">{row.cat3.naf}</td>
+                                                            <td className="px-2 py-3 text-center text-gray-400">{row.cat3.na}</td>
+                                                            <td className={`px-2 py-3 text-center font-bold ${row.cat3.open > 0 ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-300'}`}>{row.cat3.open}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
 
                                     {/* Checklist Cards */}
                                     <div className="grid gap-3">
