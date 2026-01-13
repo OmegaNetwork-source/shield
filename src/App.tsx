@@ -4,7 +4,7 @@ import {
     ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
     Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target,
-    Filter, Search, FolderClosed, FolderTree
+    Filter, Search, FolderClosed, FolderTree, Calendar
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -161,22 +161,22 @@ function App() {
         status: "Ongoing",
         milestones: {
             cat1: [
-                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding." },
-                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed." },
-                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment." },
-                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering." }
+                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.", date: "" },
+                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.", date: "" },
+                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.", date: "" },
+                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.", date: "" }
             ],
             cat2: [
-                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding." },
-                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed." },
-                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment." },
-                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering." }
+                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.", date: "" },
+                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.", date: "" },
+                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.", date: "" },
+                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.", date: "" }
             ],
             cat3: [
-                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding." },
-                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed." },
-                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment." },
-                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering." }
+                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.", date: "" },
+                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.", date: "" },
+                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.", date: "" },
+                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.", date: "" }
             ]
         }
     });
@@ -1488,12 +1488,14 @@ function App() {
                 if (s.includes('high') || s.includes('cat i') || s === 'i' || s === '1') { cat = 'cat1'; maxDays = 30; }
                 else if (s.includes('medium') || s.includes('cat ii') || s === 'ii' || s === '2') { cat = 'cat2'; maxDays = 60; }
 
-                const milestoneDates = [
-                    getDateOut(0),  // M1
-                    getDateOut(14), // M2 (2 weeks)
-                    getDateOut(21), // M3 (3 weeks)
-                    getDateOut(maxDays) // M4 (30/60/90)
-                ];
+                const milestoneDates = poamConfig.milestones[cat].map((m, idx) => {
+                    if (m.date) {
+                        const [y, mm, dd] = m.date.split('-');
+                        return `${parseInt(mm)}/${parseInt(dd)}/${y}`;
+                    }
+                    const offsets = [0, 14, 21, maxDays];
+                    return getDateOut(offsets[idx]);
+                });
 
                 const controlVulnDesc = finding.title || '';
                 const cciField = finding.ccis?.join('\n') || '';
@@ -1556,9 +1558,14 @@ function App() {
                 if (s.includes('high') || s.includes('critical') || s === 'i' || s === '1') { cat = 'cat1'; maxDays = 30; }
                 else if (s.includes('medium') || s === 'ii' || s === '2') { cat = 'cat2'; maxDays = 60; }
 
-                const milestoneDates = [
-                    getDateOut(0), getDateOut(14), getDateOut(21), getDateOut(maxDays)
-                ];
+                const milestoneDates = poamConfig.milestones[cat].map((m, idx) => {
+                    if (m.date) {
+                        const [y, mm, dd] = m.date.split('-');
+                        return `${parseInt(mm)}/${parseInt(dd)}/${y}`;
+                    }
+                    const offsets = [0, 14, 21, maxDays];
+                    return getDateOut(offsets[idx]);
+                });
 
                 const controlVulnDesc = r['Synopsis'] || r['F'] || '';
                 const controlsAps = r['Control Family'] || r['I'] || '';
@@ -3733,6 +3740,46 @@ function App() {
                                                         rows={2}
                                                         className={`flex-1 bg-transparent border rounded-lg px-3 py-2 text-xs leading-relaxed ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-all resize-none hover:border-gray-400 dark:hover:border-gray-500`}
                                                     />
+                                                    <div className="flex flex-col gap-1 w-28 shrink-0">
+                                                        <div className="relative group/date">
+                                                            <input
+                                                                type="date"
+                                                                value={m.date || ""}
+                                                                onChange={e => {
+                                                                    setPoamConfig(prev => ({
+                                                                        ...prev,
+                                                                        milestones: {
+                                                                            ...prev.milestones,
+                                                                            [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, date: e.target.value } : m2)
+                                                                        }
+                                                                    }));
+                                                                }}
+                                                                className={`w-full bg-transparent border rounded-lg pl-2 pr-1 py-1 text-[10px] font-medium appearance-none ${darkMode ? 'border-gray-600 text-gray-300 hover:border-gray-500' : 'border-gray-300 text-gray-600 hover:border-gray-400'} focus:outline-none focus:border-blue-500 transition-colors`}
+                                                            />
+                                                            {m.date ? (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setPoamConfig(prev => ({
+                                                                            ...prev,
+                                                                            milestones: {
+                                                                                ...prev.milestones,
+                                                                                [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, date: "" } : m2)
+                                                                            }
+                                                                        }));
+                                                                    }}
+                                                                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 hover:bg-red-50 hover:text-red-500 rounded transition-colors text-gray-400"
+                                                                    title="Clear fixed date"
+                                                                >
+                                                                    <X size={10} />
+                                                                </button>
+                                                            ) : (
+                                                                <Calendar className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 size-3 opacity-40" />
+                                                            )}
+                                                        </div>
+                                                        <div className={`text-[8px] text-center font-bold uppercase tracking-tighter ${m.date ? 'text-blue-500' : darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                            {m.date ? 'Fixed Date' : 'Auto-Calc'}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
