@@ -154,17 +154,31 @@ function App() {
 
     // POA&M State
     const [acasData, setAcasData] = useState<any[]>([]);
+    const [poamActiveCat, setPoamActiveCat] = useState<'cat1' | 'cat2' | 'cat3'>('cat1');
     const [poamConfig, setPoamConfig] = useState({
         officeOrg: "USACE CMP",
         resourcesRequired: "Man Hours",
-        scheduledCompletionDate: "9/27/2025",
         status: "Ongoing",
-        milestones: [
-            { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding. 8/27/2025" },
-            { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed. 9/15/2025" },
-            { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment. 9/25/2025" },
-            { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering. 9/26/2025" }
-        ]
+        milestones: {
+            cat1: [
+                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding." },
+                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed." },
+                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment." },
+                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering." }
+            ],
+            cat2: [
+                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding." },
+                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed." },
+                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment." },
+                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering." }
+            ],
+            cat3: [
+                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding." },
+                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed." },
+                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment." },
+                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering." }
+            ]
+        }
     });
 
     const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -1380,13 +1394,6 @@ function App() {
             d.setDate(d.getDate() + days);
             return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
         };
-        const getCompletionDate = (sev: string, defaultDate: string) => {
-            const s = String(sev).toLowerCase();
-            if (s.includes('high') || s.includes('critical') || s.includes('cat i') || s === '1' || s === 'i') return getDateOut(30);
-            if (s.includes('medium') || s.includes('cat ii') || s === '2' || s === 'ii') return getDateOut(60);
-            if (s.includes('low') || s.includes('cat iii') || s === '3' || s === 'iii') return getDateOut(90);
-            return defaultDate;
-        };
 
         // Helper to extract NIST
         const extractNist = (text: any) => {
@@ -1404,7 +1411,6 @@ function App() {
         console.group("Processing STIG Checklists");
         poamChecklists.forEach((checklist, cIdx) => {
             console.log(`[STIG ${cIdx + 1}/${poamChecklists.length}] processing: ${checklist.filename}`);
-            console.log(`- Findings count: ${checklist.findings.length}`);
 
             let openFound = 0;
             let skipped = 0;
@@ -1421,23 +1427,34 @@ function App() {
                 }
                 openFound++;
 
+                // Sensing CAT and calculating dates
+                let cat: keyof typeof poamConfig.milestones = 'cat3';
+                let maxDays = 90;
+                const s = String(finding.severity).toLowerCase();
+                if (s.includes('high') || s.includes('cat i') || s === 'i' || s === '1') { cat = 'cat1'; maxDays = 30; }
+                else if (s.includes('medium') || s.includes('cat ii') || s === 'ii' || s === '2') { cat = 'cat2'; maxDays = 60; }
+
+                const milestoneDates = [
+                    getDateOut(0),  // M1
+                    getDateOut(14), // M2 (2 weeks)
+                    getDateOut(21), // M3 (3 weeks)
+                    getDateOut(maxDays) // M4 (30/60/90)
+                ];
+
                 const controlVulnDesc = finding.title || '';
                 const cciField = finding.ccis?.join('\n') || '';
                 const nistControl = extractNist(cciField);
-
                 const cciNumber = finding.ccis?.[0] ? extractCci(finding.ccis[0]) : '';
                 const comments = `${cciNumber}\n${finding.findingDetails || ''}`.trim();
-
                 const securityChecks = `${finding.ruleId || ''}\n${finding.vulnId || ''}\n${finding.groupId || ''}`.trim();
-                const mappedDate = getCompletionDate(finding.severity, poamConfig.scheduledCompletionDate);
 
-                // Rows x4 (Milestones)
-                poamConfig.milestones.forEach((m, idx) => {
+                // Generate 4 rows for this finding (one per milestone)
+                poamConfig.milestones[cat].forEach((m, idx) => {
                     const row: any = {};
                     POAM_HEADERS.forEach(h => row[h] = ''); // Init empty
 
                     row['Milestone ID'] = m.id;
-                    row['Milestone with Completion Dates'] = m.text;
+                    row['Milestone with Completion Dates'] = `${m.text} ${milestoneDates[idx]}`;
 
                     if (idx === 0) {
                         row['POA&M Item ID'] = poamId;
@@ -1446,7 +1463,7 @@ function App() {
                         row['Office/Org'] = poamConfig.officeOrg;
                         row['Security Checks'] = securityChecks;
                         row['Resources Required'] = poamConfig.resourcesRequired;
-                        row['Scheduled Completion Date'] = mappedDate;
+                        row['Scheduled Completion Date'] = milestoneDates[3]; // Milestone 4 date
                         row['Source Identifying Vulnerability'] = "Evaluate STIG: " + checklist.stigName;
                         row['Status'] = poamConfig.status;
                         row['Comments'] = comments;
@@ -1479,6 +1496,16 @@ function App() {
                 const severity = r['Severity'] || r['C'];
                 // Optional: Filter logic for ACAS could go here
 
+                let cat: keyof typeof poamConfig.milestones = 'cat3';
+                let maxDays = 90;
+                const s = String(severity).toLowerCase();
+                if (s.includes('high') || s.includes('critical') || s === 'i' || s === '1') { cat = 'cat1'; maxDays = 30; }
+                else if (s.includes('medium') || s === 'ii' || s === '2') { cat = 'cat2'; maxDays = 60; }
+
+                const milestoneDates = [
+                    getDateOut(0), getDateOut(14), getDateOut(21), getDateOut(maxDays)
+                ];
+
                 const controlVulnDesc = r['Synopsis'] || r['F'] || '';
                 const controlsAps = r['Control Family'] || r['I'] || '';
                 const securityChecks = `Plugin ID: ${r['Plugin'] || r['A'] || ''}`;
@@ -1486,14 +1513,13 @@ function App() {
                 const devicesAffected = r['DNS Name'] || r['D'] || '';
                 const comments = r['Description'] || r['G'] || '';
                 const mitigations = r['Mitigation'] || r['J'] || '';
-                const mappedDate = getCompletionDate(severity, poamConfig.scheduledCompletionDate);
 
-                poamConfig.milestones.forEach((m, idx) => {
+                poamConfig.milestones[cat].forEach((m, idx) => {
                     const row: any = {};
                     POAM_HEADERS.forEach(h => row[h] = '');
 
                     row['Milestone ID'] = m.id;
-                    row['Milestone with Completion Dates'] = m.text;
+                    row['Milestone with Completion Dates'] = `${m.text} ${milestoneDates[idx]}`;
 
                     if (idx === 0) {
                         row['POA&M Item ID'] = poamId;
@@ -1502,7 +1528,7 @@ function App() {
                         row['Office/Org'] = poamConfig.officeOrg;
                         row['Security Checks'] = securityChecks;
                         row['Resources Required'] = poamConfig.resourcesRequired;
-                        row['Scheduled Completion Date'] = poamConfig.scheduledCompletionDate;
+                        row['Scheduled Completion Date'] = milestoneDates[3];
                         row['Source Identifying Vulnerability'] = "ACAS";
                         row['Status'] = poamConfig.status;
                         row['Comments'] = comments;
@@ -3588,16 +3614,7 @@ function App() {
                                             />
                                         </div>
                                         <div>
-                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Scheduled Completion</label>
-                                            <input
-                                                type="text"
-                                                value={poamConfig.scheduledCompletionDate}
-                                                onChange={e => setPoamConfig({ ...poamConfig, scheduledCompletionDate: e.target.value })}
-                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</label>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Default Status</label>
                                             <input
                                                 type="text"
                                                 value={poamConfig.status}
@@ -3606,23 +3623,49 @@ function App() {
                                             />
                                         </div>
                                     </div>
-                                    <div className="space-y-3">
-                                        <label className={`block text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Milestones</label>
-                                        {poamConfig.milestones.map((m, idx) => (
-                                            <div key={m.id} className="flex gap-2 items-start">
-                                                <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>{m.id}</div>
-                                                <textarea
-                                                    value={m.text}
-                                                    onChange={e => {
-                                                        const newMilestones = [...poamConfig.milestones];
-                                                        newMilestones[idx].text = e.target.value;
-                                                        setPoamConfig({ ...poamConfig, milestones: newMilestones });
-                                                    }}
-                                                    rows={2}
-                                                    className={`flex-1 bg-transparent border rounded-lg px-3 py-2 text-xs ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors resize-none`}
-                                                />
+
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-1">
+                                            <label className={`block text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Milestone Templates</label>
+                                            <div className="flex bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
+                                                {(['cat1', 'cat2', 'cat3'] as const).map(cat => (
+                                                    <button
+                                                        key={cat}
+                                                        onClick={() => setPoamActiveCat(cat)}
+                                                        className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${poamActiveCat === cat ? 'bg-white dark:bg-gray-600 text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                                    >
+                                                        {cat === 'cat1' ? 'CAT I' : cat === 'cat2' ? 'CAT II' : 'CAT III'}
+                                                    </button>
+                                                ))}
                                             </div>
-                                        ))}
+                                        </div>
+
+                                        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                            {poamConfig.milestones[poamActiveCat].map((m, idx) => (
+                                                <div key={m.id} className="flex gap-2 items-start group">
+                                                    <div className={`shrink-0 w-8 h-8 rounded-full flex flex-col items-center justify-center border ${darkMode ? 'border-gray-600 bg-gray-700/50 text-gray-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                                                        <span className="text-[10px] font-bold">{m.id}</span>
+                                                        <span className="text-[8px] opacity-70">
+                                                            {m.id === 1 ? 'Day 0' : m.id === 2 ? '+14' : m.id === 3 ? '+21' : poamActiveCat === 'cat1' ? '+30' : poamActiveCat === 'cat2' ? '+60' : '+90'}
+                                                        </span>
+                                                    </div>
+                                                    <textarea
+                                                        value={m.text}
+                                                        onChange={e => {
+                                                            setPoamConfig(prev => ({
+                                                                ...prev,
+                                                                milestones: {
+                                                                    ...prev.milestones,
+                                                                    [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, text: e.target.value } : m2)
+                                                                }
+                                                            }));
+                                                        }}
+                                                        rows={2}
+                                                        className={`flex-1 bg-transparent border rounded-lg px-3 py-2 text-xs leading-relaxed ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-all resize-none hover:border-gray-400 dark:hover:border-gray-500`}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -3683,108 +3726,109 @@ function App() {
                                 <ul className={`list-disc list-inside text-sm space-y-1 ${darkMode ? 'text-gray-400' : 'text-blue-700'}`}>
                                     <li>Reads all <strong>Open</strong> findings from your checklist.</li>
                                     <li>Maps STIG Severity to standard CAT I/II/III levels.</li>
-                                    <li>Auto-calculates scheduled completion dates (+30/90/365 days).</li>
+                                    <li>Auto-calculates milestone dates (Today, +14d, +21d) and scheduled completion (+30/60/90d).</li>
                                     <li>Populates standard POA&M columns including CCIs, descriptions, and comments.</li>
                                     <li>Outputs a formatted Excel file ready for submission or review.</li>
                                 </ul>
                             </div>
                         </div>
                     ) : null}
-                </div >
-            </main >
 
-            {/* Removed Source Preview Modal - details now inline */}
 
-            {/* DETAIL MODAL */}
-            {
-                selectedRule && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-8" onClick={() => setSelectedRule(null)}>
-                        <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">{selectedRule.vulnId}</span>
-                                    <span className="text-sm font-mono text-gray-500">{selectedRule.stigId}</span>
-                                    <span className={`text-xs uppercase font-medium px-2 py-1 rounded ${selectedRule.severity === 'high' ? 'bg-red-100 text-red-600' :
-                                        selectedRule.severity === 'medium' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
-                                        }`}>CAT {selectedRule.severity === 'high' ? 'I' : selectedRule.severity === 'medium' ? 'II' : 'III'}</span>
-                                </div>
-                                <button onClick={() => setSelectedRule(null)} className="p-2 hover:bg-gray-200 rounded-lg">
-                                    <XCircle size={20} />
-                                </button>
-                            </div>
+                    {/* Removed Source Preview Modal - details now inline */}
 
-                            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)] space-y-6">
-                                <div>
-                                    <h2 className="text-xl font-semibold text-gray-900 mb-2">{selectedRule.title}</h2>
-                                    <p className="text-gray-600">{selectedRule.description}</p>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Check Procedure</h3>
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
-                                        {selectedRule.checkContent || 'No check content available'}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Fix Procedure</h3>
-                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
-                                        {selectedRule.fixContent || 'No fix content available'}
-                                    </div>
-                                </div>
-
-                                {selectedRule.automatedCheck && selectedRule.automatedCheck.type !== 'manual' && (
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Automated Check</h3>
-                                        <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
-                                            <div className="text-gray-400 mb-1">Type: {selectedRule.automatedCheck.type}</div>
-                                            {selectedRule.automatedCheck.registryPath && (
-                                                <div>Registry: {selectedRule.automatedCheck.registryPath}\{selectedRule.automatedCheck.valueName}</div>
-                                            )}
-                                            {selectedRule.automatedCheck.expectedValue !== undefined && (
-                                                <div>Expected: {selectedRule.automatedCheck.expectedValue}</div>
-                                            )}
-                                            {selectedRule.automatedCheck.command && (
-                                                <div className="mt-2 text-white">&gt; {selectedRule.automatedCheck.command}</div>
-                                            )}
+                    {/* DETAIL MODAL */}
+                    {
+                        selectedRule && (
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-8" onClick={() => setSelectedRule(null)}>
+                                <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">{selectedRule.vulnId}</span>
+                                            <span className="text-sm font-mono text-gray-500">{selectedRule.stigId}</span>
+                                            <span className={`text-xs uppercase font-medium px-2 py-1 rounded ${selectedRule.severity === 'high' ? 'bg-red-100 text-red-600' :
+                                                selectedRule.severity === 'medium' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                                                }`}>CAT {selectedRule.severity === 'high' ? 'I' : selectedRule.severity === 'medium' ? 'II' : 'III'}</span>
                                         </div>
+                                        <button onClick={() => setSelectedRule(null)} className="p-2 hover:bg-gray-200 rounded-lg">
+                                            <XCircle size={20} />
+                                        </button>
                                     </div>
-                                )}
 
-                                {results.get(selectedRule.vulnId) && (
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Last Result</h3>
-                                        <div className={`p-4 rounded-lg border ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <span className={`uppercase font-medium text-sm ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {results.get(selectedRule.vulnId)?.status}
-                                                </span>
+                                    <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)] space-y-6">
+                                        <div>
+                                            <h2 className="text-xl font-semibold text-gray-900 mb-2">{selectedRule.title}</h2>
+                                            <p className="text-gray-600">{selectedRule.description}</p>
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Check Procedure</h3>
+                                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
+                                                {selectedRule.checkContent || 'No check content available'}
                                             </div>
-                                            <pre className="font-mono text-xs whitespace-pre-wrap text-gray-700">{results.get(selectedRule.vulnId)?.output}</pre>
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Fix Procedure</h3>
+                                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
+                                                {selectedRule.fixContent || 'No fix content available'}
+                                            </div>
+                                        </div>
+
+                                        {selectedRule.automatedCheck && selectedRule.automatedCheck.type !== 'manual' && (
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Automated Check</h3>
+                                                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                                                    <div className="text-gray-400 mb-1">Type: {selectedRule.automatedCheck.type}</div>
+                                                    {selectedRule.automatedCheck.registryPath && (
+                                                        <div>Registry: {selectedRule.automatedCheck.registryPath}\{selectedRule.automatedCheck.valueName}</div>
+                                                    )}
+                                                    {selectedRule.automatedCheck.expectedValue !== undefined && (
+                                                        <div>Expected: {selectedRule.automatedCheck.expectedValue}</div>
+                                                    )}
+                                                    {selectedRule.automatedCheck.command && (
+                                                        <div className="mt-2 text-white">&gt; {selectedRule.automatedCheck.command}</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {results.get(selectedRule.vulnId) && (
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Last Result</h3>
+                                                <div className={`p-4 rounded-lg border ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className={`uppercase font-medium text-sm ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {results.get(selectedRule.vulnId)?.status}
+                                                        </span>
+                                                    </div>
+                                                    <pre className="font-mono text-xs whitespace-pre-wrap text-gray-700">{results.get(selectedRule.vulnId)?.output}</pre>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3 pt-4 border-t border-gray-100">
+                                            <button
+                                                onClick={() => { runCheck(selectedRule); }}
+                                                className="bg-black hover:bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                                            >
+                                                <Play size={16} /> Run Check
+                                            </button>
+                                            <button
+                                                onClick={() => { captureEvidence(selectedRule); }}
+                                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                                            >
+                                                <Camera size={16} /> Capture Evidence
+                                            </button>
                                         </div>
                                     </div>
-                                )}
-
-                                <div className="flex gap-3 pt-4 border-t border-gray-100">
-                                    <button
-                                        onClick={() => { runCheck(selectedRule); }}
-                                        className="bg-black hover:bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-                                    >
-                                        <Play size={16} /> Run Check
-                                    </button>
-                                    <button
-                                        onClick={() => { captureEvidence(selectedRule); }}
-                                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-                                    >
-                                        <Camera size={16} /> Capture Evidence
-                                    </button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                )
-            }
-        </div >
+                        )
+                    }
+                </div>
+            </main>
+        </div>
     );
 }
 
