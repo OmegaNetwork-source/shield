@@ -130,8 +130,10 @@ function App() {
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
     const [findText, setFindText] = useState('');
     const [replaceText, setReplaceText] = useState('');
-    const [copyUsername, setCopyUsername] = useState('');
-    const [copyMergeDetails, setCopyMergeDetails] = useState(false);
+    const [sourceFindText, setSourceFindText] = useState('');
+    const [sourceReplaceText, setSourceReplaceText] = useState('');
+    const [expandedSourceIdx, setExpandedSourceIdx] = useState<number | null>(null);
+    const [expandedTargetIdx, setExpandedTargetIdx] = useState<number | null>(null);
 
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
         const parsed = await parseCklFile(file);
@@ -195,23 +197,7 @@ function App() {
                 if (copyFields.details && (sourceFinding.description || sourceFinding.findingDetails)) {
                     const sourceDetails = sourceFinding.findingDetails || sourceFinding.description || '';
                     if (sourceDetails) {
-                        if (copyMergeDetails) {
-                            const now = new Date();
-                            const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-                            const userStr = copyUsername ? `-${copyUsername.toUpperCase()}` : '';
-                            const header = `${dateStr}${userStr}`;
-
-                            // Format: HEADER - [Source Content] \n [Existing Content]
-                            const existing = targetFinding.findingDetails || '';
-                            // Avoid double stacking if already transferred
-                            if (!existing.startsWith(header)) {
-                                targetFinding.findingDetails = `${header}- ${sourceDetails}\n\n${existing}`;
-                            } else {
-                                targetFinding.findingDetails = sourceDetails;
-                            }
-                        } else {
-                            targetFinding.findingDetails = sourceDetails;
-                        }
+                        targetFinding.findingDetails = sourceDetails;
                         updated = true;
                     }
                 }
@@ -2162,6 +2148,52 @@ function App() {
                                         )}
                                     </div>
 
+                                    {/* Source Find/Replace */}
+                                    {copySource && (
+                                        <div className="px-3 pb-2 flex items-center gap-2">
+                                            <div className="flex items-center flex-1 gap-1 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Find..."
+                                                    className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                    value={sourceFindText}
+                                                    onChange={e => setSourceFindText(e.target.value)}
+                                                />
+                                                <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Replace..."
+                                                    className="bg-transparent text-xs px-2 py-1 w-full outline-none"
+                                                    value={sourceReplaceText}
+                                                    onChange={e => setSourceReplaceText(e.target.value)}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        if (!copySource || !sourceFindText) return;
+                                                        const newSource = JSON.parse(JSON.stringify(copySource));
+                                                        let count = 0;
+                                                        newSource.findings.forEach((f: any) => {
+                                                            if (f.comments && f.comments.includes(sourceFindText)) {
+                                                                f.comments = f.comments.split(sourceFindText).join(sourceReplaceText);
+                                                                count++;
+                                                            }
+                                                            if (f.findingDetails && f.findingDetails.includes(sourceFindText)) {
+                                                                f.findingDetails = f.findingDetails.split(sourceFindText).join(sourceReplaceText);
+                                                                count++;
+                                                            }
+                                                        });
+                                                        setCopySource(newSource);
+                                                        alert(`Replaced in ${count} fields.`);
+                                                    }}
+                                                    disabled={!sourceFindText}
+                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-xs font-medium whitespace-nowrap disabled:opacity-50"
+                                                >
+                                                    Go
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="flex-1 overflow-hidden relative">
                                         {!copySource ? (
                                             <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
@@ -2200,7 +2232,36 @@ function App() {
                                                                         }`}>{f.status}</span>
                                                                 </td>
                                                                 <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
-                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.findingDetails}>{f.findingDetails || '-'}</td>
+                                                                <td className="px-3 py-2 max-w-[250px]">
+                                                                    {expandedSourceIdx === i ? (
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <textarea
+                                                                                className={`w-full text-xs p-2 rounded border resize-none ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                rows={4}
+                                                                                value={f.findingDetails || ''}
+                                                                                onChange={e => {
+                                                                                    const newSource = JSON.parse(JSON.stringify(copySource));
+                                                                                    newSource.findings[i].findingDetails = e.target.value;
+                                                                                    setCopySource(newSource);
+                                                                                }}
+                                                                            />
+                                                                            <button
+                                                                                onClick={() => setExpandedSourceIdx(null)}
+                                                                                className="text-xs text-blue-600 hover:text-blue-700 font-medium self-end"
+                                                                            >
+                                                                                Done
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div
+                                                                            className="truncate cursor-pointer hover:text-blue-600"
+                                                                            title="Click to edit"
+                                                                            onClick={() => setExpandedSourceIdx(i)}
+                                                                        >
+                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add</span>}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -2304,7 +2365,36 @@ function App() {
                                                                         }`}>{f.status}</span>
                                                                 </td>
                                                                 <td className="px-3 py-2 max-w-[200px] truncate" title={f.comments}>{f.comments || '-'}</td>
-                                                                <td className="px-3 py-2 max-w-[200px] truncate" title={f.findingDetails}>{f.findingDetails || '-'}</td>
+                                                                <td className="px-3 py-2 max-w-[250px]">
+                                                                    {expandedTargetIdx === i ? (
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <textarea
+                                                                                className={`w-full text-xs p-2 rounded border resize-none ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                rows={4}
+                                                                                value={f.findingDetails || ''}
+                                                                                onChange={e => {
+                                                                                    const newTarget = JSON.parse(JSON.stringify(copyTarget));
+                                                                                    newTarget.findings[i].findingDetails = e.target.value;
+                                                                                    setCopyTarget(newTarget);
+                                                                                }}
+                                                                            />
+                                                                            <button
+                                                                                onClick={() => setExpandedTargetIdx(null)}
+                                                                                className="text-xs text-purple-600 hover:text-purple-700 font-medium self-end"
+                                                                            >
+                                                                                Done
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div
+                                                                            className="truncate cursor-pointer hover:text-purple-600"
+                                                                            title="Click to edit"
+                                                                            onClick={() => setExpandedTargetIdx(i)}
+                                                                        >
+                                                                            {f.findingDetails || <span className="opacity-30 italic">Click to add</span>}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -2332,23 +2422,6 @@ function App() {
                                             <input type="checkbox" className="rounded text-blue-600" checked={copyFields.details} onChange={e => setCopyFields(f => ({ ...f, details: e.target.checked }))} />
                                             <span>Details</span>
                                         </label>
-
-                                        {/* Smart Merge Options */}
-                                        {copyFields.details && (
-                                            <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-300 dark:border-gray-600">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Initials (e.g. RG)"
-                                                    className={`w-28 text-xs px-2 py-1 rounded border outline-none ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
-                                                    value={copyUsername}
-                                                    onChange={e => setCopyUsername(e.target.value)}
-                                                />
-                                                <label className="flex items-center gap-2 text-xs cursor-pointer whitespace-nowrap">
-                                                    <input type="checkbox" className="rounded text-blue-600" checked={copyMergeDetails} onChange={e => setCopyMergeDetails(e.target.checked)} />
-                                                    <span>Prepend Date/User</span>
-                                                </label>
-                                            </div>
-                                        )}
                                     </div>
 
                                     <div className="flex items-center gap-4">
