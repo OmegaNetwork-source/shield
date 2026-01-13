@@ -3,7 +3,8 @@ import {
     ShieldCheck, Play, Camera, LayoutGrid, Settings,
     ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
-    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target
+    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target,
+    Filter, Search
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -3115,10 +3116,10 @@ function App() {
                                             {/* Left Sidebar - List */}
                                             <div className={`w-1/3 min-w-[300px] max-w-[400px] flex flex-col border-r ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-white'}`}>
                                                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                                                    {editFile.findings
+                                                    {editFile && editFile.findings
                                                         .map((f, idx) => ({ ...f, origIdx: idx }))
                                                         .filter(f => (filterStatus === 'All' || f.status === filterStatus) && (filterSeverity === 'All' || f.severity === filterSeverity) && (
-                                                            !findText || f.title.toLowerCase().includes(findText.toLowerCase()) || f.ruleId.toLowerCase().includes(findText.toLowerCase()) || f.vulnId.toLowerCase().includes(findText.toLowerCase())
+                                                            !findText || f.title.toLowerCase().includes(findText.toLowerCase()) || (f.ruleId || '').toLowerCase().includes(findText.toLowerCase()) || (f.vulnId || '').toLowerCase().includes(findText.toLowerCase())
                                                         ))
                                                         .map((f, i) => (
                                                             <div
@@ -3150,18 +3151,18 @@ function App() {
                                                             </div>
                                                         ))
                                                     }
-                                                    {editFile.findings.length === 0 && (
+                                                    {editFile && editFile.findings.length === 0 && (
                                                         <div className="text-center py-10 text-gray-400 text-xs">No findings match your filter</div>
                                                     )}
                                                 </div>
                                                 <div className={`p-2 border-t text-[10px] text-center ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-100 text-gray-400'}`}>
-                                                    Showing {editFile.findings.filter(f => (filterStatus === 'All' || f.status === filterStatus) && (filterSeverity === 'All' || f.severity === filterSeverity)).length} of {editFile.findings.length}
+                                                    Showing {editFile ? editFile.findings.filter(f => (filterStatus === 'All' || f.status === filterStatus) && (filterSeverity === 'All' || f.severity === filterSeverity)).length : 0} of {editFile ? editFile.findings.length : 0}
                                                 </div>
                                             </div>
 
                                             {/* Right Main Panel - Detail Editor */}
                                             <div className={`flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden relative`}>
-                                                {editFile.findings[expandedEditIdx ?? -1] ? (
+                                                {editFile && editFile.findings[expandedEditIdx ?? -1] ? (
                                                     (() => {
                                                         const f = editFile.findings[expandedEditIdx!];
                                                         return (
@@ -3175,7 +3176,7 @@ function App() {
                                                                                 value={f.severity}
                                                                                 onChange={e => {
                                                                                     const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                    newFile.findings[f.origIdx].severity = e.target.value;
+                                                                                    newFile.findings[expandedEditIdx!].severity = e.target.value;
                                                                                     setEditFile(newFile);
                                                                                 }}
                                                                                 className={`text-sm font-bold bg-transparent outline-none cursor-pointer hover:underline ${f.severity === 'high' ? 'text-red-600 dark:text-red-400' :
@@ -3195,7 +3196,7 @@ function App() {
                                                                                 value={f.status}
                                                                                 onChange={e => {
                                                                                     const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                    newFile.findings[f.origIdx].status = e.target.value;
+                                                                                    newFile.findings[expandedEditIdx!].status = e.target.value;
                                                                                     setEditFile(newFile);
                                                                                 }}
                                                                                 className={`text-sm font-bold bg-transparent outline-none cursor-pointer hover:underline ${f.status === 'Open' ? 'text-red-600 dark:text-red-400' :
@@ -3297,7 +3298,7 @@ function App() {
                                                                                     value={f.findingDetails || ''}
                                                                                     onChange={e => {
                                                                                         const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                        newFile.findings[f.origIdx].findingDetails = e.target.value;
+                                                                                        newFile.findings[expandedEditIdx!].findingDetails = e.target.value;
                                                                                         setEditFile(newFile);
                                                                                     }}
                                                                                 />
@@ -3313,7 +3314,7 @@ function App() {
                                                                                     value={f.comments || ''}
                                                                                     onChange={e => {
                                                                                         const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                        newFile.findings[f.origIdx].comments = e.target.value;
+                                                                                        newFile.findings[expandedEditIdx!].comments = e.target.value;
                                                                                         setEditFile(newFile);
                                                                                     }}
                                                                                 />
