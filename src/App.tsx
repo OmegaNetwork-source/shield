@@ -1240,6 +1240,14 @@ function App() {
 
             {/* Main Content */}
             <main className={`flex-1 overflow-y-auto transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                {/* Privacy Banner */}
+                <div className={`px-4 py-2.5 text-center text-xs font-medium border-b sticky top-0 z-20 ${darkMode ? 'bg-blue-900/20 text-blue-200 border-blue-900/30 backdrop-blur-sm' : 'bg-blue-50 text-blue-700 border-blue-100 backdrop-blur-sm'}`}>
+                    <p className="flex items-center justify-center gap-2 max-w-5xl mx-auto">
+                        <ShieldCheck size={14} className="shrink-0" />
+                        <span>Privacy Notice: All data processing is performed locally in your browser. No files are uploaded to any server or database.</span>
+                    </p>
+                </div>
+
                 <div className="max-w-5xl mx-auto p-10">
 
                     {activeTab === 'scan' ? (
