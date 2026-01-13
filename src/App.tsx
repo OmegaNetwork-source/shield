@@ -3,7 +3,7 @@ import {
     ShieldCheck, Play, Camera, LayoutGrid, Settings,
     ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
     FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
-    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit
+    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -1246,9 +1246,9 @@ function App() {
                 <div className="flex items-center justify-between px-3 mb-8">
                     <div className="flex items-center gap-3">
                         <div className={`size-9 rounded-xl flex items-center justify-center shadow-lg ${darkMode ? 'bg-blue-600 text-white' : 'bg-black text-white'}`}>
-                            <ShieldCheck className="size-5" strokeWidth={2.5} />
+                            <Target className="size-5" strokeWidth={2.5} />
                         </div>
-                        <span className="font-semibold text-lg tracking-tight">Shield</span>
+                        <span className="font-semibold text-lg tracking-tight">STIG Ops</span>
                     </div>
                     <button
                         onClick={() => setDarkMode(!darkMode)}
