@@ -1688,7 +1688,7 @@ function App() {
                                                             {reportSummary.map((row, i) => (
                                                                 <tr key={i} className={`transition-colors ${darkMode ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50'}`}>
                                                                     <td
-                                                                        className="px-4 py-3 font-medium max-w-[250px] truncate border-r dark:border-gray-700 sticky left-0 bg-inherit z-10 cursor-pointer hover:text-blue-500 hover:underline"
+                                                                        className="px-4 py-3 font-medium border-r dark:border-gray-700 sticky left-0 bg-inherit z-10 cursor-pointer hover:text-blue-500 hover:underline border-b dark:border-gray-700"
                                                                         title="Click to view Chart"
                                                                         onClick={() => setSelectedStigChart(row)}
                                                                     >
