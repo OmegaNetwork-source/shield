@@ -461,7 +461,14 @@ function App() {
                 // Map raw findings to our schema
                 const mappedFindings = rawFindings.map((f: any) => ({
                     vulnId: f.vulnId || f.vulnNum || f.Vuln_Num || f.vuln_num || f.id || f.rule_id || f.group_id || f.ruleId || 'Unknown',
-                    status: f.status || f.STATUS || f.Status || (f.finding_details) || 'Not_Reviewed',
+                    status: (() => {
+                        const raw = f.status || f.STATUS || f.Status || f.finding_status || 'Not_Reviewed';
+                        const s = String(raw).toLowerCase().replace(/[\s_]/g, '');
+                        if (s === 'open' || s === 'fail' || s === 'failed') return 'Open';
+                        if (s === 'notafinding' || s === 'pass' || s === 'passed' || s === 'nf') return 'NotAFinding';
+                        if (s === 'notapplicable' || s === 'na' || s === 'n/a') return 'Not_Applicable';
+                        return 'Not_Reviewed';
+                    })(),
                     severity: f.severity || f.Severity || f.sev || 'medium',
                     title: f.title || f.Rule_Title || f.rule_title || f.ruleTitle || f.group_title || 'Unknown Title',
                     comments: f.comments || f.COMMENTS || f.comment || '',
