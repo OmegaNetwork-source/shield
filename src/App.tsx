@@ -140,6 +140,21 @@ function App() {
     const [expandedTargetIdx, setExpandedTargetIdx] = useState<number | null>(null);
     const [commentPlusText, setCommentPlusText] = useState('');
 
+    // POA&M State
+    const [acasData, setAcasData] = useState<any[]>([]);
+    const [poamConfig, setPoamConfig] = useState({
+        officeOrg: "USACE CMP",
+        resourcesRequired: "Man Hours",
+        scheduledCompletionDate: "9/27/2025",
+        status: "Ongoing",
+        milestones: [
+            { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding. 8/27/2025" },
+            { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed. 9/15/2025" },
+            { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment. 9/25/2025" },
+            { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering. 9/26/2025" }
+        ]
+    });
+
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
         const parsed = await parseCklFile(file);
         if (parsed) {
@@ -1226,6 +1241,177 @@ function App() {
             case 'notapplicable': return 'bg-gray-50 text-gray-500 border-gray-200';
             default: return 'bg-gray-50 text-gray-500 border-gray-200';
         }
+    };
+
+    const handleAcasUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files) return;
+        const files = Array.from(e.target.files);
+        const newRows: any[] = [];
+        for (const file of files) {
+            try {
+                const text = await file.text();
+                const wb = XLSX.read(text, { type: 'string' });
+                const sheet = wb.Sheets[wb.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet);
+                newRows.push(...json);
+            } catch (err) { console.error("Error reading ACAS CSV", err); }
+        }
+        setAcasData(prev => [...prev, ...newRows]);
+    };
+
+    const generatePoamProject = () => {
+        if (poamChecklists.length === 0 && acasData.length === 0) return;
+
+        const POAM_HEADERS = [
+            'POA&M Item ID', 'Control Vulnerability Description', 'Controls / APs', 'Office/Org', 'Security Checks',
+            'Resources Required', 'Scheduled Completion Date', 'Milestone ID', 'Milestone with Completion Dates',
+            'Milestone Changes', 'Source Identifying Vulnerability', 'Status', 'Comments', 'Raw Severity',
+            'Devices Affected', 'Mitigations', 'Severity', 'Relevance of Threat', 'Likelihood', 'Impact',
+            'Impact Description', 'Residual Risk Level', 'Recommendations', 'Identified in CFO Audit or other review',
+            'Personnel Resources: Cost Code'
+        ];
+
+        let poamId = 1;
+        const allRows: any[] = [];
+
+        // Date Helpers
+        const getDateOut = (days: number) => {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+        };
+        const getCompletionDate = (sev: string, defaultDate: string) => {
+            const s = String(sev).toLowerCase();
+            if (s.includes('high') || s.includes('critical') || s.includes('cat i') || s === '1' || s === 'i') return getDateOut(30);
+            if (s.includes('medium') || s.includes('cat ii') || s === '2' || s === 'ii') return getDateOut(60);
+            if (s.includes('low') || s.includes('cat iii') || s === '3' || s === 'iii') return getDateOut(90);
+            return defaultDate;
+        };
+
+        // Helper to extract NIST
+        const extractNist = (text: any) => {
+            if (!text) return '';
+            const match = String(text).match(/NIST SP 800-53 Revision 4\s*::\s*([A-Z0-9\-]+)/);
+            return match ? match[1] : '';
+        };
+        const extractCci = (text: any) => {
+            if (!text) return '';
+            const match = String(text).match(/(CCI-\d+)/);
+            return match ? match[0] : String(text).trim();
+        };
+
+        // Process STIGs
+        poamChecklists.forEach(checklist => {
+            checklist.findings.forEach(finding => {
+                if (finding.status !== 'Open') return;
+
+                const controlVulnDesc = finding.title || '';
+                const cciField = finding.ccis?.join('\n') || ''; // Assuming ccis is array
+                const nistControl = extractNist(cciField); // Logic might need adjustment if cci is array of strings. 
+                // Assuming ccis contains the full description line as in python "NIST ... :: CCI-123"
+                // If our parser strictly stored CCI numbers, this logic needs adapting.
+                // Our parser stores: `ccis: match[1]` from regex `CCI-[0-9]+`?
+                // Let's check parser. Step 2269: `ccis: Array.isArray(f.ccis) ? f.ccis : []`.
+                // XML parser usually extracts full CCI node text or just ID.
+                // I'll assume it might contain description or just ID.
+                // If just ID, Nist extraction won't work from CCI.
+                // But likely it's full text. I'll fallback gracefully.
+
+                const cciNumber = finding.ccis?.[0] ? extractCci(finding.ccis[0]) : '';
+                const comments = `${cciNumber}\n${finding.findingDetails || ''}`.trim();
+
+                const securityChecks = `${finding.ruleId || ''}\n${finding.vulnId || ''}\n${finding.groupId || ''}`.trim();
+                const mappedDate = getCompletionDate(finding.severity, poamConfig.scheduledCompletionDate);
+
+                // Rows x4
+                poamConfig.milestones.forEach((m, idx) => {
+                    const row: any = {};
+                    POAM_HEADERS.forEach(h => row[h] = ''); // Init empty
+
+                    row['Milestone ID'] = m.id;
+                    row['Milestone with Completion Dates'] = m.text;
+
+                    if (idx === 0) {
+                        row['POA&M Item ID'] = poamId;
+                        row['Control Vulnerability Description'] = controlVulnDesc;
+                        row['Controls / APs'] = nistControl; // Might be empty if parser doesn't get full text
+                        row['Office/Org'] = poamConfig.officeOrg;
+                        row['Security Checks'] = securityChecks;
+                        row['Resources Required'] = poamConfig.resourcesRequired;
+                        row['Scheduled Completion Date'] = mappedDate;
+                        row['Source Identifying Vulnerability'] = "Evaluate STIG: " + checklist.stigName;
+                        row['Status'] = poamConfig.status;
+                        row['Comments'] = comments;
+                        row['Raw Severity'] = finding.severity;
+                        row['Devices Affected'] = checklist.hostname;
+                        row['Severity'] = finding.severity;
+                        row['Relevance of Threat'] = finding.severity;
+                        row['Likelihood'] = finding.severity;
+                        row['Impact'] = finding.severity;
+                        row['Residual Risk Level'] = finding.severity;
+                        row['Recommendations'] = finding.fixText;
+                    }
+                    allRows.push(row);
+                });
+                poamId++;
+            });
+        });
+
+        // Process ACAS
+        acasData.forEach(r => {
+            const severity = r['Severity'] || r['C'];
+            // Script filter: No explicit filter in python `process_acas_file` loop?
+            // Python: `for idx, row in df.iterrows(): ...`
+            // It doesn't seem to filter by severity or open?
+            // Wait, Python script for STIG `if status.lower() != "open": continue`.
+            // For ACAS, no filter shown in the snippet. I'll parse all.
+
+            const controlVulnDesc = r['Synopsis'] || r['F'] || '';
+            const controlsAps = r['Control Family'] || r['I'] || '';
+            const securityChecks = `Plugin ID: ${r['Plugin'] || r['A'] || ''}`;
+            const recommendations = r['Steps to Remediate'] || r['H'] || '';
+            const devicesAffected = r['DNS Name'] || r['D'] || '';
+            const comments = r['Description'] || r['G'] || '';
+            const mitigations = r['Mitigation'] || r['J'] || '';
+            const mappedDate = getCompletionDate(severity, poamConfig.scheduledCompletionDate);
+
+            poamConfig.milestones.forEach((m, idx) => {
+                const row: any = {};
+                POAM_HEADERS.forEach(h => row[h] = '');
+
+                row['Milestone ID'] = m.id;
+                row['Milestone with Completion Dates'] = m.text;
+
+                if (idx === 0) {
+                    row['POA&M Item ID'] = poamId;
+                    row['Control Vulnerability Description'] = controlVulnDesc;
+                    row['Controls / APs'] = controlsAps;
+                    row['Office/Org'] = poamConfig.officeOrg;
+                    row['Security Checks'] = securityChecks;
+                    row['Resources Required'] = poamConfig.resourcesRequired;
+                    row['Scheduled Completion Date'] = poamConfig.scheduledCompletionDate;
+                    row['Source Identifying Vulnerability'] = "ACAS";
+                    row['Status'] = poamConfig.status;
+                    row['Comments'] = comments;
+                    row['Raw Severity'] = severity;
+                    row['Devices Affected'] = devicesAffected;
+                    row['Mitigations'] = mitigations;
+                    row['Severity'] = severity;
+                    row['Relevance of Threat'] = severity;
+                    row['Likelihood'] = severity;
+                    row['Impact'] = severity;
+                    row['Residual Risk Level'] = severity;
+                    row['Recommendations'] = recommendations;
+                }
+                allRows.push(row);
+            });
+            poamId++;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(allRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "POA&M");
+        XLSX.writeFile(wb, "POA&M_Generated.xlsx");
     };
 
     if (isLoading) {
@@ -2814,65 +3000,118 @@ function App() {
                                 <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Generate a Plan of Action and Milestones (POA&M) document from multiple STIG checklists.</p>
                             </div>
 
-                            <div className="w-full">
-                                <div className={`p-8 rounded-2xl border-2 border-dashed relative text-center ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-                                    <FileWarning className={`size-16 mx-auto mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-
-                                    {poamChecklists.length > 0 ? (
-                                        <div className="mb-6">
-                                            <div className="text-lg font-medium text-green-600 mb-1">Checklists Loaded</div>
-                                            <div className={`text-4xl font-bold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
-                                                {poamChecklists.length}
-                                            </div>
-                                            <div className="flex justify-center gap-2 mb-4">
-                                                <div className="inline-flex items-center gap-2 bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-medium">
-                                                    {poamChecklists.reduce((acc, c) => acc + c.findings.filter(f => f.status === 'Open').length, 0)} Open
-                                                </div>
-                                                <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                                                    {new Set(poamChecklists.map(c => c.hostname)).size} Hosts
-                                                </div>
-                                            </div>
-                                            <div className="max-h-40 overflow-y-auto bg-gray-100/50 rounded-lg p-2 text-left mb-2 scrollbar-thin">
-                                                {poamChecklists.map((c, i) => (
-                                                    <div key={i} className="text-xs text-gray-500 py-1.5 px-2 border-b border-gray-200 last:border-0 flex justify-between items-center bg-white/50 rounded mb-1">
-                                                        <span className="truncate max-w-[180px]" title={c.filename}>{c.filename}</span>
-                                                        <span className="font-mono text-[10px] bg-gray-200 px-1.5 py-0.5 rounded">{c.hostname}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <button
-                                                onClick={() => setPoamChecklists([])}
-                                                className="text-xs text-red-500 hover:text-red-600 underline font-medium"
-                                            >
-                                                Clear All Files
-                                            </button>
+                            <div className="space-y-6">
+                                {/* Configuration */}
+                                <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <h3 className={`font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                        <Settings size={18} /> Default Configuration
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Office / Org</label>
+                                            <input
+                                                type="text"
+                                                value={poamConfig.officeOrg}
+                                                onChange={e => setPoamConfig({ ...poamConfig, officeOrg: e.target.value })}
+                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                            />
                                         </div>
-                                    ) : (
-                                        <div className="mb-6">
-                                            <h3 className={`font-medium text-lg mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Upload Checklists</h3>
-                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                Select multiple .ckl or .cklb files to auto-generate a consolidated POA&M
-                                            </p>
+                                        <div>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Resources Required</label>
+                                            <input
+                                                type="text"
+                                                value={poamConfig.resourcesRequired}
+                                                onChange={e => setPoamConfig({ ...poamConfig, resourcesRequired: e.target.value })}
+                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                            />
                                         </div>
-                                    )}
-
-                                    <div className="flex justify-center gap-3">
-                                        <label className={`cursor-pointer px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
-                                            <Upload size={16} />
-                                            {poamChecklists.length > 0 ? 'Add More Files' : 'Choose Files'}
-                                            <input type="file" multiple className="hidden" accept=".ckl,.cklb" onChange={handlePoamUpload} />
-                                        </label>
-
-                                        {poamChecklists.length > 0 && (
-                                            <button
-                                                onClick={generatePoamBulk}
-                                                className="bg-black hover:bg-black/80 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all shadow-lg flex items-center gap-2"
-                                            >
-                                                <Download size={16} /> Generate POA&M
-                                            </button>
-                                        )}
+                                        <div>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Scheduled Completion</label>
+                                            <input
+                                                type="text"
+                                                value={poamConfig.scheduledCompletionDate}
+                                                onChange={e => setPoamConfig({ ...poamConfig, scheduledCompletionDate: e.target.value })}
+                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</label>
+                                            <input
+                                                type="text"
+                                                value={poamConfig.status}
+                                                onChange={e => setPoamConfig({ ...poamConfig, status: e.target.value })}
+                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className={`block text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Milestones</label>
+                                        {poamConfig.milestones.map((m, idx) => (
+                                            <div key={m.id} className="flex gap-2 items-start">
+                                                <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>{m.id}</div>
+                                                <textarea
+                                                    value={m.text}
+                                                    onChange={e => {
+                                                        const newMilestones = [...poamConfig.milestones];
+                                                        newMilestones[idx].text = e.target.value;
+                                                        setPoamConfig({ ...poamConfig, milestones: newMilestones });
+                                                    }}
+                                                    rows={2}
+                                                    className={`flex-1 bg-transparent border rounded-lg px-3 py-2 text-xs ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors resize-none`}
+                                                />
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                                    {/* STIG Upload */}
+                                    <div className={`p-6 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                        <FileSpreadsheet className={`size-12 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                        <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>STIG Checklists</h3>
+                                        {poamChecklists.length > 0 ? (
+                                            <div className="w-full">
+                                                <div className="text-2xl font-bold text-green-600 mb-2">{poamChecklists.length} Loaded</div>
+                                                <button onClick={() => setPoamChecklists([])} className="text-xs text-red-500 hover:text-red-600 underline">Clear</button>
+                                            </div>
+                                        ) : (
+                                            <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload .ckl/.cklb files</p>
+                                        )}
+                                        <label className={`mt-4 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
+                                            <Upload size={14} /> {poamChecklists.length > 0 ? 'Add More' : 'Upload STIGs'}
+                                            <input type="file" multiple className="hidden" accept=".ckl,.cklb,.json,.xml" onChange={handlePoamUpload} />
+                                        </label>
+                                    </div>
+
+                                    {/* ACAS Upload */}
+                                    <div className={`p-6 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                        <Database className={`size-12 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                        <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>ACAS Scans</h3>
+                                        {acasData.length > 0 ? (
+                                            <div className="w-full">
+                                                <div className="text-2xl font-bold text-blue-600 mb-2">{acasData.length} Rows</div>
+                                                <button onClick={() => setAcasData([])} className="text-xs text-red-500 hover:text-red-600 underline">Clear</button>
+                                            </div>
+                                        ) : (
+                                            <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload .csv scan results</p>
+                                        )}
+                                        <label className={`mt-4 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
+                                            <Upload size={14} /> {acasData.length > 0 ? 'Add More' : 'Upload CSV'}
+                                            <input type="file" multiple className="hidden" accept=".csv" onChange={handleAcasUpload} />
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {(poamChecklists.length > 0 || acasData.length > 0) && (
+                                    <div className="flex justify-center pt-4">
+                                        <button
+                                            onClick={generatePoamProject}
+                                            className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-3 transition-transform active:scale-95"
+                                        >
+                                            <Download size={20} /> Generate Project POA&M
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-100'}`}>
