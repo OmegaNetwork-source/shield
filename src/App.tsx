@@ -3016,8 +3016,8 @@ function App() {
                                 <div className="flex-1 min-h-0 flex flex-col">
                                     <div className={`flex-1 flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                         <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
-                                            <div className="flex items-center justify-between gap-4">
-                                                <div className="flex items-center gap-2 flex-1">
+                                            <div className="flex items-center justify-start gap-6">
+                                                <div className="flex items-center gap-2">
                                                     <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
                                                         <div className="font-bold text-xs uppercase">Workspace</div>
                                                     </div>
