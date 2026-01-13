@@ -56,6 +56,7 @@ function App() {
             groupId?: string;
             fixText?: string;
             description?: string;
+            findingDetails?: string;
             ccis?: string[];
         }>;
     }>>([]);
@@ -127,6 +128,7 @@ function App() {
     const [copyTarget, setCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
     const [copyFields, setCopyFields] = useState({ status: true, comments: true, details: true });
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
+    const [showSourcePreview, setShowSourcePreview] = useState(false);
 
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
         const parsed = await parseCklFile(file);
@@ -162,30 +164,12 @@ function App() {
                     targetFinding.comments = sourceFinding.comments;
                     updated = true;
                 }
-                if (copyFields.details && sourceFinding.description) {
-                    // Some logic might be needed if description is generic vs specific, 
-                    // but usually we copy 'finding details' which maps to 'comments' or 'finding_details' in CKL.
-                    // In our parsed model, we have 'comments' and 'description' (vuln discussion).
-                    // Usually users want to copy 'Finding Details' (the specific observation).
-                    // Our parser maps 'finding_details'? Let's check parser.
-                    // The parser maps 'description' to 'Vuln_Discuss'.
-                    // It maps 'fixText' to 'Fix_Text'.
-                    // It maps 'comments' to 'COMMENTS'.
-                    // Wait, where is 'Finding_Details'?
-                    // Standard CKL has 'FINDING_DETAILS'.
-                    // My parser (seen above) doesn't seem to explicitly map 'FINDING_DETAILS' in the mappedFindings section!
-                    // It maps 'comments' || 'COMMENTS'.
-                    // It maps 'description' || 'Vuln_Discuss'.
-                    // It seems 'Finding_Details' is missing from the standardized 'ParsedStigRule' interface in the snippet I saw?
-                    // Wait, checking the parser code snippet again...
-                    // map rawFindings...
-                    // title: f.title...
-                    // comments: f.comments || f.COMMENTS...
-                    // description: f.description || f.Vuln_Discuss...
-                    // It seems I might have missed 'FINDING_DETAILS' in the parser or it's not there.
-                    // If it's not there, I can't copy it.
-                    // I'll assume 'comments' is the main editable field for now.
-                    // I'll also update 'status'.
+                if (copyFields.details && (sourceFinding.description || sourceFinding.findingDetails)) {
+                    // Copy finding details if available, falling back to description if strictly needed but usually findingDetails is what users want
+                    if (sourceFinding.findingDetails) {
+                        targetFinding.findingDetails = sourceFinding.findingDetails;
+                        updated = true;
+                    }
                     if (updated) updateCount++;
                 }
             }
@@ -606,6 +590,7 @@ function App() {
                     ruleId: f.ruleId || f.Rule_ID || f.STIG_ID || f.rule_id || f.group_id || '',
                     fixText: f.fixText || f.Fix_Text || f.fix_text || f.fix || f.check_content || '',
                     description: f.description || f.Vuln_Discuss || f.desc || f.discussion || '',
+                    findingDetails: f.findingDetails || f.FINDING_DETAILS || f.finding_details || '',
                     ccis: Array.isArray(f.ccis) ? f.ccis : []
                 }));
 
@@ -2128,7 +2113,7 @@ function App() {
                                                 <h3 className={`font-semibold text-lg truncate px-4 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{copySource.filename}</h3>
                                                 <div className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{copySource.hostname}</div>
 
-                                                <div className="flex justify-center gap-2 text-xs">
+                                                <div className="flex justify-center gap-2 mb-4 text-xs">
                                                     <span className="px-2 py-1 rounded-md bg-green-100 text-green-700 font-medium">
                                                         {copySource.findings.filter(f => f.status === 'Open').length} Open
                                                     </span>
@@ -2137,12 +2122,20 @@ function App() {
                                                     </span>
                                                 </div>
 
-                                                <button
-                                                    onClick={() => setCopySource(null)}
-                                                    className="mt-6 text-xs text-red-500 hover:text-red-600 font-medium underline"
-                                                >
-                                                    Remove File
-                                                </button>
+                                                <div className="flex justify-center gap-3">
+                                                    <button
+                                                        onClick={() => setShowSourcePreview(true)}
+                                                        className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${darkMode ? 'border-gray-600 hover:bg-gray-700 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}
+                                                    >
+                                                        <Eye size={12} className="inline mr-1" /> View Details
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setCopySource(null)}
+                                                        className="text-xs text-red-500 hover:text-red-600 font-medium underline px-3 py-1.5"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
                                             </div>
                                         ) : (
                                             <>
