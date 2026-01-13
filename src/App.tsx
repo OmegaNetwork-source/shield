@@ -638,23 +638,20 @@ function App() {
             });
 
             // 2. Build Summary Data
-            // Headers matches the user's "Current Environment" image layout
+            // Headers matches the specific user request
+            // Layout: STIG | Instances | Total Controls | CAT I (%/Total/NaF/NA/Open) | CAT II ... | CAT III ...
             const summaryHeader1 = [
-                'STIG', '# OF INSTANCES', 'GRAND TOTAL OF CONTROLS', 'OVERALL % COMPLETE',
-                'CAT I', '', '', '',  // Merged Header Concept
-                'CAT II % COMPLETE',
-                'CAT II', '', '', '', // Merged Header Concept
-                'CAT III % COMPLETE',
-                'CAT III', '', '', '' // Merged Header Concept
+                'STIG Name', '# of Instances', 'Total Controls',
+                'CAT I', '', '', '', '', // % Comp, Total, NaF, NA, Open
+                'CAT II', '', '', '', '',
+                'CAT III', '', '', '', ''
             ];
 
             const summaryHeader2 = [
-                '', '', '', '',
-                'TOTAL', 'NOT A FINDING', 'NOT APPLICABLE', 'OPEN',
-                '',
-                'TOTAL', 'NOT A FINDING', 'NOT APPLICABLE', 'OPEN',
-                '',
-                'TOTAL', 'NOT A FINDING', 'NOT APPLICABLE', 'OPEN'
+                '', '', '',
+                '% Complete', 'Total CAT Is', 'Not a Finding', 'Not Applicable', 'Open',
+                '% Complete', 'Total CAT IIs', 'Not a Finding', 'Not Applicable', 'Open',
+                '% Complete', 'Total CAT IIIs', 'Not a Finding', 'Not Applicable', 'Open'
             ];
 
             const summaryRows: any[] = [];
@@ -691,7 +688,7 @@ function App() {
                         if (sev === 'high' || sev === 'cat i') cat = 'cat1';
                         else if (sev === 'medium' || sev === 'cat ii') cat = 'cat2';
 
-                        // Status Normalization (Already done in parser, but safe to check)
+                        // Status Normalization
                         const s = (f.status || '').toLowerCase().replace(/[\s_]/g, '');
 
                         // Increment Total for this Cat
@@ -718,41 +715,38 @@ function App() {
                     return Math.round((compliant / s.total) * 100) + '%';
                 };
 
-                const overallTotal = stats.cat1.total + stats.cat2.total + stats.cat3.total;
-                const overallCompliant = (stats.cat1.naf + stats.cat1.na) + (stats.cat2.naf + stats.cat2.na) + (stats.cat3.naf + stats.cat3.na);
-                const overallPct = overallTotal === 0 ? '100%' : Math.round((overallCompliant / overallTotal) * 100) + '%';
-
                 summaryRows.push([
                     stigName,
                     instances,
                     totalControls,
-                    overallPct,
                     // CAT I
-                    stats.cat1.total, stats.cat1.naf, stats.cat1.na, stats.cat1.open,
+                    calcPct(stats.cat1), stats.cat1.total, stats.cat1.naf, stats.cat1.na, stats.cat1.open,
                     // CAT II
-                    calcPct(stats.cat2),
-                    stats.cat2.total, stats.cat2.naf, stats.cat2.na, stats.cat2.open,
+                    calcPct(stats.cat2), stats.cat2.total, stats.cat2.naf, stats.cat2.na, stats.cat2.open,
                     // CAT III
-                    calcPct(stats.cat3),
-                    stats.cat3.total, stats.cat3.naf, stats.cat3.na, stats.cat3.open
+                    calcPct(stats.cat3), stats.cat3.total, stats.cat3.naf, stats.cat3.na, stats.cat3.open
                 ]);
             });
 
             // Grand Total Row
+            // Calculate Grand Percentages
+            const calcGrandPct = (s: typeof grandStats.cat1) => {
+                if (s.total === 0) return '100%';
+                const compliant = s.naf + s.na;
+                return Math.round((compliant / s.total) * 100) + '%';
+            };
+
             summaryRows.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
             summaryRows.push([
                 'GRAND TOTAL',
                 grantTotalInstances,
                 grandTotalControls,
-                '',
                 // CAT I
-                grandStats.cat1.total, grandStats.cat1.naf, grandStats.cat1.na, grandStats.cat1.open,
+                calcGrandPct(grandStats.cat1), grandStats.cat1.total, grandStats.cat1.naf, grandStats.cat1.na, grandStats.cat1.open,
                 // CAT II
-                '',
-                grandStats.cat2.total, grandStats.cat2.naf, grandStats.cat2.na, grandStats.cat2.open,
+                calcGrandPct(grandStats.cat2), grandStats.cat2.total, grandStats.cat2.naf, grandStats.cat2.na, grandStats.cat2.open,
                 // CAT III
-                '',
-                grandStats.cat3.total, grandStats.cat3.naf, grandStats.cat3.na, grandStats.cat3.open
+                calcGrandPct(grandStats.cat3), grandStats.cat3.total, grandStats.cat3.naf, grandStats.cat3.na, grandStats.cat3.open
             ]);
 
             // Create Summary Sheet
@@ -762,13 +756,13 @@ function App() {
             summarySheet['!cols'] = [
                 { wch: 40 }, // STIG
                 { wch: 15 }, // Instances
-                { wch: 15 }, // Grand Total
-                { wch: 12 }, // Overall %
-                { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, // CAT I
-                { wch: 12 }, // CAT II %
-                { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, // CAT II
-                { wch: 12 }, // CAT III %
-                { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }  // CAT III
+                { wch: 15 }, // Total Controls
+                // CAT I
+                { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 },
+                // CAT II
+                { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 },
+                // CAT III
+                { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }
             ];
 
             XLSX.utils.book_append_sheet(workbook, summarySheet, 'CURRENT ENVIRONMENT');
