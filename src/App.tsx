@@ -836,13 +836,13 @@ function App() {
                         detailData.push([
                             ckl.hostname,
                             f.vulnId,
-                            f.ruleId,
+                            f.ruleId || '',
                             sev,
                             f.status,
                             f.title,
                             f.comments,
-                            f.fixText,
-                            f.description,
+                            f.fixText || '',
+                            f.description || '',
                             cciStr
                         ]);
                     });
