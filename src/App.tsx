@@ -504,7 +504,7 @@ function App() {
                     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     filename: file.name,
                     hostname: extractedHostname || file.name.replace(/\.(ckl|cklb|json|xml)$/i, ''), // Fallback to filename
-                    stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || 'Imported Checklist',
+                    stigName: json.stigName || json.SID_NAME || findValue(json, 'SID_NAME') || findValue(json, 'STIG') || findValue(json, 'stig_name') || findValue(json, 'display_name') || findValue(json, 'title') || 'Imported Checklist',
                     findings: mappedFindings
                 };
             } else {
@@ -1439,7 +1439,7 @@ function App() {
                                     </div>
 
                                     {/* Summary Stats */}
-                                    <div className={`grid grid-cols-4 gap-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                                    <div className={`grid grid-cols-5 gap-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
                                         <div className="text-center">
                                             <div className="text-2xl font-bold text-red-500">
                                                 {uploadedChecklists.reduce((acc, c) => acc + c.findings.filter(f => f.status === 'Open').length, 0)}
@@ -1463,6 +1463,12 @@ function App() {
                                                 {new Set(uploadedChecklists.map(c => c.hostname)).size}
                                             </div>
                                             <div className={`text-xs uppercase ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Unique Hosts</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-2xl font-bold text-purple-500">
+                                                {new Set(uploadedChecklists.map(c => c.stigName)).size}
+                                            </div>
+                                            <div className={`text-xs uppercase ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Unique STIGs</div>
                                         </div>
                                     </div>
 
