@@ -3017,20 +3017,52 @@ function App() {
                                     <div className={`flex-1 flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                         <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
                                             <div className="flex items-center justify-between">
+
                                                 <div className="flex items-center gap-2">
                                                     <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
-                                                        <div className="font-bold text-xs uppercase">Checklist</div>
+                                                        <div className="font-bold text-xs uppercase">Workspace</div>
                                                     </div>
                                                     {editFile && (
-                                                        <div className="text-sm">
-                                                            <div className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{editFile.filename}</div>
-                                                            <div className="text-xs text-gray-500">{editFile.hostname}</div>
+                                                        <div className="relative group">
+                                                            <button className={`flex items-center gap-2 text-sm font-semibold px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                                                <span className="truncate max-w-[300px]">{editFile.filename}</span>
+                                                                <ChevronDown size={14} className="opacity-50" />
+                                                            </button>
+                                                            {/* Dropdown for switching or closing */}
+                                                            <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 hidden group-hover:block animate-in fade-in zoom-in-95 duration-100">
+                                                                <div className="p-2">
+                                                                    <div className="text-xs font-semibold text-gray-500 mb-2 px-2">OPEN CHECKLISTS</div>
+                                                                    {uploadedChecklists.map((ckl, i) => (
+                                                                        <button key={i} onClick={() => setEditFile(ckl)} className={`w-full text-left px-2 py-1.5 rounded text-xs truncate ${editFile.id === ckl.id ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'}`}>
+                                                                            {ckl.filename}
+                                                                        </button>
+                                                                    ))}
+                                                                    <div className="border-t my-2 border-gray-100 dark:border-gray-700"></div>
+                                                                    <button onClick={() => setEditFile(null)} className="w-full text-left px-2 py-1.5 rounded text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
+                                                                        <X size={12} /> Close Current File
+                                                                    </button>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
-                                                {editFile && (
-                                                    <button onClick={() => setEditFile(null)} className="text-xs text-red-500 hover:text-red-600 font-medium underline px-2">Change File</button>
-                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1">
+                                                        <Upload size={12} /> Import Checklist
+                                                        <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" multiple onChange={async (e) => {
+                                                            if (e.target.files) {
+                                                                const files = Array.from(e.target.files);
+                                                                for (const file of files) {
+                                                                    const parsed = await parseCklFile(file);
+                                                                    if (parsed) {
+                                                                        setUploadedChecklists(prev => [...prev, parsed]);
+                                                                        setEditFile(parsed);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }} />
+                                                    </label>
+                                                </div>
                                             </div>
 
                                             {editFile && (
@@ -3131,121 +3163,121 @@ function App() {
                                                                     .map((f, idx) => ({ ...f, origIdx: idx }))
                                                                     .filter(f => (filterStatus === 'All' || f.status === filterStatus) && (filterSeverity === 'All' || f.severity === filterSeverity))
                                                                     .map((f, i) => (
-                                                                        <tr key={f.origIdx} className="group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top">
-                                                                            <td className="px-3 py-2 pt-3">
-                                                                                <div className={`text-xs font-medium mb-1 line-clamp-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{f.title}</div>
-                                                                                <div className="font-mono text-[10px] text-gray-400">{f.ruleId || f.vulnId}</div>
-                                                                            </td>
-                                                                            <td className="px-3 py-2 pt-2">
-                                                                                <select
-                                                                                    value={f.severity}
-                                                                                    onChange={e => {
-                                                                                        const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                        newFile.findings[f.origIdx].severity = e.target.value;
-                                                                                        setEditFile(newFile);
-                                                                                    }}
-                                                                                    className={`w-full bg-transparent border rounded px-1 py-1 text-xs outline-none focus:border-blue-500 ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}
-                                                                                >
-                                                                                    <option value="high">High</option>
-                                                                                    <option value="medium">Medium</option>
-                                                                                    <option value="low">Low</option>
-                                                                                </select>
-                                                                            </td>
-                                                                            <td className="px-3 py-2 pt-2">
-                                                                                <select
-                                                                                    value={f.status}
-                                                                                    onChange={e => {
-                                                                                        const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                        newFile.findings[f.origIdx].status = e.target.value;
-                                                                                        setEditFile(newFile);
-                                                                                    }}
-                                                                                    className={`w-full bg-transparent border rounded px-1 py-1 text-xs outline-none focus:border-blue-500 font-medium ${f.status === 'Open' ? 'text-red-500 border-red-200' :
-                                                                                        f.status === 'NotAFinding' ? 'text-green-500 border-green-200' :
-                                                                                            'text-gray-500 border-gray-300'
-                                                                                        }`}
-                                                                                >
-                                                                                    <option value="Open">Open</option>
-                                                                                    <option value="NotAFinding">Not A Finding</option>
-                                                                                    <option value="Not_Reviewed">Not Reviewed</option>
-                                                                                    <option value="Not_Applicable">Not Applicable</option>
-                                                                                </select>
-                                                                            </td>
-                                                                            <td className="px-3 py-2">
-                                                                                {/* Comments Field (Always Visible) */}
-                                                                                <div className="mb-2">
-                                                                                    <label className="text-[10px] uppercase font-bold text-gray-400">Comments</label>
-                                                                                    <textarea
-                                                                                        className={`w-full text-xs p-2 rounded border resize-y min-h-[60px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                        value={f.comments || ''}
+                                                                        <React.Fragment key={f.origIdx}>
+                                                                            <tr className={`group hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top ${expandedEditIdx === f.origIdx ? 'bg-gray-50 dark:bg-gray-800/30' : ''}`}>
+                                                                                <td className="px-3 py-2 pt-3">
+                                                                                    <div className={`text-xs font-medium mb-1 line-clamp-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{f.title}</div>
+                                                                                    <div className="font-mono text-[10px] text-gray-400">{f.ruleId || f.vulnId}</div>
+                                                                                </td>
+                                                                                <td className="px-3 py-2 pt-2">
+                                                                                    <select
+                                                                                        value={f.severity}
                                                                                         onChange={e => {
                                                                                             const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                            newFile.findings[f.origIdx].comments = e.target.value;
+                                                                                            newFile.findings[f.origIdx].severity = e.target.value;
                                                                                             setEditFile(newFile);
                                                                                         }}
-                                                                                        placeholder="Add comments here..."
-                                                                                    />
-                                                                                </div>
-
-                                                                                {expandedEditIdx === f.origIdx ? (
-                                                                                    <div className="flex flex-col gap-3 mt-2 border-t border-gray-100 dark:border-gray-700 pt-4 animate-in fade-in zoom-in-95 duration-200 max-w-5xl mx-auto">
-
-                                                                                        {/* STIG Info Header Grid */}
-                                                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Group ID</div><div className="text-xs font-mono dark:text-gray-300">{f.groupId || 'N/A'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Rule ID</div><div className="text-xs font-mono dark:text-gray-300">{f.ruleId || 'N/A'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Legacy ID</div><div className="text-xs font-mono dark:text-gray-300">{f.legacyId || 'N/A'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">Classification</div><div className="text-xs font-mono dark:text-gray-300">{f.classification || 'UNCLASSIFIED'}</div></div>
-                                                                                            <div><div className="text-[9px] uppercase text-gray-400 dark:text-gray-400">CCIs</div><div className="text-xs font-mono dark:text-gray-300 truncate" title={f.ccis?.join(', ')}>{(f.ccis?.length || 0) > 0 ? f.ccis?.[0] + (f.ccis!.length > 1 ? '...' : '') : 'N/A'}</div></div>
-                                                                                        </div>
-
-                                                                                        <div className="grid grid-cols-1 gap-4">
-                                                                                            <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Rule Title</div>
-                                                                                                <div className="text-xs font-medium dark:text-gray-200">{f.title}</div>
-                                                                                            </div>
-                                                                                            <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Discussion</div>
-                                                                                                <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap dark:text-gray-300">{f.description}</div>
-                                                                                            </div>
-                                                                                            <div className="grid grid-cols-2 gap-4">
-                                                                                                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                    <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Check Text</div>
-                                                                                                    <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap dark:text-gray-300">{f.checkText}</div>
-                                                                                                </div>
-                                                                                                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded border border-gray-100 dark:border-gray-700">
-                                                                                                    <div className="font-bold text-xs uppercase text-gray-500 dark:text-gray-400 mb-1">Fix Text</div>
-                                                                                                    <div className="text-xs max-h-40 overflow-y-auto whitespace-pre-wrap dark:text-gray-300">{f.fixText}</div>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-
-                                                                                        <div>
-                                                                                            <label className="text-[10px] uppercase font-bold text-gray-400">Finding Details / Evidence</label>
-                                                                                            <textarea
-                                                                                                className={`w-full text-xs p-2 rounded border resize-y min-h-[100px] ${darkMode ? 'bg-gray-900 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
-                                                                                                value={f.findingDetails || ''}
-                                                                                                onChange={e => {
-                                                                                                    const newFile = JSON.parse(JSON.stringify(editFile));
-                                                                                                    newFile.findings[f.origIdx].findingDetails = e.target.value;
-                                                                                                    setEditFile(newFile);
-                                                                                                }}
-                                                                                                placeholder="Paste technical evidence or screenshots details here..."
-                                                                                            />
-                                                                                        </div>
-                                                                                        <button onClick={() => setExpandedEditIdx(null)} className="text-xs bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1 rounded font-medium self-start">
-                                                                                            Collapse Details
-                                                                                        </button>
-                                                                                    </div>
-                                                                                ) : (
-                                                                                    <button
-                                                                                        onClick={() => setExpandedEditIdx(f.origIdx)}
-                                                                                        className="text-[10px] font-medium text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-1 mt-2"
+                                                                                        className={`w-full bg-transparent border rounded px-1 py-1 text-xs outline-none focus:border-blue-500 ${darkMode ? 'border-gray-600 bg-gray-900 text-gray-200 focus:bg-gray-900 focus:text-gray-200' : 'border-gray-300'}`}
                                                                                     >
-                                                                                        <Info size={12} /> Show Discussion, Fix Text & Evidence
+                                                                                        <option value="high">High</option>
+                                                                                        <option value="medium">Medium</option>
+                                                                                        <option value="low">Low</option>
+                                                                                    </select>
+                                                                                </td>
+                                                                                <td className="px-3 py-2 pt-2">
+                                                                                    <select
+                                                                                        value={f.status}
+                                                                                        onChange={e => {
+                                                                                            const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                            newFile.findings[f.origIdx].status = e.target.value;
+                                                                                            setEditFile(newFile);
+                                                                                        }}
+                                                                                        className={`w-full bg-transparent border rounded px-1 py-1 text-xs outline-none focus:border-blue-500 font-medium ${darkMode ? 'bg-gray-900 focus:bg-gray-900' : ''} ${f.status === 'Open' ? 'text-red-500 border-red-200' :
+                                                                                            f.status === 'NotAFinding' ? 'text-green-500 border-green-200' :
+                                                                                                'text-gray-500 border-gray-300'
+                                                                                            }`}
+                                                                                    >
+                                                                                        <option value="Open">Open</option>
+                                                                                        <option value="NotAFinding">Not A Finding</option>
+                                                                                        <option value="Not_Reviewed">Not Reviewed</option>
+                                                                                        <option value="Not_Applicable">Not Applicable</option>
+                                                                                    </select>
+                                                                                </td>
+                                                                                <td className="px-3 py-2">
+                                                                                    {/* Comments Field (Always Visible) */}
+                                                                                    <div className="mb-2">
+                                                                                        <label className="text-[10px] uppercase font-bold text-gray-400">Comments</label>
+                                                                                        <textarea
+                                                                                            className={`w-full text-xs p-2 rounded border resize-y min-h-[60px] ${darkMode ? 'bg-gray-900 border-gray-600 text-gray-100 placeholder-gray-500 focus:bg-gray-900 focus:text-gray-100' : 'bg-white border-gray-300 text-gray-900'}`}
+                                                                                            value={f.comments || ''}
+                                                                                            onChange={e => {
+                                                                                                const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                                newFile.findings[f.origIdx].comments = e.target.value;
+                                                                                                setEditFile(newFile);
+                                                                                            }}
+                                                                                            placeholder="Add comments here..."
+                                                                                        />
+                                                                                    </div>
+                                                                                    <button
+                                                                                        onClick={() => setExpandedEditIdx(expandedEditIdx === f.origIdx ? null : f.origIdx)}
+                                                                                        className={`text-[10px] font-medium hover:underline flex items-center gap-1 mt-2 ${expandedEditIdx === f.origIdx ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500'}`}
+                                                                                    >
+                                                                                        <Info size={12} /> {expandedEditIdx === f.origIdx ? 'Hide Details' : 'Show STIG Details, Fix Text & Evidence'}
                                                                                     </button>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
+                                                                                </td>
+                                                                            </tr>
+                                                                            {expandedEditIdx === f.origIdx && (
+                                                                                <tr className="bg-gray-50/50 dark:bg-gray-800/20">
+                                                                                    <td colSpan={4} className="px-4 py-4 border-t border-gray-100 dark:border-gray-700">
+                                                                                        <div className="max-w-5xl mx-auto flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
+                                                                                            {/* STIG Info Header Grid */}
+                                                                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                                                <div><div className="text-[9px] uppercase text-gray-500 dark:text-gray-400 font-bold">Group ID</div><div className="text-xs font-mono dark:text-gray-200">{f.groupId || 'N/A'}</div></div>
+                                                                                                <div><div className="text-[9px] uppercase text-gray-500 dark:text-gray-400 font-bold">Rule ID</div><div className="text-xs font-mono dark:text-gray-200">{f.ruleId || 'N/A'}</div></div>
+                                                                                                <div><div className="text-[9px] uppercase text-gray-500 dark:text-gray-400 font-bold">Legacy ID</div><div className="text-xs font-mono dark:text-gray-200">{f.legacyId || 'N/A'}</div></div>
+                                                                                                <div><div className="text-[9px] uppercase text-gray-500 dark:text-gray-400 font-bold">Classification</div><div className="text-xs font-mono dark:text-gray-200">{f.classification || 'UNCLASSIFIED'}</div></div>
+                                                                                                <div><div className="text-[9px] uppercase text-gray-500 dark:text-gray-400 font-bold">CCIs</div><div className="text-xs font-mono dark:text-gray-200 truncate" title={f.ccis?.join(', ')}>{(f.ccis?.length || 0) > 0 ? f.ccis?.[0] + (f.ccis!.length > 1 ? '...' : '') : 'N/A'}</div></div>
+                                                                                            </div>
+
+                                                                                            <div className="grid grid-cols-1 gap-4">
+                                                                                                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                                                    <div className="font-bold text-xs uppercase text-blue-600 dark:text-blue-400 mb-2">Rule Title</div>
+                                                                                                    <div className="text-sm font-medium dark:text-gray-200 leading-relaxed">{f.title}</div>
+                                                                                                </div>
+                                                                                                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                                                    <div className="font-bold text-xs uppercase text-blue-600 dark:text-blue-400 mb-2">Discussion</div>
+                                                                                                    <div className="text-xs dark:text-gray-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto pr-2">{f.description}</div>
+                                                                                                </div>
+                                                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                                                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                                                        <div className="font-bold text-xs uppercase text-green-600 dark:text-green-400 mb-2">Check Text</div>
+                                                                                                        <div className="text-xs dark:text-gray-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto pr-2">{f.checkText}</div>
+                                                                                                    </div>
+                                                                                                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                                                        <div className="font-bold text-xs uppercase text-indigo-600 dark:text-indigo-400 mb-2">Fix Text</div>
+                                                                                                        <div className="text-xs dark:text-gray-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto pr-2">{f.fixText}</div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+                                                                                                <label className="text-xs uppercase font-bold text-gray-500 dark:text-gray-400 mb-2 block">Finding Details / Evidence</label>
+                                                                                                <textarea
+                                                                                                    className={`w-full text-sm p-3 rounded border resize-y min-h-[120px] ${darkMode ? 'bg-gray-900 border-gray-600 text-gray-100 placeholder-gray-600 focus:bg-gray-900 focus:text-gray-100' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
+                                                                                                    value={f.findingDetails || ''}
+                                                                                                    onChange={e => {
+                                                                                                        const newFile = JSON.parse(JSON.stringify(editFile));
+                                                                                                        newFile.findings[f.origIdx].findingDetails = e.target.value;
+                                                                                                        setEditFile(newFile);
+                                                                                                    }}
+                                                                                                    placeholder="Paste regular text, technical evidence, or output details here..."
+                                                                                                />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            )}
+                                                                        </React.Fragment>
                                                                     ))}
                                                             </tbody>
                                                         </table>
