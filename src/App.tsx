@@ -3016,9 +3016,8 @@ function App() {
                                 <div className="flex-1 min-h-0 flex flex-col">
                                     <div className={`flex-1 flex flex-col rounded-2xl border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                         <div className={`p-3 border-b flex flex-col gap-2 ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-100 bg-gray-50'}`}>
-                                            <div className="flex items-center justify-between">
-
-                                                <div className="flex items-center gap-2">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="flex items-center gap-2 flex-1">
                                                     <div className="p-1.5 rounded-lg bg-blue-100 text-blue-600">
                                                         <div className="font-bold text-xs uppercase">Workspace</div>
                                                     </div>
@@ -3067,11 +3066,11 @@ function App() {
 
                                             {editFile && (
                                                 <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                    <div className="flex items-center flex-1 gap-1 bg-white dark:bg-black/20 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
-                                                        <input type="text" placeholder="Find..." className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
+                                                    <div className="flex items-center flex-1 gap-1 bg-white dark:bg-gray-900 p-1 rounded-lg border border-gray-200 dark:border-gray-600">
+                                                        <input type="text" placeholder="Find..." className={`bg-transparent text-xs px-2 py-1 flex-1 outline-none ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`}
                                                             value={findText} onChange={e => setFindText(e.target.value)} />
                                                         <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-                                                        <input type="text" placeholder="Replace..." className="bg-transparent text-xs px-2 py-1 flex-1 outline-none"
+                                                        <input type="text" placeholder="Replace..." className={`bg-transparent text-xs px-2 py-1 flex-1 outline-none ${darkMode ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'}`}
                                                             value={replaceText} onChange={e => setReplaceText(e.target.value)} />
                                                         <button onClick={() => {
                                                             if (!editFile || !findText) return;
