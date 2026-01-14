@@ -308,18 +308,61 @@ export interface ParsedChecklist {
         findingDetails: string;
         ccis: string[];
     }>;
+    rawJson?: any; // Store raw JSON structure for re-export (or constructed structure if XML)
 }
 
 export async function parseCklFile(file: File): Promise<ParsedChecklist | null> {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const xml = e.target?.result as string;
-            if (!xml) { resolve(null); return; }
+            const content = e.target?.result as string;
+            if (!content) { resolve(null); return; }
+
+            // Check if JSON (CKLB)
+            if (content.trim().startsWith('{')) {
+                try {
+                    const json = JSON.parse(content);
+                    const findings: ParsedChecklist['findings'] = [];
+
+                    // Traverse STIG Viewer JSON structure
+                    // Structure: { stigs: [ { rules: [ ... ] } ] }
+                    if (json.stigs && Array.isArray(json.stigs)) {
+                        for (const stig of json.stigs) {
+                            if (stig.rules && Array.isArray(stig.rules)) {
+                                for (const rule of stig.rules) {
+                                    findings.push({
+                                        vulnId: rule.group_id || '',
+                                        ruleId: rule.rule_id || '',
+                                        status: rule.status || 'Not_Reviewed',
+                                        severity: rule.severity || 'low',
+                                        title: rule.rule_title || '',
+                                        comments: rule.comments || '',
+                                        findingDetails: rule.finding_details || '',
+                                        ccis: rule.cci_ref ? [rule.cci_ref] : [] // Simplification
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    resolve({
+                        id: Math.random().toString(36).substr(2, 9),
+                        filename: file.name,
+                        hostname: json.target_data?.host_name || '',
+                        stigName: json.stigs?.[0]?.display_name || 'Imported STIG',
+                        findings,
+                        rawJson: json
+                    });
+                    return;
+                } catch (err) {
+                    console.error("Error parsing JSON CKLB", err);
+                    // Fallthrough to XML try
+                }
+            }
 
             try {
                 const parser = new DOMParser();
-                const doc = parser.parseFromString(xml, "text/xml");
+                const doc = parser.parseFromString(content, "text/xml");
 
                 const asset = doc.getElementsByTagName('ASSET')[0];
                 const hostname = asset?.getElementsByTagName('HOST_NAME')[0]?.textContent || '';
@@ -370,12 +413,33 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                     });
                 }
 
+                // Construct rawJson for XML imports to support Export
+                const rawJson = {
+                    stigs: [{
+                        display_name: stigRef,
+                        rules: findings.map(f => ({
+                            group_id: f.vulnId,
+                            rule_id: f.ruleId,
+                            status: f.status,
+                            severity: f.severity,
+                            rule_title: f.title,
+                            comments: f.comments,
+                            finding_details: f.findingDetails,
+                            cci_ref: f.ccis[0] || ''
+                        }))
+                    }],
+                    target_data: {
+                        host_name: hostname
+                    }
+                };
+
                 resolve({
                     id: Math.random().toString(36).substr(2, 9),
                     filename: file.name,
                     hostname,
                     stigName: stigRef,
-                    findings
+                    findings,
+                    rawJson
                 });
 
             } catch (err) {
