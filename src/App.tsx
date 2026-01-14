@@ -11,7 +11,9 @@ import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 
 import { STIG_PATHS } from './stig-paths';
-import { getAllStaticMappings } from './data/static-cci-map';
+import cciMapRaw from './data/cci2nist.json';
+
+const cciMap = cciMapRaw as Record<string, string>;
 
 // Feature Flag: Check if running in Electron
 // @ts-ignore
@@ -184,73 +186,95 @@ function App() {
     });
 
     // Controls State
-    // Controls State
-    const [controlsRev, setControlsRev] = useState<'rev4' | 'rev5'>('rev5');
+    // Rev 4/5 toggle removed as our source map is unified/flat (MITRE cci2nist)
 
     const controlsData = useMemo(() => {
-        // Use our static "Universe" of CCIs as the baseline for what controls exist
-        const allMappings = getAllStaticMappings();
+        // We now iterate from the FINDINGS up to the CONTROLS
+        const controlMap = new Map<string, {
+            control: string,
+            ccis: Set<string>,
+            openCount: number,
+            totalCount: number,
+            notAFindingCount: number
+        }>();
 
-        const data: any[] = [];
-        const seenControls = new Set();
-        const processedControls = new Set<string>();
+        uploadedChecklists.forEach(ckl => {
+            ckl.findings.forEach(finding => {
+                // Determine relevant CCIs for this finding
+                let findingCcis: string[] = [];
 
-        // 1. Iterate over all KNOWN mappings to build the control list
-        allMappings.forEach(mapping => {
-            const controls = controlsRev === 'rev4' ? mapping.rev4 : mapping.rev5;
+                if (finding.ccis && finding.ccis.length > 0) {
+                    findingCcis = finding.ccis;
+                } else {
+                    // Fallback to rules lookup
+                    const rule = rules.find(r => r.vulnId === finding.vulnId);
+                    if (rule && rule.ccis) {
+                        findingCcis = rule.ccis;
+                    }
+                }
 
-            controls.forEach(control => {
-                if (processedControls.has(control)) return;
-                processedControls.add(control);
+                // Map CCIs to Controls
+                const findingControls = new Set<string>();
 
-                // Find all CCIs associated with this Control (in our static map)
-                const relevantCcis = allMappings
-                    .filter(m => (controlsRev === 'rev4' ? m.rev4 : m.rev5).includes(control))
-                    .map(m => m.cci);
-
-                let openCount = 0;
-                let totalCount = 0;
-                let notAFindingCount = 0;
-
-                // Check upladed checklists
-                uploadedChecklists.forEach(ckl => {
-                    ckl.findings.forEach(finding => {
-                        // If finding has CCIs, check match
-                        if (finding.ccis && finding.ccis.length > 0) {
-                            if (finding.ccis.some(c => relevantCcis.includes(c))) {
-                                totalCount++;
-                                if (finding.status === 'Open') openCount++;
-                                if (finding.status === 'NotAFinding') notAFindingCount++;
-                            }
-                            return;
-                        }
-
-                        // Fallback to rules lookup
-                        const rule = rules.find(r => r.vulnId === finding.vulnId);
-                        if (rule) {
-                            if (rule.ccis.some(c => relevantCcis.includes(c))) {
-                                totalCount++;
-                                if (finding.status === 'Open') openCount++;
-                                if (finding.status === 'NotAFinding') notAFindingCount++;
-                            }
-                        }
-                    });
+                findingCcis.forEach(cci => {
+                    const mappedControl = cciMap[cci];
+                    if (mappedControl) {
+                        // extracted: "AC-1.3" -> base: "AC-1"
+                        // Regex to grab the base control (e.g. AC-1, AC-2(1))
+                        // Matches: 2 chars, dash, number, optional parens
+                        const match = mappedControl.match(/^([A-Z]{2}-\d+(\(\d+\))?)/);
+                        const baseControl = match ? match[1] : mappedControl;
+                        findingControls.add(baseControl);
+                    } else {
+                        // Optional: Handle unknown CCIs?
+                        // For now, only show mapped controls as that's what the user expects (NIST View)
+                    }
                 });
 
-                // Only add if we have data OR if we want to show all possible controls
-                data.push({
-                    control,
-                    ccis: relevantCcis,
-                    openCount,
-                    totalCount,
-                    notAFindingCount,
-                    status: openCount > 0 ? 'Fail' : totalCount > 0 && openCount === 0 ? 'Pass' : 'No Data'
+                // Add stats to each relevant control
+                findingControls.forEach(control => {
+                    if (!controlMap.has(control)) {
+                        controlMap.set(control, {
+                            control,
+                            ccis: new Set(),
+                            openCount: 0,
+                            totalCount: 0,
+                            notAFindingCount: 0
+                        });
+                    }
+
+                    const entry = controlMap.get(control)!;
+                    // Add CCIs
+                    findingCcis.forEach(c => {
+                        // Only add if this CCI actually maps to this control? 
+                        // Simplification: Add all CCIs of this finding to this control's bucket? 
+                        // No, exact mapping is better.
+                        if (cciMap[c] && cciMap[c].startsWith(control)) {
+                            entry.ccis.add(c);
+                        }
+                    });
+
+                    entry.totalCount++;
+                    if (finding.status === 'Open') entry.openCount++;
+                    if (finding.status === 'NotAFinding') entry.notAFindingCount++;
                 });
             });
         });
 
-        return data.sort((a, b) => a.control.localeCompare(b.control));
-    }, [controlsRev, uploadedChecklists, rules]);
+        return Array.from(controlMap.values()).map(item => ({
+            ...item,
+            ccis: Array.from(item.ccis).sort(),
+            status: item.openCount > 0 ? 'Fail' : item.totalCount > 0 && item.openCount === 0 ? 'Pass' : 'No Data'
+        })).sort((a, b) => {
+            // Sort naturally (AC-1, AC-2, AC-10)
+            const partsA = a.control.split('-');
+            const partsB = b.control.split('-');
+            if (partsA[0] !== partsB[0]) return partsA[0].localeCompare(partsB[0]);
+            // Compare number part safely
+            return a.control.localeCompare(b.control, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+    }, [uploadedChecklists, rules]);
 
     // Statistics for cards
     const controlsStats = useMemo(() => {
@@ -3996,26 +4020,11 @@ function App() {
                                 </div>
                             </div>
 
-                            {/* Revision Toggle */}
-                            <div className="flex justify-center">
-                                <div className={`p-1 rounded-lg inline-flex ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                                    <button
-                                        onClick={() => setControlsRev('rev4')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${controlsRev === 'rev4'
-                                            ? (darkMode ? 'bg-blue-600 text-white shadow' : 'bg-white text-blue-600 shadow')
-                                            : (darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700')}`}
-                                    >
-                                        NIST SP 800-53 Rev 4
-                                    </button>
-                                    <button
-                                        onClick={() => setControlsRev('rev5')}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${controlsRev === 'rev5'
-                                            ? (darkMode ? 'bg-blue-600 text-white shadow' : 'bg-white text-blue-600 shadow')
-                                            : (darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700')}`}
-                                    >
-                                        NIST SP 800-53 Rev 5
-                                    </button>
-                                </div>
+                            {/* Revision Toggle Removed - Single Standard */}
+                            <div className="flex justify-center mb-6">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${darkMode ? 'bg-blue-900/30 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
+                                    Mapped to NIST SP 800-53
+                                </span>
                             </div>
 
                             {/* Summary Cards */}
