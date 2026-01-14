@@ -796,8 +796,8 @@ function App() {
             if (rawFindings.length > 0) {
                 // Map raw findings to our schema
                 const mappedFindings = rawFindings.map((f: any) => ({
-                    vulnId: f.vulnId || f.vulnNum || f.Vuln_Num || f.vuln_num || f.id || f.rule_id || f.group_id || f.ruleId || 'Unknown',
-                    groupId: f.groupId || f.Group_ID || f.group_id || '',
+                    vulnId: f.group_id || f.groupId || f.Group_ID || f.vulnId || f.vulnNum || f.Vuln_Num || f.vuln_num || 'Unknown', // Group ID (V-XXXX)
+                    groupId: f.group_id || f.groupId || f.Group_ID || '',
                     status: (() => {
                         const raw = f.status || f.STATUS || f.Status || f.finding_status || 'Not_Reviewed';
                         const s = String(raw).toLowerCase().replace(/[\s_]/g, '');
@@ -809,7 +809,7 @@ function App() {
                     severity: f.severity || f.Severity || f.sev || 'medium',
                     title: f.title || f.Rule_Title || f.rule_title || f.ruleTitle || f.group_title || 'Unknown Title',
                     comments: f.comments || f.COMMENTS || f.comment || '',
-                    ruleId: f.ruleId || f.Rule_ID || f.STIG_ID || f.rule_id || f.group_id || '',
+                    ruleId: f.rule_id || f.ruleId || f.Rule_ID || f.STIG_ID || '', // Rule ID (SV-XXXX)
                     fixText: f.fixText || f.Fix_Text || f.fix_text || f.fix || f.check_content || '',
                     checkText: f.checkText || f.Check_Content || f.check_content || f.checkText || '',
                     description: f.description || f.Vuln_Discuss || f.desc || f.discussion || '',
