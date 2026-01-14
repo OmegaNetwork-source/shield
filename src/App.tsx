@@ -50,12 +50,18 @@ function App() {
     const [darkMode, setDarkMode] = useState(false);
 
     // Tools State
-    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap'>('rename');
+    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
     const [heatmapChecklists, setHeatmapChecklists] = useState<typeof uploadedChecklists>([]);
+
+    // Analyzer State
+    const [analyzerOldChecklist, setAnalyzerOldChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [analyzerNewChecklist, setAnalyzerNewChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [analyzerTab, setAnalyzerTab] = useState<'notreviewed' | 'newids' | 'droppedids'>('notreviewed');
+    const [analyzerSelectedIds, setAnalyzerSelectedIds] = useState<Set<string>>(new Set());
     const [uploadedChecklists, setUploadedChecklists] = useState<Array<{
         id: string;
         filename: string;
@@ -376,6 +382,41 @@ function App() {
         if (pct < 0.5) return 'bg-orange-100 text-orange-700';
         return 'bg-red-100 text-red-700';
     };
+
+    // Analyzer computed data
+    const analyzerData = useMemo(() => {
+        if (!analyzerOldChecklist || !analyzerNewChecklist) {
+            return { notReviewed: [], newIds: [], droppedIds: [] };
+        }
+
+        const oldMap = new Map(analyzerOldChecklist.findings.map(f => [f.vulnId, f]));
+        const newMap = new Map(analyzerNewChecklist.findings.map(f => [f.vulnId, f]));
+
+        // Not Reviewed in new checklist but has data in old
+        const notReviewed = analyzerNewChecklist.findings
+            .filter(f => {
+                const status = f.status?.toLowerCase().replace(/[\s_]/g, '') || '';
+                return status === 'notreviewed' || status === 'not_reviewed';
+            })
+            .filter(f => oldMap.has(f.vulnId))
+            .map(f => ({
+                vulnId: f.vulnId,
+                newFinding: f,
+                oldFinding: oldMap.get(f.vulnId)!
+            }));
+
+        // New Group IDs (in new but not in old)
+        const newIds = analyzerNewChecklist.findings
+            .filter(f => !oldMap.has(f.vulnId))
+            .map(f => ({ vulnId: f.vulnId, finding: f }));
+
+        // Dropped IDs (in old but not in new)
+        const droppedIds = analyzerOldChecklist.findings
+            .filter(f => !newMap.has(f.vulnId))
+            .map(f => ({ vulnId: f.vulnId, finding: f }));
+
+        return { notReviewed, newIds, droppedIds };
+    }, [analyzerOldChecklist, analyzerNewChecklist]);
 
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [filterSeverity, setFilterSeverity] = useState<string>('All');
@@ -1999,6 +2040,16 @@ function App() {
                                 >
                                     <div className="size-1 rounded-full bg-current opacity-50" />
                                     Risk Heatmap
+                                </button>
+                                <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('analyzer'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'analyzer'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    STIG Analyzer
                                 </button>
                             </div>
                         )}
@@ -4405,6 +4456,15 @@ function App() {
                                         <Target size={18} />
                                         <div className="font-medium">Risk Heatmap</div>
                                     </button>
+                                    <button
+                                        onClick={() => setToolsMode('analyzer')}
+                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'analyzer'
+                                            ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                            : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                    >
+                                        <GitCompare size={18} />
+                                        <div className="font-medium">STIG Analyzer</div>
+                                    </button>
                                 </div>
 
                                 {/* Tool Content */}
@@ -4657,6 +4717,303 @@ function App() {
                                             ) : (
                                                 <div className="p-10 text-center text-gray-400 border-2 border-dashed rounded-xl">
                                                     Upload checklists to generate the risk heatmap.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* STIG Analyzer Panel */}
+                                    {toolsMode === 'analyzer' && (
+                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
+                                                    <GitCompare size={24} />
+                                                </div>
+                                                <div>
+                                                    <h2 className="text-xl font-semibold">STIG Version Analyzer</h2>
+                                                    <p className="text-sm text-gray-500">Compare old and new STIG checklists to migrate statuses and comments.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Dual Upload Zone */}
+                                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                                {/* Old STIG */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${analyzerOldChecklist ? 'border-green-500 bg-green-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">Old STIG (Source)</div>
+                                                    {analyzerOldChecklist ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium truncate">{analyzerOldChecklist.filename}</div>
+                                                            <div className="text-xs text-gray-500">{analyzerOldChecklist.findings.length} findings</div>
+                                                            <button onClick={() => setAnalyzerOldChecklist(null)} className="text-xs text-red-500 hover:underline mt-1">Remove</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-10 mx-auto bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center mb-2">
+                                                                <Upload size={20} />
+                                                            </div>
+                                                            <span className="text-sm text-gray-500">Upload old checklist</span>
+                                                            <input
+                                                                type="file"
+                                                                className="hidden"
+                                                                accept=".ckl,.cklb,.json,.xml"
+                                                                onChange={async (e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (file) {
+                                                                        const parsed = await parseCklFile(file);
+                                                                        if (parsed) setAnalyzerOldChecklist(parsed as any);
+                                                                    }
+                                                                    e.target.value = '';
+                                                                }}
+                                                            />
+                                                        </label>
+                                                    )}
+                                                </div>
+
+                                                {/* New STIG */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${analyzerNewChecklist ? 'border-blue-500 bg-blue-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">New STIG (Target)</div>
+                                                    {analyzerNewChecklist ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium truncate">{analyzerNewChecklist.filename}</div>
+                                                            <div className="text-xs text-gray-500">{analyzerNewChecklist.findings.length} findings</div>
+                                                            <button onClick={() => setAnalyzerNewChecklist(null)} className="text-xs text-red-500 hover:underline mt-1">Remove</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-10 mx-auto bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center mb-2">
+                                                                <Upload size={20} />
+                                                            </div>
+                                                            <span className="text-sm text-gray-500">Upload new checklist</span>
+                                                            <input
+                                                                type="file"
+                                                                className="hidden"
+                                                                accept=".ckl,.cklb,.json,.xml"
+                                                                onChange={async (e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (file) {
+                                                                        const parsed = await parseCklFile(file);
+                                                                        if (parsed) setAnalyzerNewChecklist(parsed as any);
+                                                                    }
+                                                                    e.target.value = '';
+                                                                }}
+                                                            />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Tabs */}
+                                            {analyzerOldChecklist && analyzerNewChecklist && (
+                                                <>
+                                                    <div className="flex gap-2 mb-4">
+                                                        <button
+                                                            onClick={() => { setAnalyzerTab('notreviewed'); setAnalyzerSelectedIds(new Set()); }}
+                                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerTab === 'notreviewed'
+                                                                ? 'bg-purple-600 text-white'
+                                                                : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600')}`}
+                                                        >
+                                                            Not Reviewed ({analyzerData.notReviewed.length})
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setAnalyzerTab('newids'); setAnalyzerSelectedIds(new Set()); }}
+                                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerTab === 'newids'
+                                                                ? 'bg-green-600 text-white'
+                                                                : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600')}`}
+                                                        >
+                                                            New IDs ({analyzerData.newIds.length})
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setAnalyzerTab('droppedids'); setAnalyzerSelectedIds(new Set()); }}
+                                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerTab === 'droppedids'
+                                                                ? 'bg-red-600 text-white'
+                                                                : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600')}`}
+                                                        >
+                                                            Dropped IDs ({analyzerData.droppedIds.length})
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Not Reviewed Tab Content */}
+                                                    {analyzerTab === 'notreviewed' && (
+                                                        <div className="space-y-4">
+                                                            {analyzerData.notReviewed.length > 0 && (
+                                                                <div className="flex items-center justify-between">
+                                                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={analyzerSelectedIds.size === analyzerData.notReviewed.length}
+                                                                            onChange={(e) => {
+                                                                                if (e.target.checked) {
+                                                                                    setAnalyzerSelectedIds(new Set(analyzerData.notReviewed.map(r => r.vulnId)));
+                                                                                } else {
+                                                                                    setAnalyzerSelectedIds(new Set());
+                                                                                }
+                                                                            }}
+                                                                            className="rounded"
+                                                                        />
+                                                                        Select All
+                                                                    </label>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (analyzerSelectedIds.size === 0) return;
+                                                                            // Copy status and comments from old to new
+                                                                            setAnalyzerNewChecklist(prev => {
+                                                                                if (!prev) return prev;
+                                                                                const updated = { ...prev, findings: [...prev.findings] };
+                                                                                updated.findings = updated.findings.map(f => {
+                                                                                    if (analyzerSelectedIds.has(f.vulnId)) {
+                                                                                        const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
+                                                                                        if (oldF) {
+                                                                                            return {
+                                                                                                ...f,
+                                                                                                status: oldF.status,
+                                                                                                findingDetails: oldF.comments ? `${oldF.comments}\n\n---\n${f.findingDetails || ''}` : f.findingDetails,
+                                                                                                comments: oldF.comments || f.comments
+                                                                                            };
+                                                                                        }
+                                                                                    }
+                                                                                    return f;
+                                                                                });
+                                                                                return updated;
+                                                                            });
+                                                                            setAnalyzerSelectedIds(new Set());
+                                                                        }}
+                                                                        disabled={analyzerSelectedIds.size === 0}
+                                                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerSelectedIds.size > 0
+                                                                            ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                                                                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                    >
+                                                                        Copy Status & Comments ({analyzerSelectedIds.size})
+                                                                    </button>
+                                                                </div>
+                                                            )}
+
+                                                            <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                                <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                                                                    <div className="col-span-1"></div>
+                                                                    <div className="col-span-2">Group ID</div>
+                                                                    <div className="col-span-2">Old Status</div>
+                                                                    <div className="col-span-3">Old Comments</div>
+                                                                    <div className="col-span-1 text-center">→</div>
+                                                                    <div className="col-span-3">New Status</div>
+                                                                </div>
+                                                                <div className="max-h-96 overflow-y-auto divide-y dark:divide-gray-800">
+                                                                    {analyzerData.notReviewed.map((row, idx) => (
+                                                                        <div key={idx} className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                                                            <div className="col-span-1">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={analyzerSelectedIds.has(row.vulnId)}
+                                                                                    onChange={(e) => {
+                                                                                        const newSet = new Set(analyzerSelectedIds);
+                                                                                        if (e.target.checked) newSet.add(row.vulnId);
+                                                                                        else newSet.delete(row.vulnId);
+                                                                                        setAnalyzerSelectedIds(newSet);
+                                                                                    }}
+                                                                                    className="rounded"
+                                                                                />
+                                                                            </div>
+                                                                            <div className="col-span-2 font-mono text-xs">{row.vulnId}</div>
+                                                                            <div className="col-span-2">
+                                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.oldFinding.status === 'Open' ? 'bg-red-100 text-red-700' : row.oldFinding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                                    {row.oldFinding.status}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="col-span-3 text-xs text-gray-500 truncate" title={row.oldFinding.comments}>
+                                                                                {row.oldFinding.comments || '-'}
+                                                                            </div>
+                                                                            <div className="col-span-1 text-center text-gray-400">→</div>
+                                                                            <div className="col-span-3">
+                                                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                                                    Not_Reviewed
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                    {analyzerData.notReviewed.length === 0 && (
+                                                                        <div className="p-8 text-center text-gray-400">
+                                                                            No "Not Reviewed" findings in the new checklist that have status in the old checklist.
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* New IDs Tab */}
+                                                    {analyzerTab === 'newids' && (
+                                                        <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                            <div className={`grid grid-cols-6 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                                                                <div>Group ID</div>
+                                                                <div>Severity</div>
+                                                                <div className="col-span-3">Title</div>
+                                                                <div>Status</div>
+                                                            </div>
+                                                            <div className="max-h-96 overflow-y-auto divide-y dark:divide-gray-800">
+                                                                {analyzerData.newIds.map((row, idx) => (
+                                                                    <div key={idx} className="grid grid-cols-6 gap-2 p-3 items-center text-sm">
+                                                                        <div className="font-mono text-xs">{row.vulnId}</div>
+                                                                        <div>
+                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.finding.severity === 'high' ? 'bg-red-100 text-red-700' : row.finding.severity === 'medium' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                                {row.finding.severity}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="col-span-3 text-xs truncate" title={row.finding.title}>{row.finding.title}</div>
+                                                                        <div>
+                                                                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                                                {row.finding.status}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                                {analyzerData.newIds.length === 0 && (
+                                                                    <div className="p-8 text-center text-gray-400">
+                                                                        No new Group IDs found in the new checklist.
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Dropped IDs Tab */}
+                                                    {analyzerTab === 'droppedids' && (
+                                                        <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                            <div className={`grid grid-cols-6 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                                                                <div>Group ID</div>
+                                                                <div>Severity</div>
+                                                                <div className="col-span-3">Title</div>
+                                                                <div>Old Status</div>
+                                                            </div>
+                                                            <div className="max-h-96 overflow-y-auto divide-y dark:divide-gray-800">
+                                                                {analyzerData.droppedIds.map((row, idx) => (
+                                                                    <div key={idx} className="grid grid-cols-6 gap-2 p-3 items-center text-sm">
+                                                                        <div className="font-mono text-xs">{row.vulnId}</div>
+                                                                        <div>
+                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.finding.severity === 'high' ? 'bg-red-100 text-red-700' : row.finding.severity === 'medium' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                                {row.finding.severity}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="col-span-3 text-xs truncate" title={row.finding.title}>{row.finding.title}</div>
+                                                                        <div>
+                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.finding.status === 'Open' ? 'bg-red-100 text-red-700' : row.finding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                                {row.finding.status}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                                {analyzerData.droppedIds.length === 0 && (
+                                                                    <div className="p-8 text-center text-gray-400">
+                                                                        No Group IDs were dropped from the old checklist.
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {(!analyzerOldChecklist || !analyzerNewChecklist) && (
+                                                <div className="p-8 text-center text-gray-400 border-2 border-dashed rounded-xl">
+                                                    Upload both old and new STIG checklists to begin analysis.
                                                 </div>
                                             )}
                                         </div>
