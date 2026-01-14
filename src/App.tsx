@@ -1,14 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
 import {
-    ShieldCheck, Play, Camera, LayoutGrid, Settings,
-    ChevronRight, ChevronUp, ChevronDown, Check, X, Loader2, AlertTriangle, AlertCircle, Info,
-    FolderOpen, RefreshCw, FileText, Download, Eye, XCircle, ClipboardList, Monitor, Globe,
-    Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target,
-    Filter, Search, FolderClosed, FolderTree, Calendar
+    Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
+    ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed
 } from 'lucide-react';
-import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+
+// --- Configuration ---
 
 import { STIG_PATHS } from './stig-paths';
 import cciMapRaw from './data/cci2nist.json';
@@ -197,6 +194,7 @@ function App() {
             openCount: number,
             totalCount: number,
             notAFindingCount: number
+            notReviewedCount: number
         }>();
 
         uploadedChecklists.forEach(ckl => {
@@ -241,12 +239,17 @@ function App() {
                             groupIds: new Set(),
                             openCount: 0,
                             totalCount: 0,
-                            notAFindingCount: 0
+                            notAFindingCount: 0,
+                            notReviewedCount: 0
                         });
                     }
 
                     const entry = controlMap.get(control)!;
-                    entry.groupIds.add(finding.vulnId || finding.groupId || 'Unknown'); // Add Vuln ID / Group ID
+
+                    // Add Group ID with V- Check
+                    const rawId = finding.vulnId || finding.groupId || 'Unknown';
+                    const normalizedId = rawId.startsWith('V-') ? rawId : `V-${rawId}`;
+                    entry.groupIds.add(normalizedId);
 
                     // Add CCIs
                     findingCcis.forEach(c => {
@@ -260,17 +263,35 @@ function App() {
 
                     entry.totalCount++;
                     if (finding.status === 'Open') entry.openCount++;
-                    if (finding.status === 'NotAFinding') entry.notAFindingCount++;
+                    else if (finding.status === 'NotAFinding') entry.notAFindingCount++;
+                    else entry.notReviewedCount++;
                 });
             });
         });
 
-        return Array.from(controlMap.values()).map(item => ({
-            ...item,
-            ccis: Array.from(item.ccis).sort(),
-            groupIds: Array.from(item.groupIds).sort(),
-            status: item.openCount > 0 ? 'Fail' : item.totalCount > 0 && item.openCount === 0 ? 'Pass' : 'No Data'
-        })).sort((a, b) => {
+        return Array.from(controlMap.values()).map(item => {
+            // Calculate Status
+            // If ANY open => Fail
+            // If NO open AND (At least one Pass OR NA) AND No Not_Reviewed => Pass
+            // Else => No Data
+            let status = 'No Data';
+
+            if (item.openCount > 0) {
+                status = 'Fail';
+            } else if (item.notReviewedCount === 0 && (item.notAFindingCount > 0 || item.totalCount > 0)) {
+                // Simplification: If we have findings and NONE are open and NONE are unreviewed => Pass
+                status = 'Pass';
+            } else {
+                status = 'No Data';
+            }
+
+            return {
+                ...item,
+                ccis: Array.from(item.ccis).sort(),
+                groupIds: Array.from(item.groupIds).sort(),
+                status
+            };
+        }).sort((a, b) => {
             // Sort naturally (AC-1, AC-2, AC-10)
             const partsA = a.control.split('-');
             const partsB = b.control.split('-');
@@ -4030,24 +4051,47 @@ function App() {
                                 <span className={`px-3 py-1 rounded-full text-xs font-medium border ${darkMode ? 'bg-blue-900/30 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
                                     Mapped to NIST SP 800-53
                                 </span>
-                                <button
-                                    onClick={() => {
-                                        const header = ['Control', 'Associated CCIs', 'Group IDs', 'Open Findings', 'Status'];
-                                        const rows = controlsData.map(row => [
-                                            row.control,
-                                            Array.from(row.ccis).join(', '),
-                                            Array.from(row.groupIds || []).join(', '),
-                                            row.openCount.toString(),
-                                            row.status
-                                        ]);
-                                        const tsv = [header.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
-                                        navigator.clipboard.writeText(tsv);
-                                        alert('Table copied to clipboard! You can paste it into Excel.');
-                                    }}
-                                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
-                                >
-                                    <Copy size={14} /> Copy Table
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const header = ['Control', 'Associated CCIs', 'Group IDs', 'Open Findings', 'Status'];
+                                            const rows = controlsData.map(row => [
+                                                row.control,
+                                                Array.from(row.ccis).join(', '),
+                                                Array.from(row.groupIds || []).join(', '),
+                                                row.openCount.toString(),
+                                                row.status
+                                            ]);
+                                            const tsv = [header.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+                                            navigator.clipboard.writeText(tsv);
+                                            alert('Table copied to clipboard! You can paste it into Excel.');
+                                        }}
+                                        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
+                                    >
+                                        <Copy size={14} /> Copy Table
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            const element = document.getElementById('controls-grid');
+                                            if (!element) return;
+                                            try {
+                                                const canvas = await html2canvas(element, { backgroundColor: darkMode ? '#1f2937' : '#ffffff' });
+                                                canvas.toBlob(blob => {
+                                                    if (blob) {
+                                                        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                                                        alert('Table image copied to clipboard!');
+                                                    }
+                                                });
+                                            } catch (e) {
+                                                console.error('Copy image failed', e);
+                                                alert('Failed to copy image.');
+                                            }
+                                        }}
+                                        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
+                                    >
+                                        <ImageIcon size={14} /> Copy Image
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Summary Cards */}
@@ -4071,7 +4115,7 @@ function App() {
                             </div>
 
                             {/* Controls Grid */}
-                            <div className={`rounded-xl border overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`} style={{ maxHeight: '600px' }}>
+                            <div id="controls-grid" className={`rounded-xl border overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`} style={{ maxHeight: '600px' }}>
                                 <div className={`grid grid-cols-12 gap-4 p-4 border-b font-semibold text-xs uppercase tracking-wider ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
                                     <div className="col-span-2">Control</div>
                                     <div className="col-span-4">Associated CCIs</div>
