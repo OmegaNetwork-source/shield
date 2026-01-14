@@ -50,11 +50,12 @@ function App() {
     const [darkMode, setDarkMode] = useState(false);
 
     // Tools State
-    const [toolsMode, setToolsMode] = useState<'rename'>('rename');
+    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
+    const [heatmapChecklists, setHeatmapChecklists] = useState<typeof uploadedChecklists>([]);
     const [uploadedChecklists, setUploadedChecklists] = useState<Array<{
         id: string;
         filename: string;
@@ -1935,6 +1936,16 @@ function App() {
                                 >
                                     <div className="size-1 rounded-full bg-current opacity-50" />
                                     Save As (Bulk Rename)
+                                </button>
+                                <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('heatmap'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'heatmap'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Risk Heatmap
                                 </button>
                             </div>
                         )}
@@ -4332,6 +4343,15 @@ function App() {
                                         <Save size={18} />
                                         <div className="font-medium">Save As (Bulk Rename)</div>
                                     </button>
+                                    <button
+                                        onClick={() => setToolsMode('heatmap')}
+                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'heatmap'
+                                            ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                            : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                    >
+                                        <Target size={18} />
+                                        <div className="font-medium">Risk Heatmap</div>
+                                    </button>
                                 </div>
 
                                 {/* Tool Content */}
@@ -4431,6 +4451,171 @@ function App() {
                                             )}
                                         </div>
                                     )}
+
+                                    {toolsMode === 'heatmap' && (() => {
+                                        // Compute heatmap data from heatmapChecklists
+                                        const heatmapData = useMemo(() => {
+                                            const families: Record<string, { cat1: { open: number; naf: number; nr: number }; cat2: { open: number; naf: number; nr: number }; cat3: { open: number; naf: number; nr: number } }> = {};
+
+                                            heatmapChecklists.forEach(ckl => {
+                                                ckl.findings.forEach(f => {
+                                                    // Get NIST control from CCIs
+                                                    const ccis = f.ccis || [];
+                                                    ccis.forEach(cci => {
+                                                        const nist = cciMap[cci];
+                                                        if (nist) {
+                                                            const family = nist.split('-')[0]; // AC, AU, CM, etc.
+                                                            if (!families[family]) {
+                                                                families[family] = {
+                                                                    cat1: { open: 0, naf: 0, nr: 0 },
+                                                                    cat2: { open: 0, naf: 0, nr: 0 },
+                                                                    cat3: { open: 0, naf: 0, nr: 0 }
+                                                                };
+                                                            }
+
+                                                            const sev = f.severity?.toLowerCase() || 'medium';
+                                                            const cat = sev === 'high' ? 'cat1' : sev === 'medium' ? 'cat2' : 'cat3';
+                                                            const status = f.status?.toLowerCase().replace(/[\s_]/g, '') || 'notreviewed';
+
+                                                            if (status === 'open' || status === 'fail') {
+                                                                families[family][cat].open++;
+                                                            } else if (status === 'notafinding' || status === 'pass') {
+                                                                families[family][cat].naf++;
+                                                            } else {
+                                                                families[family][cat].nr++;
+                                                            }
+                                                        }
+                                                    });
+                                                });
+                                            });
+
+                                            return Object.entries(families)
+                                                .map(([family, data]) => ({ family, ...data }))
+                                                .sort((a, b) => {
+                                                    const riskA = a.cat1.open * 10 + a.cat2.open * 5 + a.cat3.open;
+                                                    const riskB = b.cat1.open * 10 + b.cat2.open * 5 + b.cat3.open;
+                                                    return riskB - riskA;
+                                                });
+                                        }, [heatmapChecklists]);
+
+                                        const getRiskColor = (open: number, total: number) => {
+                                            if (total === 0) return 'bg-gray-100 text-gray-400';
+                                            const pct = open / total;
+                                            if (pct === 0) return 'bg-green-100 text-green-700';
+                                            if (pct < 0.25) return 'bg-yellow-100 text-yellow-700';
+                                            if (pct < 0.5) return 'bg-orange-100 text-orange-700';
+                                            return 'bg-red-100 text-red-700';
+                                        };
+
+                                        return (
+                                            <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                    <div className="p-3 bg-red-100 text-red-600 rounded-xl">
+                                                        <Target size={24} />
+                                                    </div>
+                                                    <div>
+                                                        <h2 className="text-xl font-semibold">Risk Heatmap</h2>
+                                                        <p className="text-sm text-gray-500">Visualize compliance risk by NIST control family.</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Upload Zone */}
+                                                <div className="w-full relative group cursor-pointer mb-8">
+                                                    <div className={`absolute inset-0 rounded-xl bg-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity border-2 border-dashed border-red-500/50`} />
+                                                    <div className={`relative z-10 p-8 rounded-xl border-2 border-dashed text-center transition-colors ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                                        <div className="size-14 mx-auto bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mb-3 shadow-sm">
+                                                            <Upload size={26} />
+                                                        </div>
+                                                        <h3 className="text-base font-medium mb-1">Upload Checklists for Analysis</h3>
+                                                        <p className="text-sm text-gray-500 mb-3">{heatmapChecklists.length} checklist(s) loaded</p>
+                                                        <label className="inline-block relative">
+                                                            <span className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-full text-sm font-medium transition-all shadow-lg active:scale-95 cursor-pointer">
+                                                                Choose Files
+                                                            </span>
+                                                            <input
+                                                                type="file"
+                                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                                multiple
+                                                                accept=".ckl,.cklb,.json,.xml"
+                                                                // @ts-ignore
+                                                                webkitdirectory=""
+                                                                directory=""
+                                                                onChange={async (e) => {
+                                                                    const files = e.target.files;
+                                                                    if (!files) return;
+                                                                    const newChecklists: typeof heatmapChecklists = [];
+                                                                    for (const file of Array.from(files)) {
+                                                                        const name = file.name.toLowerCase();
+                                                                        if (name.endsWith('.ckl') || name.endsWith('.cklb') || name.endsWith('.json') || name.endsWith('.xml')) {
+                                                                            const parsed = await parseCklFile(file);
+                                                                            if (parsed) newChecklists.push(parsed as any);
+                                                                        }
+                                                                    }
+                                                                    setHeatmapChecklists(prev => [...prev, ...newChecklists]);
+                                                                    e.target.value = '';
+                                                                }}
+                                                            />
+                                                        </label>
+                                                        {heatmapChecklists.length > 0 && (
+                                                            <button
+                                                                onClick={() => setHeatmapChecklists([])}
+                                                                className="ml-3 text-sm text-gray-500 hover:text-red-500"
+                                                            >
+                                                                Clear All
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Heatmap Grid */}
+                                                {heatmapData.length > 0 ? (
+                                                    <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                        <div className={`grid grid-cols-5 gap-0 p-3 border-b text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
+                                                            <div>Control Family</div>
+                                                            <div className="text-center">CAT I (High)</div>
+                                                            <div className="text-center">CAT II (Medium)</div>
+                                                            <div className="text-center">CAT III (Low)</div>
+                                                            <div className="text-center">Risk Score</div>
+                                                        </div>
+                                                        <div className="divide-y dark:divide-gray-800">
+                                                            {heatmapData.map((row, idx) => {
+                                                                const riskScore = row.cat1.open * 10 + row.cat2.open * 5 + row.cat3.open;
+                                                                return (
+                                                                    <div key={idx} className="grid grid-cols-5 gap-0 p-3 items-center text-sm">
+                                                                        <div className="font-mono font-bold">{row.family}</div>
+                                                                        <div className="text-center">
+                                                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${getRiskColor(row.cat1.open, row.cat1.open + row.cat1.naf + row.cat1.nr)}`}>
+                                                                                {row.cat1.open} Open
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-center">
+                                                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${getRiskColor(row.cat2.open, row.cat2.open + row.cat2.naf + row.cat2.nr)}`}>
+                                                                                {row.cat2.open} Open
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-center">
+                                                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${getRiskColor(row.cat3.open, row.cat3.open + row.cat3.naf + row.cat3.nr)}`}>
+                                                                                {row.cat3.open} Open
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="text-center">
+                                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${riskScore === 0 ? 'bg-green-500 text-white' : riskScore < 20 ? 'bg-yellow-500 text-white' : riskScore < 50 ? 'bg-orange-500 text-white' : 'bg-red-600 text-white'}`}>
+                                                                                {riskScore}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-10 text-center text-gray-400 border-2 border-dashed rounded-xl">
+                                                        Upload checklists to generate the risk heatmap.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         </div>
