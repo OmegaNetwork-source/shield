@@ -5460,6 +5460,19 @@ function App() {
                                                     Upload both old and new STIG checklists to begin analysis.
                                                 </div>
                                             )}
+                                            {/* DEBUG INFO */}
+                                            <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-900 rounded border border-red-500 overflow-auto max-h-96">
+                                                <h3 className="font-bold text-red-500 mb-2">DEBUG: Raw JSON Structure (For Troubleshooting - Copy this config)</h3>
+                                                <p className="text-xs text-gray-500 mb-2">If your export is failing, upload a WORKING file here, look at this debug info, and verify if the structure (especially "status" fields) matches what you expect.</p>
+                                                <pre className="text-xs font-mono whitespace-pre-wrap text-left select-all">
+                                                    {analyzerNewChecklist?.rawJson ? JSON.stringify({
+                                                        keys: Object.keys(analyzerNewChecklist.rawJson),
+                                                        stigKeys: Object.keys(analyzerNewChecklist.rawJson.stigs?.[0] || {}),
+                                                        ruleSample: analyzerNewChecklist.rawJson.stigs?.[0]?.rules?.[0],
+                                                        targetData: analyzerNewChecklist.rawJson.target_data
+                                                    }, null, 2) : 'No New Checklist Raw JSON available.'}
+                                                </pre>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
