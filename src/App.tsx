@@ -66,8 +66,6 @@ function App() {
             severity: string;
             title: string;
             comments: string;
-            title: string;
-            comments: string;
             ruleId: string; // SV-XXXX
             groupId?: string; // V-XXXX (Redundant with vulnId usually)
             fixText?: string;
