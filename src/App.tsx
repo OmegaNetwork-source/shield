@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight
+    Wrench, Save, ArrowRight, ChevronLeft
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -4463,9 +4463,7 @@ function App() {
                                         </button>
                                         <button
                                             onClick={() => setToolsMode('analyzer')}
-                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'analyzer'
-                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
-                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
                                         >
                                             <GitCompare size={18} />
                                             <div className="font-medium">STIG Analyzer</div>
@@ -4950,7 +4948,7 @@ function App() {
 
                                                                     {/* Custom Finding Details Input */}
                                                                     <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                                                                        <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Add Custom Comment (prepended to Finding Details)</label>
+                                                                        <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Add Custom Comment to <span className="text-blue-500">NEW</span> Finding Details</label>
                                                                         <textarea
                                                                             value={analyzerCustomComment}
                                                                             onChange={(e) => setAnalyzerCustomComment(e.target.value)}
@@ -4962,7 +4960,7 @@ function App() {
 
                                                                     {/* Find and Replace */}
                                                                     <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                                                                        <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Find & Replace in Finding Details</label>
+                                                                        <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Find & Replace in <span className="text-blue-500">NEW</span> Finding Details</label>
                                                                         <div className="flex gap-2 items-center">
                                                                             <input
                                                                                 type="text"
