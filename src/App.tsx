@@ -193,6 +193,7 @@ function App() {
         const controlMap = new Map<string, {
             control: string,
             ccis: Set<string>,
+            groupIds: Set<string>,
             openCount: number,
             totalCount: number,
             notAFindingCount: number
@@ -237,6 +238,7 @@ function App() {
                         controlMap.set(control, {
                             control,
                             ccis: new Set(),
+                            groupIds: new Set(),
                             openCount: 0,
                             totalCount: 0,
                             notAFindingCount: 0
@@ -244,6 +246,8 @@ function App() {
                     }
 
                     const entry = controlMap.get(control)!;
+                    entry.groupIds.add(finding.vulnId || finding.groupId || 'Unknown'); // Add Vuln ID / Group ID
+
                     // Add CCIs
                     findingCcis.forEach(c => {
                         // Only add if this CCI actually maps to this control? 
@@ -264,6 +268,7 @@ function App() {
         return Array.from(controlMap.values()).map(item => ({
             ...item,
             ccis: Array.from(item.ccis).sort(),
+            groupIds: Array.from(item.groupIds).sort(),
             status: item.openCount > 0 ? 'Fail' : item.totalCount > 0 && item.openCount === 0 ? 'Pass' : 'No Data'
         })).sort((a, b) => {
             // Sort naturally (AC-1, AC-2, AC-10)
@@ -4021,10 +4026,28 @@ function App() {
                             </div>
 
                             {/* Revision Toggle Removed - Single Standard */}
-                            <div className="flex justify-center mb-6">
+                            <div className="flex justify-center mb-6 items-center gap-4">
                                 <span className={`px-3 py-1 rounded-full text-xs font-medium border ${darkMode ? 'bg-blue-900/30 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
                                     Mapped to NIST SP 800-53
                                 </span>
+                                <button
+                                    onClick={() => {
+                                        const header = ['Control', 'Associated CCIs', 'Group IDs', 'Open Findings', 'Status'];
+                                        const rows = controlsData.map(row => [
+                                            row.control,
+                                            Array.from(row.ccis).join(', '),
+                                            Array.from(row.groupIds || []).join(', '),
+                                            row.openCount.toString(),
+                                            row.status
+                                        ]);
+                                        const tsv = [header.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+                                        navigator.clipboard.writeText(tsv);
+                                        alert('Table copied to clipboard! You can paste it into Excel.');
+                                    }}
+                                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
+                                >
+                                    <Copy size={14} /> Copy Table
+                                </button>
                             </div>
 
                             {/* Summary Cards */}
@@ -4051,7 +4074,8 @@ function App() {
                             <div className={`rounded-xl border overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`} style={{ maxHeight: '600px' }}>
                                 <div className={`grid grid-cols-12 gap-4 p-4 border-b font-semibold text-xs uppercase tracking-wider ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
                                     <div className="col-span-2">Control</div>
-                                    <div className="col-span-6">Associated CCIs</div>
+                                    <div className="col-span-4">Associated CCIs</div>
+                                    <div className="col-span-2">Group IDs</div>
                                     <div className="col-span-2 text-center">Open Findings</div>
                                     <div className="col-span-2 text-center">Status</div>
                                 </div>
@@ -4059,13 +4083,22 @@ function App() {
                                     {controlsData.map((row, idx) => (
                                         <div key={idx} className={`grid grid-cols-12 gap-4 p-4 border-b last:border-0 text-sm items-center hover:bg-gray-50/5 ${darkMode ? 'border-gray-700 text-gray-300' : 'border-gray-100 text-gray-700'}`}>
                                             <div className="col-span-2 font-mono font-medium">{row.control}</div>
-                                            <div className="col-span-6">
+                                            <div className="col-span-4">
                                                 <div className="flex flex-wrap gap-1">
                                                     {row.ccis.map(((cci: string) => (
                                                         <span key={cci} className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
                                                             {cci}
                                                         </span>
                                                     )))}
+                                                </div>
+                                            </div>
+                                            <div className="col-span-2">
+                                                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto custom-scrollbar">
+                                                    {(row.groupIds as string[] || []).map((gid) => (
+                                                        <span key={gid} className={`text-[10px] px-1.5 py-0.5 rounded font-mono border ${darkMode ? 'bg-blue-900/20 border-blue-900 text-blue-300' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
+                                                            {gid}
+                                                        </span>
+                                                    ))}
                                                 </div>
                                             </div>
                                             <div className="col-span-2 text-center font-mono">
