@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
-    ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed
+    ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
+    Wrench, Save, ArrowRight
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+import JSZip from 'jszip';
 
 // --- Configuration ---
 
@@ -33,9 +35,10 @@ interface StigChecklist {
 }
 
 function App() {
+    // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'evidence' | 'checklist' | 'report' | 'compare' | 'poam' | 'copy' | 'controls'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'evidence' | 'checklist' | 'review' | 'results' | 'report' | 'poam' | 'controls' | 'compare' | 'copy' | 'tools'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -955,30 +958,7 @@ function App() {
         }
     };
 
-    // Handle file upload
-    const handleCklFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files) return;
 
-        setIsGeneratingReport(true);
-        const newChecklists: typeof uploadedChecklists = [];
-
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-
-            // Only process likely checklist files
-            if (file.name.endsWith('.ckl') || file.name.endsWith('.xml') || file.name.endsWith('.cklb') || file.name.endsWith('.json')) {
-                const parsed = await parseCklFile(file);
-                if (parsed) {
-                    newChecklists.push(parsed);
-                }
-            }
-        }
-
-        setUploadedChecklists(prev => [...prev, ...newChecklists]);
-        setIsGeneratingReport(false);
-        e.target.value = ''; // Reset input
-    };
 
 
 
@@ -1797,6 +1777,30 @@ function App() {
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const files = Array.from(e.target.files);
+
+        // --- Tools Logic ---
+        if (activeTab === 'tools') {
+            const newFiles: { file: File; originalName: string; newName: string }[] = [];
+            for (const f of files) {
+                newFiles.push({
+                    file: f,
+                    originalName: f.name,
+                    newName: f.name
+                });
+            }
+            // Reset files if user uploads new ones? Or append? User request implies "upload... and save".
+            // Let's append if they drag more.
+            setRenameFiles(prev => {
+                // Determine names based on CURRENT prefix/suffix state immediately to avoid lag
+                const mapped = newFiles.map(item => ({
+                    ...item,
+                    newName: `${renamePrefix}${item.originalName}${renameSuffix}`
+                }));
+                return [...prev, ...mapped];
+            });
+            return;
+        }
+
         let successCount = 0;
         let failCount = 0;
 
@@ -1822,6 +1826,38 @@ function App() {
         // Reset input value to allow re-selecting the same file if needed
         e.target.value = '';
     };
+
+    // Tools Rename Logic Actions
+    const executeRenameDownload = async () => {
+        if (renameFiles.length === 0) return;
+
+        const zip = new JSZip();
+        renameFiles.forEach(item => {
+            zip.file(item.newName, item.file);
+        });
+
+        const content = await zip.generateAsync({ type: 'blob' });
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        link.download = `renamed_files_${timestamp}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        alert(`Successfully bundled ${renameFiles.length} files with new names!`);
+    };
+
+    // Tools Effect for Live Updates
+    useEffect(() => {
+        if (activeTab === 'tools' && renameFiles.length > 0) {
+            setRenameFiles(prev => prev.map(item => ({
+                ...item,
+                newName: `${renamePrefix}${item.originalName}${renameSuffix}`
+            })));
+        }
+    }, [renamePrefix, renameSuffix]);
 
     if (isLoading) {
         return (
@@ -1864,6 +1900,7 @@ function App() {
                     <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
                     <SidebarItem icon={<Shield size={18} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
+                    <SidebarItem icon={<Wrench size={18} />} label="Tools" active={activeTab === 'tools'} onClick={() => setActiveTab('tools')} darkMode={darkMode} />
 
                     <div className={`pt-4 mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         <div className={`text-xs font-semibold px-4 mb-2 uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Filter by Severity</div>
@@ -4341,14 +4378,21 @@ function App() {
     );
 }
 
-function SidebarItem({ icon, label, active, onClick, darkMode }: { icon: React.ReactNode; label: string; active: boolean; onClick?: () => void; darkMode?: boolean }) {
+// Helper Components
+function SidebarItem({ icon, label, active, onClick, darkMode }: { icon: any, label: string, active: boolean, onClick: () => void, darkMode: boolean }) {
     return (
-        <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${active
-            ? (darkMode ? 'bg-gray-700 text-white shadow-sm' : 'bg-white text-black shadow-sm')
-            : (darkMode ? 'text-gray-400 hover:bg-gray-700/50 hover:text-white' : 'text-gray-500 hover:bg-white/50 hover:text-black')}`}>
-            {icon}
-            {label}
-            {active && <ChevronRight className="ml-auto size-4" />}
+        <button
+            onClick={onClick}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all mb-0.5 group ${active
+                ? (darkMode ? 'bg-gray-800 text-white font-medium shadow-sm' : 'bg-white text-black font-medium shadow-sm')
+                : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200' : 'text-gray-500 hover:bg-white/60 hover:text-gray-900')
+                }`}
+        >
+            <div className={`transition-colors ${active ? (darkMode ? 'text-blue-400' : 'text-blue-600') : 'text-gray-400 group-hover:text-gray-500'}`}>
+                {icon}
+            </div>
+            <span className="text-sm">{label}</span>
+            {active && <div className={`ml-auto size-1.5 rounded-full ${darkMode ? 'bg-blue-500' : 'bg-blue-600'}`} />}
         </button>
     );
 }
