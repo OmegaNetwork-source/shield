@@ -4935,47 +4935,62 @@ function App() {
                                                             const handleExportExcel = () => {
                                                                 if (!analyzerData) return;
                                                                 const wb = XLSX.utils.book_new();
-                                                                const summaryData = [
-                                                                    { Metric: 'Total Old Findings', Value: analyzerData.totalOld },
-                                                                    { Metric: 'Total New Findings', Value: analyzerData.totalNew },
-                                                                    { Metric: 'Not Reviewed', Value: analyzerData.notReviewed.length },
-                                                                    { Metric: 'New IDs', Value: analyzerData.newIds.length },
-                                                                    { Metric: 'Dropped IDs', Value: analyzerData.droppedIds.length },
-                                                                    { Metric: 'Reviewed (Edited)', Value: analyzerEditedIds.size },
-                                                                ];
-                                                                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "Summary");
+
+                                                                // 1. Not Reviewed Sheet
                                                                 const notReviewedData = analyzerData.notReviewed.map(r => ({
                                                                     GroupID: r.vulnId,
+                                                                    RuleID: r.oldFinding.ruleId,
+                                                                    Title: r.oldFinding.title,
                                                                     Severity: r.oldFinding.severity,
                                                                     OldStatus: r.oldFinding.status,
-                                                                    OldDetails: r.oldFinding.findingDetails || r.oldFinding.comments || '',
-                                                                    NewStatus: 'Not_Reviewed'
+                                                                    NewStatus: 'Not_Reviewed',
+                                                                    Discussion: r.oldFinding.description,
+                                                                    CheckText: r.oldFinding.checkText,
+                                                                    FixText: r.oldFinding.fixText
                                                                 }));
                                                                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(notReviewedData), "Not Reviewed");
-                                                                const allData = analyzerNewChecklist?.findings.map(f => ({
+
+                                                                // 2. Reviewed Sheet
+                                                                const reviewedFindings = analyzerNewChecklist?.findings.filter((f: any) =>
+                                                                    analyzerEditedIds.has(f.vulnId) ||
+                                                                    (f.status !== 'Not_Reviewed')
+                                                                ) || [];
+
+                                                                const reviewedData = reviewedFindings.map((f: any) => ({
                                                                     GroupID: f.vulnId,
                                                                     RuleID: f.ruleId,
+                                                                    Title: f.title,
                                                                     Severity: f.severity,
                                                                     Status: f.status,
                                                                     Details: f.findingDetails,
                                                                     Comments: f.comments,
-                                                                    Edited: analyzerEditedIds.has(f.vulnId) ? 'Yes' : 'No'
-                                                                })) || [];
-                                                                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allData), "All Findings");
+                                                                    Discussion: f.description,
+                                                                    CheckText: f.checkText,
+                                                                    FixText: f.fixText
+                                                                }));
+                                                                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(reviewedData), "Reviewed");
+
+                                                                // 3. New IDs Sheet
                                                                 const newIdsData = analyzerData.newIds.map(r => ({
                                                                     GroupID: r.vulnId,
-                                                                    Severity: r.finding.severity,
+                                                                    RuleID: r.finding.ruleId,
                                                                     Title: r.finding.title,
-                                                                    Status: r.finding.status
+                                                                    Severity: r.finding.severity,
+                                                                    Status: r.finding.status,
+                                                                    Discussion: r.finding.description
                                                                 }));
                                                                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(newIdsData), "New IDs");
+
+                                                                // 4. Dropped IDs Sheet
                                                                 const droppedIdsData = analyzerData.droppedIds.map(r => ({
                                                                     GroupID: r.vulnId,
-                                                                    Severity: r.finding.severity,
+                                                                    RuleID: r.finding.ruleId,
                                                                     Title: r.finding.title,
+                                                                    Severity: r.finding.severity,
                                                                     Status: r.finding.status
                                                                 }));
                                                                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(droppedIdsData), "Dropped IDs");
+
                                                                 XLSX.writeFile(wb, `stig_analyzer_report_${new Date().toISOString().split('T')[0]}.xlsx`);
                                                             };
                                                             const handleCopyImage = async () => {
