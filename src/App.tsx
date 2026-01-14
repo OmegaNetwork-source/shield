@@ -428,6 +428,12 @@ function App() {
         return { notReviewed, newIds, droppedIds, totalOld, totalNew };
     }, [analyzerOldChecklist, analyzerNewChecklist]);
 
+    // Map for fast lookup of Old Findings in Reviewed Tab
+    const oldFindingsMap = useMemo(() => {
+        if (!analyzerOldChecklist) return new Map();
+        return new Map(analyzerOldChecklist.findings.map((f: any) => [f.vulnId, f]));
+    }, [analyzerOldChecklist]);
+
     const [filterStatus, setFilterStatus] = useState<string>('All');
 
     // Sorted Data for Analyzer Tabs
@@ -5249,6 +5255,10 @@ function App() {
                                                                         <div className="pl-2 border-l-2 border-gray-200 whitespace-pre-wrap">{row.oldFinding.description}</div>
                                                                     </div>
                                                                     <div>
+                                                                        <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Check Text (Procedure)</div>
+                                                                        <div className="pl-2 border-l-2 border-gray-200 whitespace-pre-wrap">{row.oldFinding.checkText}</div>
+                                                                    </div>
+                                                                    <div>
                                                                         <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Fix Text</div>
                                                                         <div className="pl-2 border-l-2 border-gray-200 whitespace-pre-wrap">{row.oldFinding.fixText}</div>
                                                                     </div>
@@ -5415,40 +5425,132 @@ function App() {
                                                     </div>
 
                                                     {/* Reviewed List */}
-                                                    {sortedReviewed.map(f => (
-                                                        <div key={f.vulnId} className="p-4 rounded-xl border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                                                            <div className="flex items-center justify-between mb-2">
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="font-mono font-bold text-sm bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{f.vulnId}</span>
-                                                                    <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${(f.severity || '').toLowerCase().includes('high') ? 'bg-red-100 text-red-700' :
-                                                                        (f.severity || '').toLowerCase().includes('medium') ? 'bg-orange-100 text-orange-700' :
-                                                                            'bg-yellow-100 text-yellow-700'
-                                                                        }`}>{f.severity}</span>
+                                                    {sortedReviewed.map(f => {
+                                                        const oldFinding = oldFindingsMap.get(f.vulnId);
+                                                        return (
+                                                            <div key={f.vulnId} className={`p-4 rounded-xl border transition-all ${analyzerSelectedIds.has(f.vulnId) ? 'border-purple-300 bg-purple-50/30 dark:bg-purple-900/10' : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}`}>
+                                                                {/* Header */}
+                                                                <div className="flex items-start justify-between mb-3">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={analyzerSelectedIds.has(f.vulnId)}
+                                                                            onChange={(e) => {
+                                                                                const newSet = new Set(analyzerSelectedIds);
+                                                                                if (e.target.checked) newSet.add(f.vulnId);
+                                                                                else newSet.delete(f.vulnId);
+                                                                                setAnalyzerSelectedIds(newSet);
+                                                                            }}
+                                                                            className="mt-1 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => setAnalyzerExpandedRows(prev => {
+                                                                                const next = new Set(prev);
+                                                                                if (next.has(f.vulnId)) next.delete(f.vulnId);
+                                                                                else next.add(f.vulnId);
+                                                                                return next;
+                                                                            })}
+                                                                            className="mt-0.5 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"
+                                                                        >
+                                                                            {analyzerExpandedRows.has(f.vulnId) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                                                        </button>
+                                                                        <div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-sm font-mono font-bold">{f.vulnId}</span>
+                                                                                <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${(f.severity || '').toLowerCase().includes('high') || (f.severity || '').toLowerCase().includes('cat i') ? 'bg-red-100 text-red-700' :
+                                                                                    (f.severity || '').toLowerCase().includes('medium') || (f.severity || '').toLowerCase().includes('cat ii') ? 'bg-orange-100 text-orange-700' :
+                                                                                        'bg-yellow-100 text-yellow-700'
+                                                                                    }`}>
+                                                                                    {f.severity}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="text-xs text-gray-500 mt-1 max-w-md truncate">{f.title}</div>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Status Badge Compare */}
+                                                                    <div className="flex items-center gap-4">
+                                                                        {oldFinding && (
+                                                                            <div className="flex flex-col items-end opacity-60">
+                                                                                <span className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider">Old Status</span>
+                                                                                <div className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${(oldFinding.status || '').toLowerCase().includes('open') ? 'bg-red-50 border-red-100 text-red-600' :
+                                                                                    (oldFinding.status || '').toLowerCase().includes('notafinding') ? 'bg-green-50 border-green-100 text-green-600' :
+                                                                                        'bg-gray-50 border-gray-100 text-gray-600'
+                                                                                    }`}>
+                                                                                    {oldFinding.status}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        {oldFinding && <ArrowRight size={14} className="text-gray-300 mt-4" />}
+                                                                        <div className="flex flex-col items-start">
+                                                                            <span className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider">Current Status</span>
+                                                                            <select
+                                                                                value={f.status}
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    setAnalyzerNewChecklist((prev: any) => {
+                                                                                        if (!prev) return null;
+                                                                                        const findings = prev.findings.map((finding: any) => finding.vulnId === f.vulnId ? { ...finding, status: val } : finding);
+                                                                                        return { ...prev, findings };
+                                                                                    });
+                                                                                    setAnalyzerEditedIds(prev => new Set(prev).add(f.vulnId));
+                                                                                }}
+                                                                                className={`px-2 py-0.5 rounded text-xs font-bold uppercase border cursor-pointer outline-none focus:ring-2 focus:ring-purple-500 ${f.status.toLowerCase().includes('open') ? 'bg-red-50 border-red-100 text-red-600' :
+                                                                                    f.status.toLowerCase().includes('notafinding') ? 'bg-green-50 border-green-100 text-green-600' :
+                                                                                        f.status.toLowerCase().includes('not_applicable') ? 'bg-gray-50 border-gray-100 text-gray-600' :
+                                                                                            'bg-gray-50 border-gray-100 text-gray-500'}`}
+                                                                            >
+                                                                                <option value="Open">Open</option>
+                                                                                <option value="NotAFinding">NotAFinding</option>
+                                                                                <option value="Not_Applicable">Not_Applicable</option>
+                                                                                <option value="Not_Reviewed">Not_Reviewed</option>
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
-                                                                <div className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${(f.status || '').toLowerCase().includes('open') ? 'bg-red-50 border-red-100 text-red-600' :
-                                                                    (f.status || '').toLowerCase().includes('notafinding') ? 'bg-green-50 border-green-100 text-green-600' :
-                                                                        'bg-gray-50 border-gray-100 text-gray-600'
-                                                                    }`}>
-                                                                    {f.status}
+
+                                                                {/* Expandable Details */}
+                                                                {analyzerExpandedRows.has(f.vulnId) && (
+                                                                    <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-800 text-xs text-gray-600 dark:text-gray-300 space-y-3 animate-in fade-in slide-in-from-top-1">
+                                                                        <div>
+                                                                            <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Rule Title</div>
+                                                                            <div className="pl-2 border-l-2 border-gray-200">{f.title}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Vulnerability Discussion</div>
+                                                                            <div className="pl-2 border-l-2 border-gray-200 whitespace-pre-wrap">{f.description}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Check Text (Procedure)</div>
+                                                                            <div className="pl-2 border-l-2 border-gray-200 whitespace-pre-wrap">{f.checkText}</div>
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Fix Text</div>
+                                                                            <div className="pl-2 border-l-2 border-gray-200 whitespace-pre-wrap">{f.fixText}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex flex-col gap-2">
+                                                                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Finding Details / Comments</div>
+                                                                    <textarea
+                                                                        className="flex-1 min-h-[80px] w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-900 dark:border-gray-600"
+                                                                        placeholder="New finding details..."
+                                                                        value={f.findingDetails || f.comments || ''}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            setAnalyzerNewChecklist((prev: any) => {
+                                                                                if (!prev) return null;
+                                                                                const findings = prev.findings.map((finding: any) => finding.vulnId === f.vulnId ? { ...finding, findingDetails: val } : finding);
+                                                                                return { ...prev, findings };
+                                                                            });
+                                                                            setAnalyzerEditedIds(prev => new Set(prev).add(f.vulnId));
+                                                                        }}
+                                                                    />
                                                                 </div>
                                                             </div>
-                                                            <div className="text-sm">
-                                                                <textarea
-                                                                    className="w-full text-sm p-2 bg-gray-50 border rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors"
-                                                                    value={f.findingDetails || ''}
-                                                                    onChange={(e) => {
-                                                                        const val = e.target.value;
-                                                                        setAnalyzerNewChecklist((prev: any) => {
-                                                                            if (!prev) return null;
-                                                                            const findings = prev.findings.map((finding: any) => finding.vulnId === f.vulnId ? { ...finding, findingDetails: val } : finding);
-                                                                            return { ...prev, findings };
-                                                                        });
-                                                                        setAnalyzerEditedIds(prev => new Set(prev).add(f.vulnId));
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
 

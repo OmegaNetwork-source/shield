@@ -306,6 +306,9 @@ export interface ParsedChecklist {
         title: string;
         comments: string;
         findingDetails: string;
+        description: string;
+        checkText: string;
+        fixText: string;
         ccis: string[];
     }>;
     rawJson?: any; // Store raw JSON structure for re-export (or constructed structure if XML)
@@ -342,6 +345,9 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                                         status: rule.status || 'Not_Reviewed',
                                         severity: rule.severity || 'low',
                                         title: rule.rule_title || '',
+                                        description: rule.vuln_discussion || '',
+                                        checkText: rule.check_content || '',
+                                        fixText: rule.fix_text || '',
                                         comments: rule.comments || '',
                                         findingDetails: rule.finding_details || '',
                                         ccis: rule.cci_ref ? [rule.cci_ref] : [] // Simplification
@@ -390,6 +396,9 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                     // Extract CCIs and ID overrides from STIG_DATA
                     const ccis: string[] = [];
                     let ruleId = '';
+                    let description = '';
+                    let checkText = '';
+                    let fixText = '';
 
                     const stigData = vuln.getElementsByTagName('STIG_DATA');
                     for (let j = 0; j < stigData.length; j++) {
@@ -404,6 +413,12 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                             ruleId = data; // SV-XXXX
                         } else if (attr === 'Vuln_Num') {
                             vulnId = data; // V-XXXX (Override VULN_NUM tag if present)
+                        } else if (attr === 'Vuln_Discussion') {
+                            description = data;
+                        } else if (attr === 'Check_Content') {
+                            checkText = data;
+                        } else if (attr === 'Fix_Text') {
+                            fixText = data;
                         }
                     }
 
@@ -413,6 +428,9 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                         status,
                         severity,
                         title,
+                        description,
+                        checkText,
+                        fixText,
                         comments,
                         findingDetails,
                         ccis
