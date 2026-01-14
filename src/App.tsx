@@ -1323,14 +1323,22 @@ function App() {
         }
 
         if (newChecklists.length > 0) {
-            setPoamChecklists(prev => [...prev, ...newChecklists]);
+            if (activeTab === 'controls') {
+                setUploadedChecklists(prev => [...prev, ...newChecklists]);
+            } else {
+                setPoamChecklists(prev => [...prev, ...newChecklists]);
+            }
         }
         if (newAcasRows.length > 0) {
             setAcasData(prev => [...prev, ...newAcasRows]);
         }
 
         if (stigCount > 0 || acasCount > 0) {
-            alert(`Bulk Upload Complete!\n\n- Loaded ${stigCount} STIG checklists\n- Loaded ${acasCount} ACAS scan files\n\nAll findings will be consolidated into the POA&M.`);
+            if (activeTab === 'controls') {
+                alert(`Bulk Upload Complete!\n\n- Loaded ${stigCount} STIG checklists.`);
+            } else {
+                alert(`Bulk Upload Complete!\n\n- Loaded ${stigCount} STIG checklists\n- Loaded ${acasCount} ACAS scan files\n\nAll findings will be consolidated into the POA&M.`);
+            }
         } else {
             alert("No valid STIG checklists or ACAS CSV files found in the selected folder.");
         }
@@ -4059,29 +4067,68 @@ function App() {
                                             const header = ['Control', 'Associated CCIs', 'Group IDs', 'Open Findings', 'Status'];
                                             const rows = controlsData.map(row => [
                                                 row.control,
-                                                Array.from(row.ccis).join(', '),
-                                                Array.from(row.groupIds || []).join(', '),
+                                                Array.from(row.ccis).join('; '),
+                                                Array.from(row.groupIds || []).join('; '),
                                                 row.openCount.toString(),
                                                 row.status
                                             ]);
-                                            const tsv = [header.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
-                                            navigator.clipboard.writeText(tsv);
-                                            alert('Table copied to clipboard! You can paste it into Excel.');
+
+                                            // Create CSV content
+                                            const csvContent = [
+                                                header.join(','),
+                                                ...rows.map(r => r.map(c => `"${c}"`).join(',')) // Quote fields
+                                            ].join('\n');
+
+                                            // Download File
+                                            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                            const link = document.createElement('a');
+                                            if (link.download !== undefined) {
+                                                const url = URL.createObjectURL(blob);
+                                                link.setAttribute('href', url);
+                                                link.setAttribute('download', `controls_export_${new Date().toISOString().split('T')[0]}.csv`);
+                                                link.style.visibility = 'hidden';
+                                                document.body.appendChild(link);
+                                                link.click();
+                                                document.body.removeChild(link);
+                                            }
                                         }}
                                         className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}
                                     >
-                                        <Copy size={14} /> Copy Table
+                                        <FileSpreadsheet size={14} /> Export CSV
                                     </button>
                                     <button
                                         onClick={async () => {
                                             const element = document.getElementById('controls-grid');
                                             if (!element) return;
+
                                             try {
-                                                const canvas = await html2canvas(element, { backgroundColor: darkMode ? '#1f2937' : '#ffffff' });
+                                                // Clone to capture full height even if scrolled
+                                                const clone = element.cloneNode(true) as HTMLElement;
+
+                                                // Force full height and remove scroll on clone
+                                                clone.style.height = 'auto';
+                                                clone.style.maxHeight = 'none';
+                                                clone.style.overflow = 'visible';
+                                                clone.style.position = 'absolute';
+                                                clone.style.top = '-9999px';
+                                                clone.style.left = '0';
+                                                clone.style.width = `${element.offsetWidth}px`; // Maintain width
+                                                clone.style.background = darkMode ? '#1f2937' : '#ffffff'; // Ensure background matches
+
+                                                document.body.appendChild(clone);
+
+                                                const canvas = await html2canvas(clone, {
+                                                    backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+                                                    windowHeight: clone.scrollHeight,
+                                                    height: clone.scrollHeight
+                                                });
+
+                                                document.body.removeChild(clone);
+
                                                 canvas.toBlob(blob => {
                                                     if (blob) {
                                                         navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                                                        alert('Table image copied to clipboard!');
+                                                        alert('Full table image copied to clipboard!');
                                                     }
                                                 });
                                             } catch (e) {
