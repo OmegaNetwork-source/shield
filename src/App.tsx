@@ -4439,40 +4439,42 @@ function App() {
                         <div className="space-y-6">
                             <h1 className="text-3xl font-semibold tracking-tight mb-8">Tools & Utilities</h1>
 
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <div className={`grid gap-6 ${toolsMode === 'analyzer' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-4'}`}>
                                 {/* Tools Sidebar/Menu */}
-                                <div className="space-y-2">
-                                    <button
-                                        onClick={() => setToolsMode('rename')}
-                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'rename'
-                                            ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
-                                            : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
-                                    >
-                                        <Save size={18} />
-                                        <div className="font-medium">Save As (Bulk Rename)</div>
-                                    </button>
-                                    <button
-                                        onClick={() => setToolsMode('heatmap')}
-                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'heatmap'
-                                            ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
-                                            : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
-                                    >
-                                        <Target size={18} />
-                                        <div className="font-medium">Risk Heatmap</div>
-                                    </button>
-                                    <button
-                                        onClick={() => setToolsMode('analyzer')}
-                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'analyzer'
-                                            ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
-                                            : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
-                                    >
-                                        <GitCompare size={18} />
-                                        <div className="font-medium">STIG Analyzer</div>
-                                    </button>
-                                </div>
+                                {toolsMode !== 'analyzer' && (
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => setToolsMode('rename')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'rename'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <Save size={18} />
+                                            <div className="font-medium">Save As (Bulk Rename)</div>
+                                        </button>
+                                        <button
+                                            onClick={() => setToolsMode('heatmap')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'heatmap'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <Target size={18} />
+                                            <div className="font-medium">Risk Heatmap</div>
+                                        </button>
+                                        <button
+                                            onClick={() => setToolsMode('analyzer')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'analyzer'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <GitCompare size={18} />
+                                            <div className="font-medium">STIG Analyzer</div>
+                                        </button>
+                                    </div>
+                                )}
 
                                 {/* Tool Content */}
-                                <div className="md:col-span-3">
+                                <div className={toolsMode === 'analyzer' ? '' : 'md:col-span-3'}>
                                     {toolsMode === 'rename' && (
                                         <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                             <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
@@ -4730,10 +4732,17 @@ function App() {
                                     {toolsMode === 'analyzer' && (
                                         <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                             <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <button
+                                                    onClick={() => setToolsMode('rename')}
+                                                    className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+                                                    title="Back to Tools"
+                                                >
+                                                    <ChevronLeft size={20} />
+                                                </button>
                                                 <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
                                                     <GitCompare size={24} />
                                                 </div>
-                                                <div>
+                                                <div className="flex-1">
                                                     <h2 className="text-xl font-semibold">STIG Version Analyzer</h2>
                                                     <p className="text-sm text-gray-500">Compare old and new STIG checklists to migrate statuses and comments.</p>
                                                 </div>
