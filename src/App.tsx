@@ -4904,45 +4904,114 @@ function App() {
                                                                             Select All ({analyzerData.notReviewed.length})
                                                                         </label>
                                                                         <div className="flex items-center gap-2">
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    if (analyzerSelectedIds.size === 0) return;
-                                                                                    setAnalyzerNewChecklist(prev => {
-                                                                                        if (!prev) return prev;
-                                                                                        const updated = { ...prev, findings: [...prev.findings] };
-                                                                                        updated.findings = updated.findings.map(f => {
-                                                                                            if (analyzerSelectedIds.has(f.vulnId)) {
-                                                                                                const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
-                                                                                                if (oldF) {
-                                                                                                    let newFindingDetails = f.findingDetails || '';
-                                                                                                    if (analyzerCustomComment) {
-                                                                                                        newFindingDetails = `${analyzerCustomComment}\n\n${newFindingDetails}`;
+                                                                            <div className="flex gap-2">
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        if (analyzerSelectedIds.size === 0) return;
+                                                                                        setAnalyzerNewChecklist(prev => {
+                                                                                            if (!prev) return prev;
+                                                                                            const updated = { ...prev, findings: [...prev.findings] };
+                                                                                            updated.findings = updated.findings.map(f => {
+                                                                                                if (analyzerSelectedIds.has(f.vulnId)) {
+                                                                                                    const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
+                                                                                                    if (oldF) {
+                                                                                                        return {
+                                                                                                            ...f,
+                                                                                                            status: oldF.status
+                                                                                                        };
                                                                                                     }
-                                                                                                    if (oldF.findingDetails) {
-                                                                                                        newFindingDetails = `${oldF.findingDetails}\n\n---\n${newFindingDetails}`;
-                                                                                                    }
-                                                                                                    return {
-                                                                                                        ...f,
-                                                                                                        status: oldF.status,
-                                                                                                        findingDetails: newFindingDetails.trim(),
-                                                                                                        comments: oldF.comments || f.comments
-                                                                                                    };
                                                                                                 }
-                                                                                            }
-                                                                                            return f;
+                                                                                                return f;
+                                                                                            });
+                                                                                            return updated;
                                                                                         });
-                                                                                        return updated;
-                                                                                    });
-                                                                                    setAnalyzerSelectedIds(new Set());
-                                                                                    setAnalyzerCustomComment('');
-                                                                                }}
-                                                                                disabled={analyzerSelectedIds.size === 0}
-                                                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerSelectedIds.size > 0
-                                                                                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                                                                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                                                                            >
-                                                                                Copy Status & Details ({analyzerSelectedIds.size})
-                                                                            </button>
+                                                                                        setAnalyzerSelectedIds(new Set());
+                                                                                    }}
+                                                                                    disabled={analyzerSelectedIds.size === 0}
+                                                                                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${analyzerSelectedIds.size > 0
+                                                                                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                                >
+                                                                                    Copy Status
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        if (analyzerSelectedIds.size === 0) return;
+                                                                                        setAnalyzerNewChecklist(prev => {
+                                                                                            if (!prev) return prev;
+                                                                                            const updated = { ...prev, findings: [...prev.findings] };
+                                                                                            updated.findings = updated.findings.map(f => {
+                                                                                                if (analyzerSelectedIds.has(f.vulnId)) {
+                                                                                                    const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
+                                                                                                    if (oldF) {
+                                                                                                        let newFindingDetails = f.findingDetails || '';
+                                                                                                        if (analyzerCustomComment) {
+                                                                                                            newFindingDetails = `${analyzerCustomComment}\n\n${newFindingDetails}`;
+                                                                                                        }
+                                                                                                        if (oldF.findingDetails) {
+                                                                                                            newFindingDetails = `${oldF.findingDetails}\n\n---\n${newFindingDetails}`;
+                                                                                                        }
+                                                                                                        return {
+                                                                                                            ...f,
+                                                                                                            findingDetails: newFindingDetails.trim(),
+                                                                                                            comments: oldF.comments || f.comments
+                                                                                                        };
+                                                                                                    }
+                                                                                                }
+                                                                                                return f;
+                                                                                            });
+                                                                                            return updated;
+                                                                                        });
+                                                                                        setAnalyzerSelectedIds(new Set());
+                                                                                        setAnalyzerCustomComment('');
+                                                                                    }}
+                                                                                    disabled={analyzerSelectedIds.size === 0}
+                                                                                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${analyzerSelectedIds.size > 0
+                                                                                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                                >
+                                                                                    Copy Details
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        if (analyzerSelectedIds.size === 0) return;
+                                                                                        setAnalyzerNewChecklist(prev => {
+                                                                                            if (!prev) return prev;
+                                                                                            const updated = { ...prev, findings: [...prev.findings] };
+                                                                                            updated.findings = updated.findings.map(f => {
+                                                                                                if (analyzerSelectedIds.has(f.vulnId)) {
+                                                                                                    const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
+                                                                                                    if (oldF) {
+                                                                                                        let newFindingDetails = f.findingDetails || '';
+                                                                                                        if (analyzerCustomComment) {
+                                                                                                            newFindingDetails = `${analyzerCustomComment}\n\n${newFindingDetails}`;
+                                                                                                        }
+                                                                                                        if (oldF.findingDetails) {
+                                                                                                            newFindingDetails = `${oldF.findingDetails}\n\n---\n${newFindingDetails}`;
+                                                                                                        }
+                                                                                                        return {
+                                                                                                            ...f,
+                                                                                                            status: oldF.status,
+                                                                                                            findingDetails: newFindingDetails.trim(),
+                                                                                                            comments: oldF.comments || f.comments
+                                                                                                        };
+                                                                                                    }
+                                                                                                }
+                                                                                                return f;
+                                                                                            });
+                                                                                            return updated;
+                                                                                        });
+                                                                                        setAnalyzerSelectedIds(new Set());
+                                                                                        setAnalyzerCustomComment('');
+                                                                                    }}
+                                                                                    disabled={analyzerSelectedIds.size === 0}
+                                                                                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${analyzerSelectedIds.size > 0
+                                                                                        ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                                                                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                                >
+                                                                                    Copy Both
+                                                                                </button>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
 
