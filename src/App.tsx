@@ -62,6 +62,10 @@ function App() {
     const [analyzerNewChecklist, setAnalyzerNewChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
     const [analyzerTab, setAnalyzerTab] = useState<'notreviewed' | 'newids' | 'droppedids'>('notreviewed');
     const [analyzerSelectedIds, setAnalyzerSelectedIds] = useState<Set<string>>(new Set());
+    const [analyzerCustomComment, setAnalyzerCustomComment] = useState('');
+    const [analyzerFindText, setAnalyzerFindText] = useState('');
+    const [analyzerReplaceText, setAnalyzerReplaceText] = useState('');
+    const [analyzerExpandedRows, setAnalyzerExpandedRows] = useState<Set<string>>(new Set());
     const [uploadedChecklists, setUploadedChecklists] = useState<Array<{
         id: string;
         filename: string;
@@ -4830,103 +4834,243 @@ function App() {
                                                         >
                                                             Dropped IDs ({analyzerData.droppedIds.length})
                                                         </button>
+
+                                                        {/* Export Button */}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!analyzerNewChecklist) return;
+                                                                // Export as CKLB JSON
+                                                                const exportData = {
+                                                                    ...analyzerNewChecklist.rawJson,
+                                                                    stigs: analyzerNewChecklist.rawJson?.stigs?.map((stig: any) => ({
+                                                                        ...stig,
+                                                                        rules: stig.rules?.map((rule: any) => {
+                                                                            const finding = analyzerNewChecklist.findings.find(f => f.vulnId === rule.group_id || f.ruleId === rule.rule_id);
+                                                                            if (finding) {
+                                                                                return {
+                                                                                    ...rule,
+                                                                                    status: finding.status,
+                                                                                    finding_details: finding.findingDetails || rule.finding_details,
+                                                                                    comments: finding.comments || rule.comments
+                                                                                };
+                                                                            }
+                                                                            return rule;
+                                                                        })
+                                                                    }))
+                                                                };
+                                                                const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+                                                                const url = URL.createObjectURL(blob);
+                                                                const a = document.createElement('a');
+                                                                a.href = url;
+                                                                a.download = `updated_${analyzerNewChecklist.filename}`;
+                                                                a.click();
+                                                                URL.revokeObjectURL(url);
+                                                            }}
+                                                            className="ml-auto px-4 py-2 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center gap-2"
+                                                        >
+                                                            <Download size={16} />
+                                                            Export Updated Checklist
+                                                        </button>
                                                     </div>
 
                                                     {/* Not Reviewed Tab Content */}
                                                     {analyzerTab === 'notreviewed' && (
                                                         <div className="space-y-4">
+                                                            {/* Controls Row */}
                                                             {analyzerData.notReviewed.length > 0 && (
-                                                                <div className="flex items-center justify-between">
-                                                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={analyzerSelectedIds.size === analyzerData.notReviewed.length}
-                                                                            onChange={(e) => {
-                                                                                if (e.target.checked) {
-                                                                                    setAnalyzerSelectedIds(new Set(analyzerData.notReviewed.map(r => r.vulnId)));
-                                                                                } else {
-                                                                                    setAnalyzerSelectedIds(new Set());
-                                                                                }
-                                                                            }}
-                                                                            className="rounded"
-                                                                        />
-                                                                        Select All
-                                                                    </label>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            if (analyzerSelectedIds.size === 0) return;
-                                                                            // Copy status and comments from old to new
-                                                                            setAnalyzerNewChecklist(prev => {
-                                                                                if (!prev) return prev;
-                                                                                const updated = { ...prev, findings: [...prev.findings] };
-                                                                                updated.findings = updated.findings.map(f => {
-                                                                                    if (analyzerSelectedIds.has(f.vulnId)) {
-                                                                                        const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
-                                                                                        if (oldF) {
-                                                                                            return {
-                                                                                                ...f,
-                                                                                                status: oldF.status,
-                                                                                                findingDetails: oldF.comments ? `${oldF.comments}\n\n---\n${f.findingDetails || ''}` : f.findingDetails,
-                                                                                                comments: oldF.comments || f.comments
-                                                                                            };
-                                                                                        }
+                                                                <div className="space-y-3">
+                                                                    {/* Select All and Copy Button */}
+                                                                    <div className="flex items-center justify-between flex-wrap gap-2">
+                                                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={analyzerSelectedIds.size === analyzerData.notReviewed.length && analyzerData.notReviewed.length > 0}
+                                                                                onChange={(e) => {
+                                                                                    if (e.target.checked) {
+                                                                                        setAnalyzerSelectedIds(new Set(analyzerData.notReviewed.map(r => r.vulnId)));
+                                                                                    } else {
+                                                                                        setAnalyzerSelectedIds(new Set());
                                                                                     }
-                                                                                    return f;
-                                                                                });
-                                                                                return updated;
-                                                                            });
-                                                                            setAnalyzerSelectedIds(new Set());
-                                                                        }}
-                                                                        disabled={analyzerSelectedIds.size === 0}
-                                                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerSelectedIds.size > 0
-                                                                            ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                                                                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                                                                    >
-                                                                        Copy Status & Comments ({analyzerSelectedIds.size})
-                                                                    </button>
+                                                                                }}
+                                                                                className="rounded"
+                                                                            />
+                                                                            Select All ({analyzerData.notReviewed.length})
+                                                                        </label>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    if (analyzerSelectedIds.size === 0) return;
+                                                                                    setAnalyzerNewChecklist(prev => {
+                                                                                        if (!prev) return prev;
+                                                                                        const updated = { ...prev, findings: [...prev.findings] };
+                                                                                        updated.findings = updated.findings.map(f => {
+                                                                                            if (analyzerSelectedIds.has(f.vulnId)) {
+                                                                                                const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
+                                                                                                if (oldF) {
+                                                                                                    let newFindingDetails = f.findingDetails || '';
+                                                                                                    if (analyzerCustomComment) {
+                                                                                                        newFindingDetails = `${analyzerCustomComment}\n\n${newFindingDetails}`;
+                                                                                                    }
+                                                                                                    if (oldF.findingDetails) {
+                                                                                                        newFindingDetails = `${oldF.findingDetails}\n\n---\n${newFindingDetails}`;
+                                                                                                    }
+                                                                                                    return {
+                                                                                                        ...f,
+                                                                                                        status: oldF.status,
+                                                                                                        findingDetails: newFindingDetails.trim(),
+                                                                                                        comments: oldF.comments || f.comments
+                                                                                                    };
+                                                                                                }
+                                                                                            }
+                                                                                            return f;
+                                                                                        });
+                                                                                        return updated;
+                                                                                    });
+                                                                                    setAnalyzerSelectedIds(new Set());
+                                                                                    setAnalyzerCustomComment('');
+                                                                                }}
+                                                                                disabled={analyzerSelectedIds.size === 0}
+                                                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerSelectedIds.size > 0
+                                                                                    ? 'bg-purple-600 hover:bg-purple-700 text-white'
+                                                                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                            >
+                                                                                Copy Status & Details ({analyzerSelectedIds.size})
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Custom Finding Details Input */}
+                                                                    <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                                        <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Add Custom Comment (prepended to Finding Details)</label>
+                                                                        <textarea
+                                                                            value={analyzerCustomComment}
+                                                                            onChange={(e) => setAnalyzerCustomComment(e.target.value)}
+                                                                            placeholder="Enter additional comments to add on top of existing finding details..."
+                                                                            className={`w-full p-2 rounded-lg border text-sm resize-none ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                                                            rows={2}
+                                                                        />
+                                                                    </div>
+
+                                                                    {/* Find and Replace */}
+                                                                    <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                                        <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Find & Replace in Finding Details</label>
+                                                                        <div className="flex gap-2 items-center">
+                                                                            <input
+                                                                                type="text"
+                                                                                value={analyzerFindText}
+                                                                                onChange={(e) => setAnalyzerFindText(e.target.value)}
+                                                                                placeholder="Find text..."
+                                                                                className={`flex-1 p-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                                                            />
+                                                                            <span className="text-gray-400">→</span>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={analyzerReplaceText}
+                                                                                onChange={(e) => setAnalyzerReplaceText(e.target.value)}
+                                                                                placeholder="Replace with..."
+                                                                                className={`flex-1 p-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                                                            />
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    if (!analyzerFindText || analyzerSelectedIds.size === 0) return;
+                                                                                    setAnalyzerNewChecklist(prev => {
+                                                                                        if (!prev) return prev;
+                                                                                        const updated = { ...prev, findings: [...prev.findings] };
+                                                                                        updated.findings = updated.findings.map(f => {
+                                                                                            if (analyzerSelectedIds.has(f.vulnId)) {
+                                                                                                return {
+                                                                                                    ...f,
+                                                                                                    findingDetails: (f.findingDetails || '').replaceAll(analyzerFindText, analyzerReplaceText)
+                                                                                                };
+                                                                                            }
+                                                                                            return f;
+                                                                                        });
+                                                                                        return updated;
+                                                                                    });
+                                                                                }}
+                                                                                disabled={!analyzerFindText || analyzerSelectedIds.size === 0}
+                                                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${analyzerFindText && analyzerSelectedIds.size > 0
+                                                                                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                            >
+                                                                                Replace
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             )}
 
+                                                            {/* Table */}
                                                             <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                                 <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
                                                                     <div className="col-span-1"></div>
                                                                     <div className="col-span-2">Group ID</div>
                                                                     <div className="col-span-2">Old Status</div>
-                                                                    <div className="col-span-3">Old Comments</div>
+                                                                    <div className="col-span-3">Old Finding Details</div>
                                                                     <div className="col-span-1 text-center">→</div>
                                                                     <div className="col-span-3">New Status</div>
                                                                 </div>
-                                                                <div className="max-h-96 overflow-y-auto divide-y dark:divide-gray-800">
+                                                                <div className="max-h-[400px] overflow-y-auto divide-y dark:divide-gray-800">
                                                                     {analyzerData.notReviewed.map((row, idx) => (
-                                                                        <div key={idx} className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                                                            <div className="col-span-1">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={analyzerSelectedIds.has(row.vulnId)}
-                                                                                    onChange={(e) => {
-                                                                                        const newSet = new Set(analyzerSelectedIds);
-                                                                                        if (e.target.checked) newSet.add(row.vulnId);
-                                                                                        else newSet.delete(row.vulnId);
-                                                                                        setAnalyzerSelectedIds(newSet);
-                                                                                    }}
-                                                                                    className="rounded"
-                                                                                />
+                                                                        <div key={idx} className="border-b dark:border-gray-800">
+                                                                            <div
+                                                                                className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
+                                                                                onClick={() => {
+                                                                                    const newSet = new Set(analyzerExpandedRows);
+                                                                                    if (newSet.has(row.vulnId)) newSet.delete(row.vulnId);
+                                                                                    else newSet.add(row.vulnId);
+                                                                                    setAnalyzerExpandedRows(newSet);
+                                                                                }}
+                                                                            >
+                                                                                <div className="col-span-1" onClick={(e) => e.stopPropagation()}>
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={analyzerSelectedIds.has(row.vulnId)}
+                                                                                        onChange={(e) => {
+                                                                                            const newSet = new Set(analyzerSelectedIds);
+                                                                                            if (e.target.checked) newSet.add(row.vulnId);
+                                                                                            else newSet.delete(row.vulnId);
+                                                                                            setAnalyzerSelectedIds(newSet);
+                                                                                        }}
+                                                                                        className="rounded"
+                                                                                    />
+                                                                                </div>
+                                                                                <div className="col-span-2 font-mono text-xs flex items-center gap-1">
+                                                                                    <ChevronDown size={14} className={`transition-transform ${analyzerExpandedRows.has(row.vulnId) ? 'rotate-180' : ''}`} />
+                                                                                    {row.vulnId}
+                                                                                </div>
+                                                                                <div className="col-span-2">
+                                                                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.oldFinding.status === 'Open' ? 'bg-red-100 text-red-700' : row.oldFinding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                                        {row.oldFinding.status}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="col-span-3 text-xs text-gray-500 truncate" title={row.oldFinding.findingDetails || row.oldFinding.comments}>
+                                                                                    {(row.oldFinding.findingDetails || row.oldFinding.comments || '-').slice(0, 50)}...
+                                                                                </div>
+                                                                                <div className="col-span-1 text-center text-gray-400">→</div>
+                                                                                <div className="col-span-3">
+                                                                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                                                        Not_Reviewed
+                                                                                    </span>
+                                                                                </div>
                                                                             </div>
-                                                                            <div className="col-span-2 font-mono text-xs">{row.vulnId}</div>
-                                                                            <div className="col-span-2">
-                                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.oldFinding.status === 'Open' ? 'bg-red-100 text-red-700' : row.oldFinding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                                    {row.oldFinding.status}
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="col-span-3 text-xs text-gray-500 truncate" title={row.oldFinding.comments}>
-                                                                                {row.oldFinding.comments || '-'}
-                                                                            </div>
-                                                                            <div className="col-span-1 text-center text-gray-400">→</div>
-                                                                            <div className="col-span-3">
-                                                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
-                                                                                    Not_Reviewed
-                                                                                </span>
-                                                                            </div>
+                                                                            {/* Expanded Details */}
+                                                                            {analyzerExpandedRows.has(row.vulnId) && (
+                                                                                <div className={`p-4 grid grid-cols-2 gap-4 text-xs ${darkMode ? 'bg-gray-800/30' : 'bg-gray-50'}`}>
+                                                                                    <div>
+                                                                                        <div className="font-semibold text-gray-500 uppercase mb-2">Old Finding Details</div>
+                                                                                        <div className={`p-3 rounded-lg max-h-40 overflow-y-auto whitespace-pre-wrap ${darkMode ? 'bg-gray-900 text-gray-300' : 'bg-white text-gray-700 border'}`}>
+                                                                                            {row.oldFinding.findingDetails || row.oldFinding.comments || 'No finding details'}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <div className="font-semibold text-gray-500 uppercase mb-2">New Finding Details</div>
+                                                                                        <div className={`p-3 rounded-lg max-h-40 overflow-y-auto whitespace-pre-wrap ${darkMode ? 'bg-gray-900 text-gray-300' : 'bg-white text-gray-700 border'}`}>
+                                                                                            {row.newFinding.findingDetails || 'No finding details'}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     ))}
                                                                     {analyzerData.notReviewed.length === 0 && (
