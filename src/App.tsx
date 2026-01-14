@@ -51,6 +51,7 @@ function App() {
 
     // Tools State
     const [toolsMode, setToolsMode] = useState<'rename'>('rename');
+    const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
@@ -1906,7 +1907,38 @@ function App() {
                     <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
                     <SidebarItem icon={<Shield size={18} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
-                    <SidebarItem icon={<Wrench size={18} />} label="Tools" active={activeTab === 'tools'} onClick={() => setActiveTab('tools')} darkMode={darkMode} />
+
+                    {/* Tools Dropdown */}
+                    <div className="mb-1">
+                        <button
+                            onClick={() => setIsToolsOpen(!isToolsOpen)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all mb-0.5 group ${isToolsOpen || activeTab === 'tools'
+                                ? (darkMode ? 'bg-gray-800/50 text-white' : 'bg-gray-100/50 text-gray-900')
+                                : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200' : 'text-gray-500 hover:bg-white/60 hover:text-gray-900')
+                                }`}
+                        >
+                            <div className={`transition-colors ${activeTab === 'tools' ? (darkMode ? 'text-blue-400' : 'text-blue-600') : 'text-gray-400 group-hover:text-gray-500'}`}>
+                                <Wrench size={18} />
+                            </div>
+                            <span className="text-sm font-medium">Tools</span>
+                            <ChevronDown size={14} className={`ml-auto transition-transform text-gray-400 ${isToolsOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isToolsOpen && (
+                            <div className="pl-4 space-y-0.5 mt-1">
+                                <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('rename'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'rename'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Save As (Bulk Rename)
+                                </button>
+                            </div>
+                        )}
+                    </div>
 
                     <div className={`pt-4 mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         <div className={`text-xs font-semibold px-4 mb-2 uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Filter by Severity</div>
@@ -4284,7 +4316,126 @@ function App() {
                                 </div>
                             </div>
                         </div>
-                    ) : null}
+                    ) : activeTab === 'tools' ? (
+                        <div className="space-y-6">
+                            <h1 className="text-3xl font-semibold tracking-tight mb-8">Tools & Utilities</h1>
+
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                {/* Tools Sidebar/Menu */}
+                                <div className="space-y-2">
+                                    <button
+                                        onClick={() => setToolsMode('rename')}
+                                        className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'rename'
+                                            ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                            : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                    >
+                                        <Save size={18} />
+                                        <div className="font-medium">Save As (Bulk Rename)</div>
+                                    </button>
+                                </div>
+
+                                {/* Tool Content */}
+                                <div className="md:col-span-3">
+                                    {toolsMode === 'rename' && (
+                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                                                    <Save size={24} />
+                                                </div>
+                                                <div>
+                                                    <h2 className="text-xl font-semibold">Bulk File Renamer</h2>
+                                                    <p className="text-sm text-gray-500">Add prefixes or suffixes to multiple files instantly.</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="w-full relative group cursor-pointer mb-8">
+                                                <div className={`absolute inset-0 rounded-xl bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity border-2 border-dashed border-blue-500/50`} />
+                                                <div className={`relative z-10 p-10 rounded-xl border-2 border-dashed text-center transition-colors ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                                    <div className="size-16 mx-auto bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
+                                                        <FolderOpen size={30} />
+                                                    </div>
+                                                    <h3 className="text-lg font-medium mb-1">Drag files or folder here</h3>
+                                                    <p className="text-sm text-gray-500 mb-4">Supports uploading folders directly</p>
+                                                    <label className="inline-block relative">
+                                                        <span className="bg-black hover:bg-gray-800 text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all shadow-lg active:scale-95 cursor-pointer">
+                                                            Browse Files
+                                                        </span>
+                                                        <input
+                                                            type="file"
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                            multiple
+                                                            // @ts-ignore
+                                                            webkitdirectory=""
+                                                            directory=""
+                                                            onChange={handleFileUpload}
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            {renameFiles.length > 0 && (
+                                                <div className="space-y-6">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-xs font-semibold uppercase text-gray-500 mb-1.5">Add to Start (Prefix)</label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    value={renamePrefix}
+                                                                    onChange={e => setRenamePrefix(e.target.value)}
+                                                                    placeholder="e.g. 2024_"
+                                                                    className={`w-full px-4 py-2.5 rounded-xl border outline-none transition-all ${darkMode ? 'bg-gray-900 border-gray-700 focus:border-blue-500' : 'bg-white border-gray-200 focus:border-blue-500'}`}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-semibold uppercase text-gray-500 mb-1.5">Add to End (Suffix)</label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    value={renameSuffix}
+                                                                    onChange={e => setRenameSuffix(e.target.value)}
+                                                                    placeholder="e.g. _reviewed"
+                                                                    className={`w-full px-4 py-2.5 rounded-xl border outline-none transition-all ${darkMode ? 'bg-gray-900 border-gray-700 focus:border-blue-500' : 'bg-white border-gray-200 focus:border-blue-500'}`}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                        <div className={`px-4 py-2 border-b text-xs font-semibold uppercase flex justify-between ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
+                                                            <span>Original Name</span>
+                                                            <span>New Name Preview</span>
+                                                        </div>
+                                                        <div className="max-h-60 overflow-y-auto divide-y dark:divide-gray-800">
+                                                            {renameFiles.map((file, idx) => (
+                                                                <div key={idx} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                                                                    <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>{file.originalName}</span>
+                                                                    <ArrowRight size={14} className="text-gray-300" />
+                                                                    <span className={`font-mono font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{file.newName}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-700">
+                                                        <button
+                                                            onClick={executeRenameDownload}
+                                                            className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-green-600/20 active:scale-95 transition-all flex items-center gap-2"
+                                                        >
+                                                            <Download size={20} />
+                                                            Download All ({renameFiles.length})
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : null
+                    }
 
 
                     {/* Removed Source Preview Modal - details now inline */}
@@ -4378,9 +4529,9 @@ function App() {
                             </div>
                         )
                     }
-                </div>
-            </main>
-        </div>
+                </div >
+            </main >
+        </div >
     );
 }
 
