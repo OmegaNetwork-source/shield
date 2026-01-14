@@ -60,7 +60,7 @@ function App() {
     // Analyzer State
     const [analyzerOldChecklist, setAnalyzerOldChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
     const [analyzerNewChecklist, setAnalyzerNewChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
-    const [analyzerTab, setAnalyzerTab] = useState<'notreviewed' | 'newids' | 'droppedids'>('notreviewed');
+    const [analyzerTab, setAnalyzerTab] = useState<'notreviewed' | 'newids' | 'droppedids' | 'reviewed'>('notreviewed');
     const [analyzerSelectedIds, setAnalyzerSelectedIds] = useState<Set<string>>(new Set());
     const [analyzerCustomComment, setAnalyzerCustomComment] = useState('');
     const [analyzerFindText, setAnalyzerFindText] = useState('');
@@ -4841,6 +4841,14 @@ function App() {
                                                         >
                                                             Dropped IDs ({analyzerData.droppedIds.length})
                                                         </button>
+                                                        <button
+                                                            onClick={() => { setAnalyzerTab('reviewed'); setAnalyzerSelectedIds(new Set()); }}
+                                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${analyzerTab === 'reviewed'
+                                                                ? 'bg-blue-600 text-white'
+                                                                : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600')}`}
+                                                        >
+                                                            Reviewed ({analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').length || 0})
+                                                        </button>
 
                                                         {/* Export Button */}
                                                         <button
@@ -5081,9 +5089,10 @@ function App() {
                                                             <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                                 <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
                                                                     <div className="col-span-1"></div>
+                                                                    <div className="col-span-1 text-center">CAT</div>
                                                                     <div className="col-span-2">Group ID</div>
                                                                     <div className="col-span-2">Old Status</div>
-                                                                    <div className="col-span-3">Old Finding Details</div>
+                                                                    <div className="col-span-2">Old Finding Details</div>
                                                                     <div className="col-span-1 text-center">→</div>
                                                                     <div className="col-span-3">New Status</div>
                                                                 </div>
@@ -5112,6 +5121,9 @@ function App() {
                                                                                         className="rounded"
                                                                                     />
                                                                                 </div>
+                                                                                <div className="col-span-1 text-center font-bold text-xs text-gray-500">
+                                                                                    {row.oldFinding.severity === 'high' ? 'I' : row.oldFinding.severity === 'medium' ? 'II' : 'III'}
+                                                                                </div>
                                                                                 <div className="col-span-2 font-mono text-xs flex items-center gap-1">
                                                                                     <ChevronDown size={14} className={`transition-transform ${analyzerExpandedRows.has(row.vulnId) ? 'rotate-180' : ''}`} />
                                                                                     {row.vulnId}
@@ -5121,7 +5133,7 @@ function App() {
                                                                                         {row.oldFinding.status}
                                                                                     </span>
                                                                                 </div>
-                                                                                <div className="col-span-3 text-xs text-gray-500 truncate" title={row.oldFinding.findingDetails || row.oldFinding.comments}>
+                                                                                <div className="col-span-2 text-xs text-gray-500 truncate" title={row.oldFinding.findingDetails || row.oldFinding.comments}>
                                                                                     {(row.oldFinding.findingDetails || row.oldFinding.comments || '-').slice(0, 50)}...
                                                                                 </div>
                                                                                 <div className="col-span-1 text-center text-gray-400">→</div>
@@ -5167,6 +5179,80 @@ function App() {
                                                                     {analyzerData.notReviewed.length === 0 && (
                                                                         <div className="p-8 text-center text-gray-400">
                                                                             No "Not Reviewed" findings in the new checklist that have status in the old checklist.
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Reviewed Tab */}
+                                                    {analyzerTab === 'reviewed' && (
+                                                        <div className="space-y-4">
+                                                            <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                                <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                                                                    <div className="col-span-1 text-center">CAT</div>
+                                                                    <div className="col-span-2">Group ID</div>
+                                                                    <div className="col-span-3">Status</div>
+                                                                    <div className="col-span-6">Finding Details</div>
+                                                                </div>
+                                                                <div className="max-h-[600px] overflow-y-auto divide-y dark:divide-gray-800">
+                                                                    {analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').map((finding, idx) => (
+                                                                        <div key={idx} className="border-b dark:border-gray-800">
+                                                                            <div
+                                                                                className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
+                                                                                onClick={() => {
+                                                                                    const newSet = new Set(analyzerExpandedRows);
+                                                                                    if (newSet.has(finding.vulnId)) newSet.delete(finding.vulnId);
+                                                                                    else newSet.add(finding.vulnId);
+                                                                                    setAnalyzerExpandedRows(newSet);
+                                                                                }}
+                                                                            >
+                                                                                <div className="col-span-1 text-center font-bold text-xs text-gray-500">
+                                                                                    {finding.severity === 'high' ? 'I' : finding.severity === 'medium' ? 'II' : 'III'}
+                                                                                </div>
+                                                                                <div className="col-span-2 font-mono text-xs flex items-center gap-1">
+                                                                                    <ChevronDown size={14} className={`transition-transform ${analyzerExpandedRows.has(finding.vulnId) ? 'rotate-180' : ''}`} />
+                                                                                    {finding.vulnId}
+                                                                                </div>
+                                                                                <div className="col-span-3">
+                                                                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${finding.status === 'Open' ? 'bg-red-100 text-red-700' : finding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                                        {finding.status}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="col-span-6 text-xs text-gray-500 truncate" title={finding.findingDetails}>
+                                                                                    {(finding.findingDetails || '-').slice(0, 80)}...
+                                                                                </div>
+                                                                            </div>
+                                                                            {analyzerExpandedRows.has(finding.vulnId) && (
+                                                                                <div className={`p-4 space-y-4 text-xs ${darkMode ? 'bg-gray-800/30' : 'bg-gray-50'}`}>
+                                                                                    <div>
+                                                                                        <div className="font-semibold text-gray-500 uppercase mb-2">Finding Details (Editable)</div>
+                                                                                        <textarea
+                                                                                            value={finding.findingDetails || ''}
+                                                                                            onChange={(e) => {
+                                                                                                const val = e.target.value;
+                                                                                                setAnalyzerNewChecklist(prev => {
+                                                                                                    if (!prev) return prev;
+                                                                                                    const newFindings = [...prev.findings];
+                                                                                                    const idx = newFindings.findIndex(f => f.vulnId === finding.vulnId);
+                                                                                                    if (idx !== -1) {
+                                                                                                        newFindings[idx] = { ...newFindings[idx], findingDetails: val };
+                                                                                                    }
+                                                                                                    return { ...prev, findings: newFindings };
+                                                                                                });
+                                                                                            }}
+                                                                                            className={`w-full p-3 rounded-lg text-xs resize-none h-32 border focus:ring-2 focus:ring-blue-500 outline-none transition-all ${darkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-white text-gray-700 border-gray-200 focus:border-blue-500'}`}
+                                                                                            placeholder="Finding details..."
+                                                                                        />
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                    {(analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').length || 0) === 0 && (
+                                                                        <div className="p-8 text-center text-gray-400">
+                                                                            No findings have been reviewed yet.
                                                                         </div>
                                                                     )}
                                                                 </div>

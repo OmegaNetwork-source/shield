@@ -328,8 +328,14 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                     // Structure: { stigs: [ { rules: [ ... ] } ] }
                     if (json.stigs && Array.isArray(json.stigs)) {
                         for (const stig of json.stigs) {
+                            // Ensure STIG UUID
+                            if (!stig.uuid) stig.uuid = self.crypto.randomUUID();
+
                             if (stig.rules && Array.isArray(stig.rules)) {
                                 for (const rule of stig.rules) {
+                                    // Ensure Rule UUID
+                                    if (!rule.uuid) rule.uuid = self.crypto.randomUUID();
+
                                     findings.push({
                                         vulnId: rule.group_id || '',
                                         ruleId: rule.rule_id || '',
