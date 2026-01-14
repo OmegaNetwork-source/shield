@@ -4866,7 +4866,13 @@ function App() {
                                                                             if (finding) {
                                                                                 return {
                                                                                     ...rule,
-                                                                                    status: finding.status === 'Open' ? 'Open' : (finding.status === 'NotAFinding' ? 'NotAFinding' : 'Not_Reviewed'),
+                                                                                    status: (() => {
+                                                                                        const s = (finding.status || '').toLowerCase().replace(/[^a-z]/g, '');
+                                                                                        if (s.includes('open')) return 'Open';
+                                                                                        if (s.includes('notafinding')) return 'NotAFinding';
+                                                                                        if (s.includes('notapplicable')) return 'Not_Applicable';
+                                                                                        return 'Not_Reviewed';
+                                                                                    })(),
                                                                                     finding_details: finding.findingDetails || rule.finding_details,
                                                                                     comments: finding.comments || rule.comments
                                                                                 };
