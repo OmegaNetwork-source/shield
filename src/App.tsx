@@ -6,10 +6,12 @@ import {
     Moon, Sun, FileSpreadsheet, Upload, Trash2, GitCompare, FileWarning, Database, Server, Users, Shield, PieChart, Copy, CheckCircle2, FileEdit, Target,
     Filter, Search, FolderClosed, FolderTree, Calendar
 } from 'lucide-react';
-import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule } from './utils/stig-parser';
+import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+
 import { STIG_PATHS } from './stig-paths';
+import { getAllStaticMappings } from './data/static-cci-map';
 
 // Feature Flag: Check if running in Electron
 // @ts-ignore
@@ -32,7 +34,7 @@ interface StigChecklist {
 function App() {
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'evidence' | 'checklist' | 'report' | 'compare' | 'poam' | 'copy'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'evidence' | 'checklist' | 'report' | 'compare' | 'poam' | 'copy' | 'controls'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -180,6 +182,84 @@ function App() {
             ]
         }
     });
+
+    // Controls State
+    // Controls State
+    const [controlsRev, setControlsRev] = useState<'rev4' | 'rev5'>('rev5');
+
+    const controlsData = useMemo(() => {
+        // Use our static "Universe" of CCIs as the baseline for what controls exist
+        const allMappings = getAllStaticMappings();
+
+        const data: any[] = [];
+        const seenControls = new Set();
+        const processedControls = new Set<string>();
+
+        // 1. Iterate over all KNOWN mappings to build the control list
+        allMappings.forEach(mapping => {
+            const controls = controlsRev === 'rev4' ? mapping.rev4 : mapping.rev5;
+
+            controls.forEach(control => {
+                if (processedControls.has(control)) return;
+                processedControls.add(control);
+
+                // Find all CCIs associated with this Control (in our static map)
+                const relevantCcis = allMappings
+                    .filter(m => (controlsRev === 'rev4' ? m.rev4 : m.rev5).includes(control))
+                    .map(m => m.cci);
+
+                let openCount = 0;
+                let totalCount = 0;
+                let notAFindingCount = 0;
+
+                // Check upladed checklists
+                uploadedChecklists.forEach(ckl => {
+                    ckl.findings.forEach(finding => {
+                        // If finding has CCIs, check match
+                        if (finding.ccis && finding.ccis.length > 0) {
+                            if (finding.ccis.some(c => relevantCcis.includes(c))) {
+                                totalCount++;
+                                if (finding.status === 'Open') openCount++;
+                                if (finding.status === 'NotAFinding') notAFindingCount++;
+                            }
+                            return;
+                        }
+
+                        // Fallback to rules lookup
+                        const rule = rules.find(r => r.vulnId === finding.vulnId);
+                        if (rule) {
+                            if (rule.ccis.some(c => relevantCcis.includes(c))) {
+                                totalCount++;
+                                if (finding.status === 'Open') openCount++;
+                                if (finding.status === 'NotAFinding') notAFindingCount++;
+                            }
+                        }
+                    });
+                });
+
+                // Only add if we have data OR if we want to show all possible controls
+                data.push({
+                    control,
+                    ccis: relevantCcis,
+                    openCount,
+                    totalCount,
+                    notAFindingCount,
+                    status: openCount > 0 ? 'Fail' : totalCount > 0 && openCount === 0 ? 'Pass' : 'No Data'
+                });
+            });
+        });
+
+        return data.sort((a, b) => a.control.localeCompare(b.control));
+    }, [controlsRev, uploadedChecklists, rules]);
+
+    // Statistics for cards
+    const controlsStats = useMemo(() => {
+        const total = controlsData.length;
+        const passed = controlsData.filter(d => d.status === 'Pass').length;
+        const failed = controlsData.filter(d => d.status === 'Fail').length;
+        const noData = controlsData.filter(d => d.status === 'No Data').length;
+        return { total, passed, failed, noData };
+    }, [controlsData]);
 
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [filterSeverity, setFilterSeverity] = useState<string>('All');
@@ -1701,6 +1781,7 @@ function App() {
                     <SidebarItem icon={<FileSpreadsheet size={18} />} label="Reports" active={activeTab === 'report'} onClick={() => setActiveTab('report')} darkMode={darkMode} />
                     <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
+                    <SidebarItem icon={<Shield size={18} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
 
                     <div className={`pt-4 mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         <div className={`text-xs font-semibold px-4 mb-2 uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Filter by Severity</div>
@@ -3847,6 +3928,160 @@ function App() {
                                     <li>Populates standard POA&M columns including CCIs, descriptions, and comments.</li>
                                     <li>Outputs a formatted Excel file ready for submission or review.</li>
                                 </ul>
+                            </div>
+                        </div>
+                    ) : activeTab === 'controls' ? (
+                        <div className="space-y-8 max-w-6xl mx-auto h-full flex flex-col">
+                            {/* Controls Header */}
+                            <div>
+                                <h2 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Security Controls</h2>
+                                <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
+                                    Map your STIG results to NIST SP 800-53 controls (Rev 4 & 5).
+                                </p>
+                            </div>
+
+                            {/* Upload Section: Checklist Only */}
+                            <div className={`p-10 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                <FolderOpen className={`size-16 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                <h3 className={`font-semibold text-xl mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>Upload Checklists</h3>
+                                <p className={`max-w-md mx-auto text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Upload your .ckl files to automatically map results to NIST SP 800-53 controls.
+                                </p>
+
+                                {uploadedChecklists.length > 0 && (
+                                    <div className="mb-6 w-full max-w-md">
+                                        <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg border border-green-100">
+                                            <div className="flex items-center gap-3">
+                                                <div className="size-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                                                    <Check size={16} strokeWidth={3} />
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="font-semibold text-green-800">{uploadedChecklists.length} Files Loaded</div>
+                                                    <div className="text-xs text-green-600">{uploadedChecklists.reduce((acc, c) => acc + c.findings.length, 0)} Total Findings</div>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setUploadedChecklists([])} className="p-2 hover:bg-green-100 rounded-full text-green-700 transition-colors">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 justify-center">
+                                    <label className={`cursor-pointer px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2 shadow-sm ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-black hover:bg-gray-800 text-white'}`}>
+                                        <Upload size={18} /> Upload Files
+                                        <input type="file" multiple className="hidden" accept=".ckl,.cklb,.xml,.json" onChange={async (e) => {
+                                            if (e.target.files) {
+                                                const files = Array.from(e.target.files);
+                                                for (const file of files) {
+                                                    const parsed = await parseCklFile(file);
+                                                    if (parsed) setUploadedChecklists(prev => [...prev, parsed]);
+                                                }
+                                            }
+                                        }} />
+                                    </label>
+                                    <label className={`cursor-pointer px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
+                                        <FolderTree size={18} /> Upload Folder
+                                        <input
+                                            type="file"
+                                            // @ts-ignore
+                                            webkitdirectory=""
+                                            // @ts-ignore
+                                            directory=""
+                                            multiple
+                                            className="hidden"
+                                            onChange={handleBulkFolderUpload}
+                                        />
+                                    </label>
+                                </div>
+                            </div>
+
+                            {/* Revision Toggle */}
+                            <div className="flex justify-center">
+                                <div className={`p-1 rounded-lg inline-flex ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                    <button
+                                        onClick={() => setControlsRev('rev4')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${controlsRev === 'rev4'
+                                            ? (darkMode ? 'bg-blue-600 text-white shadow' : 'bg-white text-blue-600 shadow')
+                                            : (darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700')}`}
+                                    >
+                                        NIST SP 800-53 Rev 4
+                                    </button>
+                                    <button
+                                        onClick={() => setControlsRev('rev5')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${controlsRev === 'rev5'
+                                            ? (darkMode ? 'bg-blue-600 text-white shadow' : 'bg-white text-blue-600 shadow')
+                                            : (darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700')}`}
+                                    >
+                                        NIST SP 800-53 Rev 5
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-4 gap-4">
+                                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                    <div className="text-gray-500 text-xs font-medium uppercase mb-1">Total Controls</div>
+                                    <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{controlsStats.total}</div>
+                                </div>
+                                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                    <div className="text-green-500 text-xs font-medium uppercase mb-1">Compliant</div>
+                                    <div className="text-2xl font-bold text-green-600">{controlsStats.passed}</div>
+                                </div>
+                                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                    <div className="text-red-500 text-xs font-medium uppercase mb-1">Non-Compliant</div>
+                                    <div className="text-2xl font-bold text-red-600">{controlsStats.failed}</div>
+                                </div>
+                                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
+                                    <div className="text-gray-400 text-xs font-medium uppercase mb-1">No Data</div>
+                                    <div className="text-2xl font-bold text-gray-400">{controlsStats.noData}</div>
+                                </div>
+                            </div>
+
+                            {/* Controls Grid */}
+                            <div className={`rounded-xl border overflow-hidden flex flex-col ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`} style={{ maxHeight: '600px' }}>
+                                <div className={`grid grid-cols-12 gap-4 p-4 border-b font-semibold text-xs uppercase tracking-wider ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
+                                    <div className="col-span-2">Control</div>
+                                    <div className="col-span-6">Associated CCIs</div>
+                                    <div className="col-span-2 text-center">Open Findings</div>
+                                    <div className="col-span-2 text-center">Status</div>
+                                </div>
+                                <div className="overflow-y-auto flex-1">
+                                    {controlsData.map((row, idx) => (
+                                        <div key={idx} className={`grid grid-cols-12 gap-4 p-4 border-b last:border-0 text-sm items-center hover:bg-gray-50/5 ${darkMode ? 'border-gray-700 text-gray-300' : 'border-gray-100 text-gray-700'}`}>
+                                            <div className="col-span-2 font-mono font-medium">{row.control}</div>
+                                            <div className="col-span-6">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {row.ccis.map(((cci: string) => (
+                                                        <span key={cci} className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                                                            {cci}
+                                                        </span>
+                                                    )))}
+                                                </div>
+                                            </div>
+                                            <div className="col-span-2 text-center font-mono">
+                                                {row.openCount > 0 ? (
+                                                    <span className="text-red-500 font-bold">{row.openCount}</span>
+                                                ) : (
+                                                    <span className="text-gray-400">-</span>
+                                                )}
+                                            </div>
+                                            <div className="col-span-2 text-center">
+                                                <span className={`px-2 py-1 rounded text-xs font-semibold uppercase ${row.status === 'Fail' ? 'bg-red-100 text-red-600' :
+                                                    row.status === 'Pass' ? 'bg-green-100 text-green-600' :
+                                                        'bg-gray-100 text-gray-500'
+                                                    }`}>
+                                                    {row.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {controlsData.length === 0 && (
+                                        <div className="p-10 text-center text-gray-400">
+                                            No controls mapped yet. Upload a checklist to see results.
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ) : null}

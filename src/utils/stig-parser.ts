@@ -291,3 +291,87 @@ export function evaluateCheckResult(rule: ParsedStigRule, output: string): boole
 
     return false;
 }
+
+// Output structure matches App.tsx uploadedChecklists state
+export interface ParsedChecklist {
+    id: string;
+    filename: string;
+    hostname: string;
+    stigName: string;
+    findings: Array<{
+        vulnId: string;
+        status: string;
+        severity: string;
+        title: string;
+        comments: string;
+        findingDetails: string;
+        ccis: string[];
+    }>;
+}
+
+export async function parseCklFile(file: File): Promise<ParsedChecklist | null> {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const xml = e.target?.result as string;
+            if (!xml) { resolve(null); return; }
+
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(xml, "text/xml");
+
+                const asset = doc.getElementsByTagName('ASSET')[0];
+                const hostname = asset?.getElementsByTagName('HOST_NAME')[0]?.textContent || '';
+
+                const stigRef = doc.getElementsByTagName('STIG_REF')[0]?.textContent || '';
+
+                const vulns = doc.getElementsByTagName('VULN');
+                const findings: ParsedChecklist['findings'] = [];
+
+                for (let i = 0; i < vulns.length; i++) {
+                    const vuln = vulns[i];
+                    const vulnId = vuln.getElementsByTagName('VULN_NUM')[0]?.textContent || '';
+                    const status = vuln.getElementsByTagName('STATUS')[0]?.textContent || 'Not_Reviewed';
+                    const comments = vuln.getElementsByTagName('COMMENTS')[0]?.textContent || '';
+                    const findingDetails = vuln.getElementsByTagName('FINDING_DETAILS')[0]?.textContent || '';
+                    const title = vuln.getElementsByTagName('RULE_TITLE')[0]?.textContent || '';
+                    const severity = vuln.getElementsByTagName('SEVERITY')[0]?.textContent || 'low';
+
+                    // Extract CCIs from STIG_DATA
+                    const ccis: string[] = [];
+                    const stigData = vuln.getElementsByTagName('STIG_DATA');
+                    for (let j = 0; j < stigData.length; j++) {
+                        const attr = stigData[j].getElementsByTagName('VULN_ATTRIBUTE')[0]?.textContent;
+                        const data = stigData[j].getElementsByTagName('ATTRIBUTE_DATA')[0]?.textContent;
+                        if (attr === 'CCI_REF' && data) {
+                            ccis.push(data);
+                        }
+                    }
+
+                    findings.push({
+                        vulnId,
+                        status,
+                        severity,
+                        title,
+                        comments,
+                        findingDetails,
+                        ccis
+                    });
+                }
+
+                resolve({
+                    id: Math.random().toString(36).substr(2, 9),
+                    filename: file.name,
+                    hostname,
+                    stigName: stigRef,
+                    findings
+                });
+
+            } catch (err) {
+                console.error("Error parsing CKL", err);
+                resolve(null);
+            }
+        };
+        reader.readAsText(file);
+    });
+}
