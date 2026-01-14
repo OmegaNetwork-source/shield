@@ -1638,9 +1638,31 @@ function App() {
                 });
 
                 const controlVulnDesc = finding.title || '';
-                const cciField = finding.ccis?.join('\n') || '';
-                const nistControl = extractNist(cciField);
-                const cciNumber = finding.ccis?.[0] ? extractCci(finding.ccis[0]) : '';
+
+                // Lookup NIST Controls using our Dictionary
+                const nistControls = new Set<string>();
+                if (finding.ccis && finding.ccis.length > 0) {
+                    finding.ccis.forEach(c => {
+                        const mapped = cciMap[c];
+                        if (mapped) {
+                            // Extract base control or full control? POAM usually wants specific like AC-2(1).
+                            // But usually just the primary designation.
+                            nistControls.add(mapped);
+                        }
+                    });
+                } else {
+                    // Fallback to rules lookup
+                    const rule = rules.find(r => r.vulnId === finding.vulnId);
+                    if (rule && rule.ccis) {
+                        rule.ccis.forEach(c => {
+                            const mapped = cciMap[c];
+                            if (mapped) nistControls.add(mapped);
+                        });
+                    }
+                }
+                const nistControl = Array.from(nistControls).join('; ');
+
+                const cciNumber = finding.ccis?.[0] || '';
                 const comments = `${cciNumber}\n${finding.findingDetails || ''}`.trim();
                 const securityChecks = `${finding.ruleId || ''}\n${finding.vulnId || ''}\n${finding.groupId || ''}`.trim();
 
