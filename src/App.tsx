@@ -429,6 +429,70 @@ function App() {
     }, [analyzerOldChecklist, analyzerNewChecklist]);
 
     const [filterStatus, setFilterStatus] = useState<string>('All');
+
+    // Sorted Data for Analyzer Tabs
+    const sortedNotReviewed = useMemo(() => {
+        if (!analyzerData?.notReviewed) return [];
+        const sorted = [...analyzerData.notReviewed];
+        if (!analyzerSort.key) return sorted;
+
+        return sorted.sort((a, b) => {
+            let valA: any = '';
+            let valB: any = '';
+
+            if (analyzerSort.key === 'groupid') {
+                valA = a.vulnId;
+                valB = b.vulnId;
+            } else if (analyzerSort.key === 'severity') {
+                const sevMap: Record<string, number> = { 'high': 3, 'cat i': 3, 'medium': 2, 'cat ii': 2, 'low': 1, 'cat iii': 1 };
+                valA = sevMap[(a.oldFinding.severity || '').toLowerCase()] || 0;
+                valB = sevMap[(b.oldFinding.severity || '').toLowerCase()] || 0;
+            } else if (analyzerSort.key === 'status') {
+                valA = a.oldFinding.status || '';
+                valB = b.oldFinding.status || '';
+            }
+
+            if (valA < valB) return analyzerSort.dir === 'asc' ? -1 : 1;
+            if (valA > valB) return analyzerSort.dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [analyzerData, analyzerSort]);
+
+    const sortedReviewed = useMemo(() => {
+        if (!analyzerNewChecklist || !analyzerTab) return [];
+        // Filter based on Toggle
+        let findings = analyzerNewChecklist.findings.filter(f => {
+            // "Reviewed" means status is NOT 'Not_Reviewed' (already processed) OR we edited it specifically
+            if (analyzerShowAllReviewed) {
+                return (f.status || '').toLowerCase().replace(/[\s_]/g, '') !== 'notreviewed';
+            } else {
+                return analyzerEditedIds.has(f.vulnId);
+            }
+        });
+
+        // Sort
+        return findings.sort((a, b) => {
+            let valA: any = '';
+            let valB: any = '';
+
+            if (analyzerSort.key === 'groupid') {
+                valA = a.vulnId;
+                valB = b.vulnId;
+            } else if (analyzerSort.key === 'severity') {
+                const sevMap: Record<string, number> = { 'high': 3, 'cat i': 3, 'medium': 2, 'cat ii': 2, 'low': 1, 'cat iii': 1 };
+                valA = sevMap[(a.severity || '').toLowerCase()] || 0;
+                valB = sevMap[(b.severity || '').toLowerCase()] || 0;
+            } else if (analyzerSort.key === 'status') {
+                valA = a.status || '';
+                valB = b.status || '';
+            }
+
+            if (valA < valB) return analyzerSort.dir === 'asc' ? -1 : 1;
+            if (valA > valB) return analyzerSort.dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [analyzerNewChecklist, analyzerTab, analyzerEditedIds, analyzerShowAllReviewed, analyzerSort]);
+
     const [filterSeverity, setFilterSeverity] = useState<string>('All');
 
     const handleCopyUpload = async (file: File, type: 'source' | 'target') => {
@@ -4862,8 +4926,6 @@ function App() {
                                                                 const handleExportExcel = () => {
                                                                     if (!analyzerData) return;
                                                                     const wb = XLSX.utils.book_new();
-
-                                                                    // 1. Summary
                                                                     const summaryData = [
                                                                         { Metric: 'Total Old Findings', Value: analyzerData.totalOld },
                                                                         { Metric: 'Total New Findings', Value: analyzerData.totalNew },
@@ -4873,8 +4935,6 @@ function App() {
                                                                         { Metric: 'Reviewed (Edited)', Value: analyzerEditedIds.size },
                                                                     ];
                                                                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "Summary");
-
-                                                                    // 2. Not Reviewed
                                                                     const notReviewedData = analyzerData.notReviewed.map(r => ({
                                                                         GroupID: r.vulnId,
                                                                         Severity: r.oldFinding.severity,
@@ -4883,8 +4943,6 @@ function App() {
                                                                         NewStatus: 'Not_Reviewed'
                                                                     }));
                                                                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(notReviewedData), "Not Reviewed");
-
-                                                                    // 3. All Findings (Source of Truth)
                                                                     const allData = analyzerNewChecklist?.findings.map(f => ({
                                                                         GroupID: f.vulnId,
                                                                         RuleID: f.ruleId,
@@ -4895,8 +4953,6 @@ function App() {
                                                                         Edited: analyzerEditedIds.has(f.vulnId) ? 'Yes' : 'No'
                                                                     })) || [];
                                                                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allData), "All Findings");
-
-                                                                    // 4. New IDs
                                                                     const newIdsData = analyzerData.newIds.map(r => ({
                                                                         GroupID: r.vulnId,
                                                                         Severity: r.finding.severity,
@@ -4904,8 +4960,6 @@ function App() {
                                                                         Status: r.finding.status
                                                                     }));
                                                                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(newIdsData), "New IDs");
-
-                                                                    // 5. Dropped IDs
                                                                     const droppedIdsData = analyzerData.droppedIds.map(r => ({
                                                                         GroupID: r.vulnId,
                                                                         Severity: r.finding.severity,
@@ -4913,10 +4967,8 @@ function App() {
                                                                         Status: r.finding.status
                                                                     }));
                                                                     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(droppedIdsData), "Dropped IDs");
-
                                                                     XLSX.writeFile(wb, `stig_analyzer_report_${new Date().toISOString().split('T')[0]}.xlsx`);
                                                                 };
-
                                                                 const handleCopyImage = async () => {
                                                                     const element = document.getElementById('analyzer-panel-content');
                                                                     if (!element) return;
@@ -4935,10 +4987,8 @@ function App() {
                                                                         alert('Failed to copy image.');
                                                                     }
                                                                 };
-
                                                                 const handleExportCKLB = () => {
                                                                     if (!analyzerNewChecklist) return;
-                                                                    // Export as CKLB JSON
                                                                     const exportData = {
                                                                         ...analyzerNewChecklist.rawJson,
                                                                         stigs: analyzerNewChecklist.rawJson?.stigs?.map((stig: any) => ({
@@ -4971,7 +5021,6 @@ function App() {
                                                                         }
                                                                     };
                                                                     const cklbData = JSON.stringify(exportData, null, 2);
-
                                                                     const blob = new Blob([cklbData], { type: 'application/json' });
                                                                     const url = URL.createObjectURL(blob);
                                                                     const a = document.createElement('a');
@@ -4982,706 +5031,393 @@ function App() {
                                                                     document.body.removeChild(a);
                                                                     URL.revokeObjectURL(url);
                                                                 };
-
                                                                 return (
                                                                     <>
-                                                                        <button
-                                                                            onClick={handleCopyImage}
-                                                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border ${darkMode ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}
-                                                                            title="Copy Analyzer View to Clipboard"
-                                                                        >
-                                                                            <Camera size={14} />
-                                                                            Copy
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={handleExportExcel}
-                                                                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border ${darkMode ? 'border-gray-700 hover:bg-gray-800 text-green-400' : 'border-gray-200 hover:bg-gray-50 text-green-600'}`}
-                                                                            title="Export Full Report to Excel"
-                                                                        >
-                                                                            <FileSpreadsheet size={14} />
-                                                                            Report
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={handleExportCKLB}
-                                                                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs font-medium"
-                                                                            title="Export CKLB for STIG Viewer"
-                                                                        >
-                                                                            <Download size={14} />
-                                                                            CKLB
-                                                                        </button>
+                                                                        <button onClick={handleCopyImage} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border ${darkMode ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`} title="Copy Analyzer View to Clipboard"><Camera size={14} /> Copy</button>
+                                                                        <button onClick={handleExportExcel} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border ${darkMode ? 'border-gray-700 hover:bg-gray-800 text-green-400' : 'border-gray-200 hover:bg-gray-50 text-green-600'}`} title="Export Full Report to Excel"><FileSpreadsheet size={14} /> Report</button>
+                                                                        <button onClick={handleExportCKLB} className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-xs font-medium" title="Export CKLB for STIG Viewer"><Download size={14} /> CKLB</button>
                                                                     </>
                                                                 );
                                                             })()}
                                                         </div>
                                                     </div>
 
-                                                    {/* Controls Row */}
-                                                    {analyzerData.notReviewed.length > 0 && (
-                                                        <div className="space-y-3">
-                                                            {/* Select All and Copy Button */}
-                                                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                    {/* Controls Row - Only for Not Reviewed */}
+                                                    {analyzerData.notReviewed.length > 0 && analyzerTab === 'notreviewed' && (
+                                                        <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700 mb-4">
+                                                            <div className="flex items-center gap-4">
+                                                                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
                                                                     <input
                                                                         type="checkbox"
-                                                                        checked={analyzerSelectedIds.size === analyzerData.notReviewed.length && analyzerData.notReviewed.length > 0}
+                                                                        checked={analyzerData.notReviewed.length > 0 && analyzerSelectedIds.size === analyzerData.notReviewed.length}
                                                                         onChange={(e) => {
-                                                                            if (e.target.checked) {
-                                                                                setAnalyzerSelectedIds(new Set(analyzerData.notReviewed.map(r => r.vulnId)));
-                                                                            } else {
-                                                                                setAnalyzerSelectedIds(new Set());
-                                                                            }
+                                                                            if (e.target.checked) setAnalyzerSelectedIds(new Set(analyzerData.notReviewed.map(r => r.vulnId)));
+                                                                            else setAnalyzerSelectedIds(new Set());
                                                                         }}
-                                                                        className="rounded"
+                                                                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                                                     />
-                                                                    Select All ({analyzerData.notReviewed.length})
+                                                                    Select All
                                                                 </label>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="flex gap-2">
+                                                                <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
+                                                                <div className="flex items-center gap-2 text-xs">
+                                                                    <span className="text-gray-500 font-medium">Sort By:</span>
+                                                                    {(['severity', 'groupid', 'status'] as const).map(key => (
                                                                         <button
-                                                                            onClick={() => {
-                                                                                if (analyzerSelectedIds.size === 0) return;
-                                                                                setAnalyzerNewChecklist(prev => {
-                                                                                    if (!prev) return prev;
-                                                                                    const updated = { ...prev, findings: [...prev.findings] };
-                                                                                    updated.findings = updated.findings.map(f => {
-                                                                                        if (analyzerSelectedIds.has(f.vulnId)) {
-                                                                                            const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
-                                                                                            if (oldF) {
-                                                                                                return {
-                                                                                                    ...f,
-                                                                                                    status: oldF.status
-                                                                                                };
-                                                                                            }
-                                                                                        }
-                                                                                        return f;
-                                                                                    });
-                                                                                    return updated;
-                                                                                });
-                                                                                setAnalyzerEditedIds(prev => {
-                                                                                    const next = new Set(prev);
-                                                                                    analyzerSelectedIds.forEach(id => next.add(id));
-                                                                                    return next;
-                                                                                });
-                                                                                setAnalyzerSelectedIds(new Set());
-                                                                            }}
-                                                                            disabled={analyzerSelectedIds.size === 0}
-                                                                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${analyzerSelectedIds.size > 0
-                                                                                ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                                                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                                                            key={key}
+                                                                            onClick={() => setAnalyzerSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }))}
+                                                                            className={`px-2 py-1 rounded capitalize transition-colors ${analyzerSort.key === key ? 'bg-white shadow text-purple-600 font-semibold' : 'text-gray-500 hover:bg-gray-200'}`}
                                                                         >
-                                                                            Copy Status
+                                                                            {key === 'groupid' ? 'Group ID' : key} {analyzerSort.key === key && (analyzerSort.dir === 'asc' ? '↑' : '↓')}
                                                                         </button>
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                if (analyzerSelectedIds.size === 0) return;
-                                                                                setAnalyzerNewChecklist(prev => {
-                                                                                    if (!prev) return prev;
-                                                                                    const updated = { ...prev, findings: [...prev.findings] };
-                                                                                    updated.findings = updated.findings.map(f => {
-                                                                                        if (analyzerSelectedIds.has(f.vulnId)) {
-                                                                                            const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
-                                                                                            if (oldF) {
-                                                                                                let newFindingDetails = f.findingDetails || '';
-                                                                                                if (analyzerCustomComment) {
-                                                                                                    newFindingDetails = `${analyzerCustomComment}\n\n${newFindingDetails}`;
-                                                                                                }
-                                                                                                if (oldF.findingDetails) {
-                                                                                                    newFindingDetails = `${oldF.findingDetails}\n\n---\n${newFindingDetails}`;
-                                                                                                }
-                                                                                                return {
-                                                                                                    ...f,
-                                                                                                    findingDetails: newFindingDetails.trim(),
-                                                                                                    comments: oldF.comments || f.comments
-                                                                                                };
-                                                                                            }
-                                                                                        }
-                                                                                        return f;
-                                                                                    });
-                                                                                    return updated;
-                                                                                });
-                                                                                setAnalyzerSelectedIds(new Set());
-                                                                                setAnalyzerCustomComment('');
-                                                                            }}
-                                                                            disabled={analyzerSelectedIds.size === 0}
-                                                                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${analyzerSelectedIds.size > 0
-                                                                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                                                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                                                                        >
-                                                                            Copy Details
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                if (analyzerSelectedIds.size === 0) return;
-                                                                                setAnalyzerNewChecklist(prev => {
-                                                                                    if (!prev) return prev;
-                                                                                    const updated = { ...prev, findings: [...prev.findings] };
-                                                                                    updated.findings = updated.findings.map(f => {
-                                                                                        if (analyzerSelectedIds.has(f.vulnId)) {
-                                                                                            const oldF = analyzerData.notReviewed.find(r => r.vulnId === f.vulnId)?.oldFinding;
-                                                                                            if (oldF) {
-                                                                                                let newFindingDetails = f.findingDetails || '';
-                                                                                                if (analyzerCustomComment) {
-                                                                                                    newFindingDetails = `${analyzerCustomComment}\n\n${newFindingDetails}`;
-                                                                                                }
-                                                                                                if (oldF.findingDetails) {
-                                                                                                    newFindingDetails = `${oldF.findingDetails}\n\n---\n${newFindingDetails}`;
-                                                                                                }
-                                                                                                return {
-                                                                                                    ...f,
-                                                                                                    status: oldF.status,
-                                                                                                    findingDetails: newFindingDetails.trim(),
-                                                                                                    comments: oldF.comments || f.comments
-                                                                                                };
-                                                                                            }
-                                                                                        }
-                                                                                        return f;
-                                                                                    });
-                                                                                    return updated;
-                                                                                });
-                                                                                setAnalyzerSelectedIds(new Set());
-                                                                                setAnalyzerCustomComment('');
-                                                                            }}
-                                                                            disabled={analyzerSelectedIds.size === 0}
-                                                                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${analyzerSelectedIds.size > 0
-                                                                                ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                                                                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                                                                        >
-                                                                            Copy Both
-                                                                        </button>
-                                                                    </div>
+                                                                    ))}
                                                                 </div>
                                                             </div>
-
-                                                            {/* Custom Finding Details Input */}
-                                                            <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                                                                <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Add Custom Comment to <span className="text-blue-500">NEW</span> Finding Details</label>
-                                                                <textarea
-                                                                    value={analyzerCustomComment}
-                                                                    onChange={(e) => setAnalyzerCustomComment(e.target.value)}
-                                                                    placeholder="Enter additional comments to add on top of existing finding details..."
-                                                                    className={`w-full p-2 rounded-lg border text-sm resize-none ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
-                                                                    rows={2}
-                                                                />
-                                                            </div>
-
-                                                            {/* Find and Replace */}
-                                                            <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                                                                <label className="text-xs font-semibold uppercase text-gray-500 block mb-2">Find & Replace in <span className="text-blue-500">NEW</span> Finding Details</label>
-                                                                <div className="flex gap-2 items-center">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={analyzerFindText}
-                                                                        onChange={(e) => setAnalyzerFindText(e.target.value)}
-                                                                        placeholder="Find text..."
-                                                                        className={`flex-1 p-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
-                                                                    />
-                                                                    <span className="text-gray-400">→</span>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={analyzerReplaceText}
-                                                                        onChange={(e) => setAnalyzerReplaceText(e.target.value)}
-                                                                        placeholder="Replace with..."
-                                                                        className={`flex-1 p-2 rounded-lg border text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            if (!analyzerFindText) return;
-                                                                            setAnalyzerNewChecklist(prev => {
-                                                                                if (!prev) return prev;
-                                                                                const updated = { ...prev, findings: [...prev.findings] };
-                                                                                updated.findings = updated.findings.map(f => {
-                                                                                    // If selection exists, only update selected. Otherwise update ALL.
-                                                                                    if (analyzerSelectedIds.size > 0 && !analyzerSelectedIds.has(f.vulnId)) {
-                                                                                        return f;
-                                                                                    }
-                                                                                    return {
-                                                                                        ...f,
-                                                                                        findingDetails: (f.findingDetails || '').replaceAll(analyzerFindText, analyzerReplaceText)
-                                                                                    };
-                                                                                });
-                                                                                return updated;
-                                                                            });
-                                                                        }}
-                                                                        disabled={!analyzerFindText}
-                                                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${analyzerFindText
-                                                                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                                                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
-                                                                    >
-                                                                        Replace
-                                                                    </button>
-                                                                </div>
+                                                            <div className="text-xs text-gray-500 font-medium">
+                                                                {analyzerSelectedIds.size > 0 ? `${analyzerSelectedIds.size} selected` : `Showing ${analyzerData.notReviewed.length} items`}
                                                             </div>
                                                         </div>
                                                     )}
 
-                                                    {/* Table */}
-                                                    <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                                        <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                                                            <div className="col-span-1"></div>
-                                                            <div className="col-span-1 text-center cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'severity', dir: prev.key === 'severity' && prev.dir === 'desc' ? 'asc' : 'desc' }))}>CAT {analyzerSort.key === 'severity' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                            <div className="col-span-2 cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'vulnId', dir: prev.key === 'vulnId' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>Group ID {analyzerSort.key === 'vulnId' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                            <div className="col-span-2 cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'status', dir: prev.key === 'status' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>Old Status {analyzerSort.key === 'status' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                            <div className="col-span-2">Old Finding Details</div>
-                                                            <div className="col-span-1 text-center">→</div>
-                                                            <div className="col-span-3">New Status</div>
-                                                        </div>
-                                                        <div className="max-h-[400px] overflow-y-auto divide-y dark:divide-gray-800">
-                                                            {analyzerData.notReviewed
-                                                                .slice()
-                                                                .sort((a, b) => {
-                                                                    const dir = analyzerSort.dir === 'asc' ? 1 : -1;
-                                                                    if (analyzerSort.key === 'vulnId') return a.vulnId.localeCompare(b.vulnId) * dir;
-                                                                    if (analyzerSort.key === 'severity') {
-                                                                        const levels: any = { high: 3, medium: 2, low: 1 };
-                                                                        return ((levels[a.oldFinding.severity] || 0) - (levels[b.oldFinding.severity] || 0)) * dir;
-                                                                    }
-                                                                    if (analyzerSort.key === 'status') return (a.oldFinding.status || '').localeCompare(b.oldFinding.status || '') * dir;
-                                                                    return 0;
-                                                                })
-                                                                .map((row, idx) => (
-                                                                    <div key={idx} className="border-b dark:border-gray-800">
-                                                                        <div
-                                                                            className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
-                                                                            onClick={() => {
-                                                                                const newSet = new Set(analyzerExpandedRows);
-                                                                                if (newSet.has(row.vulnId)) newSet.delete(row.vulnId);
-                                                                                else newSet.add(row.vulnId);
-                                                                                setAnalyzerExpandedRows(newSet);
-                                                                            }}
-                                                                        >
-                                                                            <div className="col-span-1" onClick={(e) => e.stopPropagation()}>
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={analyzerSelectedIds.has(row.vulnId)}
-                                                                                    onChange={(e) => {
-                                                                                        const newSet = new Set(analyzerSelectedIds);
-                                                                                        if (e.target.checked) newSet.add(row.vulnId);
-                                                                                        else newSet.delete(row.vulnId);
-                                                                                        setAnalyzerSelectedIds(newSet);
-                                                                                    }}
-                                                                                    className="rounded"
-                                                                                />
-                                                                            </div>
-                                                                            <div className="col-span-1 text-center font-bold text-xs text-gray-500">
-                                                                                {row.oldFinding.severity === 'high' ? 'I' : row.oldFinding.severity === 'medium' ? 'II' : 'III'}
-                                                                            </div>
-                                                                            <div className="col-span-2 font-mono text-xs flex items-center gap-1">
-                                                                                <ChevronDown size={14} className={`transition-transform ${analyzerExpandedRows.has(row.vulnId) ? 'rotate-180' : ''}`} />
-                                                                                {row.vulnId}
-                                                                            </div>
-                                                                            <div className="col-span-2">
-                                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.oldFinding.status === 'Open' ? 'bg-red-100 text-red-700' : row.oldFinding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                                    {row.oldFinding.status}
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="col-span-2 text-xs text-gray-500 truncate" title={row.oldFinding.findingDetails || row.oldFinding.comments}>
-                                                                                {(row.oldFinding.findingDetails || row.oldFinding.comments || '-').slice(0, 50)}...
-                                                                            </div>
-                                                                            <div className="col-span-1 text-center text-gray-400">→</div>
-                                                                            <div className="col-span-3">
-                                                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
-                                                                                    Not_Reviewed
-                                                                                </span>
+                                                    {/* Not Reviewed Tab */}
+                                                    {analyzerTab === 'notreviewed' && (
+                                                        <div className="space-y-4">
+                                                            {sortedNotReviewed.map((row) => (
+                                                                <div key={row.vulnId} className={`p-4 rounded-xl border transition-all ${analyzerSelectedIds.has(row.vulnId) ? 'border-purple-300 bg-purple-50/50 dark:bg-purple-900/10' : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}`}>
+                                                                    {/* Header */}
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={analyzerSelectedIds.has(row.vulnId)}
+                                                                                onChange={(e) => {
+                                                                                    const newSet = new Set(analyzerSelectedIds);
+                                                                                    if (e.target.checked) newSet.add(row.vulnId);
+                                                                                    else newSet.delete(row.vulnId);
+                                                                                    setAnalyzerSelectedIds(newSet);
+                                                                                }}
+                                                                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                                                            />
+                                                                            <span className="text-sm font-mono font-bold">{row.vulnId}</span>
+                                                                            <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${(row.oldFinding.severity || '').toLowerCase().includes('high') || (row.oldFinding.severity || '').toLowerCase().includes('cat i') ? 'bg-red-100 text-red-700' :
+                                                                                (row.oldFinding.severity || '').toLowerCase().includes('medium') || (row.oldFinding.severity || '').toLowerCase().includes('cat ii') ? 'bg-orange-100 text-orange-700' :
+                                                                                    'bg-yellow-100 text-yellow-700'
+                                                                                }`}>
+                                                                                {row.oldFinding.severity}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${(row.oldFinding.status || '').toLowerCase().includes('open') ? 'bg-red-50 border-red-100 text-red-600' :
+                                                                            (row.oldFinding.status || '').toLowerCase().includes('notafinding') ? 'bg-green-50 border-green-100 text-green-600' :
+                                                                                'bg-gray-50 border-gray-100 text-gray-600'
+                                                                            }`}>
+                                                                            {row.oldFinding.status}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                        {/* Old Data */}
+                                                                        <div className="text-sm">
+                                                                            <div className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Old Details/Comments</div>
+                                                                            <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-gray-600 dark:text-gray-400 max-h-32 overflow-y-auto whitespace-pre-wrap text-xs">
+                                                                                {row.oldFinding.findingDetails || row.oldFinding.comments || <em className="text-gray-400">No content</em>}
                                                                             </div>
                                                                         </div>
-                                                                        {/* Expanded Details */}
-                                                                        {analyzerExpandedRows.has(row.vulnId) && (
-                                                                            <div className={`p-4 grid grid-cols-2 gap-4 text-xs ${darkMode ? 'bg-gray-800/30' : 'bg-gray-50'}`}>
-                                                                                <div>
-                                                                                    <div className="font-semibold text-gray-500 uppercase mb-2">Old Finding Details</div>
-                                                                                    <div className={`p-3 rounded-lg max-h-40 overflow-y-auto whitespace-pre-wrap ${darkMode ? 'bg-gray-900 text-gray-300' : 'bg-white text-gray-700 border'}`}>
-                                                                                        {row.oldFinding.findingDetails || row.oldFinding.comments || 'No finding details'}
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div>
-                                                                                    <div className="font-semibold text-gray-500 uppercase mb-2">New Finding Details</div>
-                                                                                    <textarea
-                                                                                        value={row.newFinding.findingDetails || ''}
-                                                                                        onChange={(e) => {
-                                                                                            const val = e.target.value;
-                                                                                            setAnalyzerNewChecklist(prev => {
-                                                                                                if (!prev) return prev;
-                                                                                                const newFindings = [...prev.findings];
-                                                                                                const idx = newFindings.findIndex(f => f.vulnId === row.vulnId);
-                                                                                                if (idx !== -1) {
-                                                                                                    newFindings[idx] = { ...newFindings[idx], findingDetails: val };
-                                                                                                }
-                                                                                                return { ...prev, findings: newFindings };
-                                                                                            });
-                                                                                        }}
-                                                                                        className={`w-full p-3 rounded-lg text-xs resize-none h-40 border focus:ring-2 focus:ring-blue-500 outline-none transition-all ${darkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-white text-gray-700 border-gray-200 focus:border-blue-500'}`}
-                                                                                        placeholder="Enter finding details..."
-                                                                                    />
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            {analyzerData.notReviewed.length === 0 && (
-                                                                <div className="p-8 text-center text-gray-400">
-                                                                    No "Not Reviewed" findings in the new checklist that have status in the old checklist.
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
 
-                                            {/* Reviewed Tab */}
-                                            {analyzerTab === 'reviewed' && (
-                                                <div className="space-y-4">
-                                                    <div className="flex justify-between items-center px-1">
-                                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                                            {analyzerShowAllReviewed ? "All Findings (Not_Reviewed excluded)" : "Findings Edited This Session"}
-                                                        </span>
-                                                        <button
-                                                            onClick={() => setAnalyzerShowAllReviewed(!analyzerShowAllReviewed)}
-                                                            className="text-xs text-blue-500 hover:text-blue-600 font-medium"
-                                                        >
-                                                            {analyzerShowAllReviewed ? 'Show Only My Edits' : 'Show All Processed'}
-                                                        </button>
-                                                    </div>
-                                                    <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                                        <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                                                            <div className="col-span-1 flex items-center justify-center">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={(() => {
-                                                                        const visible = analyzerNewChecklist?.findings.filter(f => analyzerShowAllReviewed ? f.status !== 'Not_Reviewed' : analyzerEditedIds.has(f.vulnId)) || [];
-                                                                        return visible.length > 0 && visible.every(f => analyzerSelectedIds.has(f.vulnId));
-                                                                    })()}
-                                                                    onChange={(e) => {
-                                                                        const visible = analyzerNewChecklist?.findings.filter(f => analyzerShowAllReviewed ? f.status !== 'Not_Reviewed' : analyzerEditedIds.has(f.vulnId)) || [];
-                                                                        if (e.target.checked) {
-                                                                            setAnalyzerSelectedIds(new Set(visible.map(f => f.vulnId)));
-                                                                        } else {
-                                                                            setAnalyzerSelectedIds(new Set());
-                                                                        }
-                                                                    }}
-                                                                    className="rounded"
-                                                                />
-                                                            </div>
-                                                            <div
-                                                                className="col-span-1 text-center cursor-pointer hover:text-blue-500"
-                                                                onClick={() => setAnalyzerSort(prev => ({ key: 'severity', dir: prev.key === 'severity' && prev.dir === 'desc' ? 'asc' : 'desc' }))}
-                                                            >
-                                                                CAT {analyzerSort.key === 'severity' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}
-                                                            </div>
-                                                            <div
-                                                                className="col-span-2 cursor-pointer hover:text-blue-500"
-                                                                onClick={() => setAnalyzerSort(prev => ({ key: 'vulnId', dir: prev.key === 'vulnId' && prev.dir === 'asc' ? 'desc' : 'asc' }))}
-                                                            >
-                                                                Group ID {analyzerSort.key === 'vulnId' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}
-                                                            </div>
-                                                            <div
-                                                                className="col-span-2 cursor-pointer hover:text-blue-500"
-                                                                onClick={() => setAnalyzerSort(prev => ({ key: 'status', dir: prev.key === 'status' && prev.dir === 'asc' ? 'desc' : 'asc' }))}
-                                                            >
-                                                                Status {analyzerSort.key === 'status' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}
-                                                            </div>
-                                                            <div className="col-span-6">Finding Details</div>
-                                                        </div>
-                                                        <div className="max-h-[600px] overflow-y-auto divide-y dark:divide-gray-800">
-                                                            {analyzerNewChecklist?.findings
-                                                                .filter(f => analyzerShowAllReviewed ? f.status !== 'Not_Reviewed' : analyzerEditedIds.has(f.vulnId))
-                                                                .sort((a, b) => {
-                                                                    const dir = analyzerSort.dir === 'asc' ? 1 : -1;
-                                                                    if (analyzerSort.key === 'vulnId') return a.vulnId.localeCompare(b.vulnId) * dir;
-                                                                    if (analyzerSort.key === 'severity') {
-                                                                        const levels: any = { high: 3, medium: 2, low: 1 };
-                                                                        return (levels[a.severity] - levels[b.severity]) * dir;
-                                                                    }
-                                                                    if (analyzerSort.key === 'status') return a.status.localeCompare(b.status) * dir;
-                                                                    return 0;
-                                                                })
-                                                                .map((finding, idx) => (
-                                                                    <div key={idx} className={`border-b dark:border-gray-800 ${analyzerSelectedIds.has(finding.vulnId) ? (darkMode ? 'bg-blue-900/20' : 'bg-blue-50') : ''}`}>
-                                                                        <div
-                                                                            className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
-                                                                            onClick={() => {
-                                                                                const newSet = new Set(analyzerExpandedRows);
-                                                                                if (newSet.has(finding.vulnId)) newSet.delete(finding.vulnId);
-                                                                                else newSet.add(finding.vulnId);
-                                                                                setAnalyzerExpandedRows(newSet);
-                                                                            }}
-                                                                        >
-                                                                            <div className="col-span-1 flex justify-center" onClick={(e) => e.stopPropagation()}>
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    checked={analyzerSelectedIds.has(finding.vulnId)}
-                                                                                    onChange={(e) => {
-                                                                                        const newSet = new Set(analyzerSelectedIds);
-                                                                                        if (e.target.checked) newSet.add(finding.vulnId);
-                                                                                        else newSet.delete(finding.vulnId);
-                                                                                        setAnalyzerSelectedIds(newSet);
+                                                                        {/* New Data & Actions */}
+                                                                        <div className="flex flex-col gap-2">
+                                                                            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">New Finding</div>
+                                                                            <textarea
+                                                                                className="flex-1 min-h-[80px] w-full p-2 text-sm border rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-900 dark:border-gray-600"
+                                                                                placeholder="New finding details..."
+                                                                                value={row.newFinding.findingDetails || ''}
+                                                                                onChange={(e) => {
+                                                                                    const val = e.target.value;
+                                                                                    setAnalyzerNewChecklist((prev: any) => {
+                                                                                        if (!prev) return null;
+                                                                                        const findings = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: val } : f);
+                                                                                        return { ...prev, findings };
+                                                                                    });
+                                                                                    setAnalyzerEditedIds(prev => new Set(prev).add(row.vulnId));
+                                                                                }}
+                                                                            />
+                                                                            <div className="grid grid-cols-3 gap-2">
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        setAnalyzerNewChecklist((prev: any) => {
+                                                                                            if (!prev) return null;
+                                                                                            const findings = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: row.oldFinding.status } : f);
+                                                                                            return { ...prev, findings };
+                                                                                        });
+                                                                                        setAnalyzerEditedIds(prev => new Set(prev).add(row.vulnId));
                                                                                     }}
-                                                                                    className="rounded"
-                                                                                />
-                                                                            </div>
-                                                                            <div className="col-span-1 text-center font-bold text-xs text-gray-500">
-                                                                                {finding.severity === 'high' ? 'I' : finding.severity === 'medium' ? 'II' : 'III'}
-                                                                            </div>
-                                                                            <div className="col-span-2 font-mono text-xs flex items-center gap-1">
-                                                                                <ChevronDown size={14} className={`transition-transform ${analyzerExpandedRows.has(finding.vulnId) ? 'rotate-180' : ''}`} />
-                                                                                {finding.vulnId}
-                                                                            </div>
-                                                                            <div className="col-span-2">
-                                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${finding.status === 'Open' ? 'bg-red-100 text-red-700' : finding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                                    {finding.status}
-                                                                                </span>
-                                                                            </div>
-                                                                            <div className="col-span-6 text-xs text-gray-500 truncate" title={finding.findingDetails}>
-                                                                                {(finding.findingDetails || '-').slice(0, 80)}...
+                                                                                    className="px-2 py-1.5 text-xs font-medium bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                                                                >
+                                                                                    Copy Status
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        const details = row.oldFinding.findingDetails || row.oldFinding.comments || '';
+                                                                                        setAnalyzerNewChecklist((prev: any) => {
+                                                                                            if (!prev) return null;
+                                                                                            const findings = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: details } : f);
+                                                                                            return { ...prev, findings };
+                                                                                        });
+                                                                                        setAnalyzerEditedIds(prev => new Set(prev).add(row.vulnId));
+                                                                                    }}
+                                                                                    className="px-2 py-1.5 text-xs font-medium bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors"
+                                                                                >
+                                                                                    Copy Details
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        const details = row.oldFinding.findingDetails || row.oldFinding.comments || '';
+                                                                                        setAnalyzerNewChecklist((prev: any) => {
+                                                                                            if (!prev) return null;
+                                                                                            const findings = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: row.oldFinding.status, findingDetails: details } : f);
+                                                                                            return { ...prev, findings };
+                                                                                        });
+                                                                                        setAnalyzerEditedIds(prev => new Set(prev).add(row.vulnId));
+                                                                                    }}
+                                                                                    className="px-2 py-1.5 text-xs font-medium bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+                                                                                >
+                                                                                    Copy Both
+                                                                                </button>
                                                                             </div>
                                                                         </div>
-                                                                        {analyzerExpandedRows.has(finding.vulnId) && (
-                                                                            <div className={`p-4 space-y-4 text-xs ${darkMode ? 'bg-gray-800/30' : 'bg-gray-50'}`}>
-                                                                                <div>
-                                                                                    <div className="font-semibold text-gray-500 uppercase mb-2">Finding Details (Editable)</div>
-                                                                                    <textarea
-                                                                                        value={finding.findingDetails || ''}
-                                                                                        onChange={(e) => {
-                                                                                            const val = e.target.value;
-                                                                                            setAnalyzerEditedIds(prev => new Set(prev).add(finding.vulnId));
-                                                                                            setAnalyzerNewChecklist(prev => {
-                                                                                                if (!prev) return prev;
-                                                                                                const newFindings = [...prev.findings];
-                                                                                                const idx = newFindings.findIndex(f => f.vulnId === finding.vulnId);
-                                                                                                if (idx !== -1) {
-                                                                                                    newFindings[idx] = { ...newFindings[idx], findingDetails: val };
-                                                                                                }
-                                                                                                return { ...prev, findings: newFindings };
-                                                                                            });
-                                                                                        }}
-                                                                                        className={`w-full p-3 rounded-lg text-xs resize-none h-32 border focus:ring-2 focus:ring-blue-500 outline-none transition-all ${darkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-white text-gray-700 border-gray-200 focus:border-blue-500'}`}
-                                                                                        placeholder="Finding details..."
-                                                                                    />
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            {(analyzerNewChecklist?.findings.filter(f => analyzerShowAllReviewed ? f.status !== 'Not_Reviewed' : analyzerEditedIds.has(f.vulnId)).length || 0) === 0 && (
-                                                                <div className="p-8 text-center text-gray-400">
-                                                                    {analyzerShowAllReviewed ? "No processed findings found." : "No findings edited in this session."}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* New IDs Tab */}
-                                            {analyzerTab === 'newids' && (
-                                                <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                                    <div className={`grid grid-cols-6 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                                                        <div className="cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'vulnId', dir: prev.key === 'vulnId' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>Group ID {analyzerSort.key === 'vulnId' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                        <div className="cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'severity', dir: prev.key === 'severity' && prev.dir === 'desc' ? 'asc' : 'desc' }))}>CAT {analyzerSort.key === 'severity' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                        <div className="col-span-3">Title</div>
-                                                        <div className="cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'status', dir: prev.key === 'status' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>Status {analyzerSort.key === 'status' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                    </div>
-                                                    <div className="max-h-96 overflow-y-auto divide-y dark:divide-gray-800">
-                                                        {analyzerData.newIds
-                                                            .slice()
-                                                            .sort((a, b) => {
-                                                                const dir = analyzerSort.dir === 'asc' ? 1 : -1;
-                                                                if (analyzerSort.key === 'vulnId') return a.vulnId.localeCompare(b.vulnId) * dir;
-                                                                if (analyzerSort.key === 'severity') {
-                                                                    const levels: any = { high: 3, medium: 2, low: 1 };
-                                                                    return ((levels[a.finding.severity] || 0) - (levels[b.finding.severity] || 0)) * dir;
-                                                                }
-                                                                if (analyzerSort.key === 'status') return (a.finding.status || '').localeCompare(b.finding.status || '') * dir;
-                                                                return 0;
-                                                            })
-                                                            .map((row, idx) => (
-                                                                <div key={idx} className="grid grid-cols-6 gap-2 p-3 items-center text-sm">
-                                                                    <div className="font-mono text-xs">{row.vulnId}</div>
-                                                                    <div className="font-bold text-xs text-gray-500">
-                                                                        {row.finding.severity === 'high' ? 'I' : row.finding.severity === 'medium' ? 'II' : 'III'}
-                                                                    </div>
-                                                                    <div className="col-span-3 text-xs truncate" title={row.finding.title}>{row.finding.title}</div>
-                                                                    <div>
-                                                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">
-                                                                            {row.finding.status}
-                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                             ))}
-                                                        {analyzerData.newIds.length === 0 && (
-                                                            <div className="p-8 text-center text-gray-400">
-                                                                No new Group IDs found in the new checklist.
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
+                                                        </div>
+                                                    )}
 
-                                            {/* Dropped IDs Tab */}
-                                            {analyzerTab === 'droppedids' && (
-                                                <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                                    <div className={`grid grid-cols-6 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                                                        <div className="cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'vulnId', dir: prev.key === 'vulnId' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>Group ID {analyzerSort.key === 'vulnId' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                        <div className="cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'severity', dir: prev.key === 'severity' && prev.dir === 'desc' ? 'asc' : 'desc' }))}>CAT {analyzerSort.key === 'severity' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                        <div className="col-span-3">Title</div>
-                                                        <div className="cursor-pointer hover:text-blue-500" onClick={() => setAnalyzerSort(prev => ({ key: 'status', dir: prev.key === 'status' && prev.dir === 'asc' ? 'desc' : 'asc' }))}>Old Status {analyzerSort.key === 'status' && (analyzerSort.dir === 'asc' ? '↑' : '↓')}</div>
-                                                    </div>
-                                                    <div className="max-h-96 overflow-y-auto divide-y dark:divide-gray-800">
-                                                        {analyzerData.droppedIds
-                                                            .slice()
-                                                            .sort((a, b) => {
-                                                                const dir = analyzerSort.dir === 'asc' ? 1 : -1;
-                                                                if (analyzerSort.key === 'vulnId') return a.vulnId.localeCompare(b.vulnId) * dir;
-                                                                if (analyzerSort.key === 'severity') {
-                                                                    const levels: any = { high: 3, medium: 2, low: 1 };
-                                                                    return ((levels[a.finding.severity] || 0) - (levels[b.finding.severity] || 0)) * dir;
-                                                                }
-                                                                if (analyzerSort.key === 'status') return (a.finding.status || '').localeCompare(b.finding.status || '') * dir;
-                                                                return 0;
-                                                            })
-                                                            .map((row, idx) => (
-                                                                <div key={idx} className="grid grid-cols-6 gap-2 p-3 items-center text-sm">
-                                                                    <div className="font-mono text-xs">{row.vulnId}</div>
-                                                                    <div className="font-bold text-xs text-gray-500">
-                                                                        {row.finding.severity === 'high' ? 'I' : row.finding.severity === 'medium' ? 'II' : 'III'}
+                                                    {/* New IDs Tab */}
+                                                    {analyzerTab === 'newids' && (
+                                                        <div className="space-y-2">
+                                                            {/* Controls Row (Sort Only) */}
+                                                            <div className="flex items-center justify-end mb-4">
+                                                                <div className="flex items-center gap-2 text-xs">
+                                                                    <span className="text-gray-500 font-medium">Sort By:</span>
+                                                                    {(['severity', 'groupid', 'status'] as const).map(key => (
+                                                                        <button
+                                                                            key={key}
+                                                                            onClick={() => setAnalyzerSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }))}
+                                                                            className={`px-2 py-1 rounded capitalize transition-colors ${analyzerSort.key === key ? 'bg-white shadow text-green-600 font-semibold' : 'text-gray-500 hover:bg-gray-200'}`}
+                                                                        >
+                                                                            {key === 'groupid' ? 'Group ID' : key} {analyzerSort.key === key && (analyzerSort.dir === 'asc' ? '↑' : '↓')}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Use sorted list logic inline or assumed simple map for now - reusing sortedNotReviewed pattern but for generic list if needed. Assuming user wants simple list for now. */}
+                                                            {analyzerData.newIds.map((item) => (
+                                                                <div key={item.vulnId} className="p-4 rounded-xl border bg-green-50/10 border-green-100 dark:border-green-900/30 flex items-center justify-between">
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className={`text-xs font-bold uppercase w-16 text-center py-1 rounded ${(item.finding.severity || '').toLowerCase().includes('high') ? 'bg-red-100 text-red-700' :
+                                                                            (item.finding.severity || '').toLowerCase().includes('medium') ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'
+                                                                            }`}>{item.finding.severity}</div>
+                                                                        <div>
+                                                                            <div className="font-mono font-bold text-sm">{item.vulnId}</div>
+                                                                            <div className="text-xs text-gray-500">{item.finding.title}</div>
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="col-span-3 text-xs truncate" title={row.finding.title}>{row.finding.title}</div>
-                                                                    <div>
-                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.finding.status === 'Open' ? 'bg-red-100 text-red-700' : row.finding.status === 'NotAFinding' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                                                                            {row.finding.status}
-                                                                        </span>
+                                                                    <div className="text-xs font-medium px-2 py-1 bg-white dark:bg-gray-800 border rounded text-gray-600">{item.finding.status}</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Dropped IDs Tab */}
+                                                    {analyzerTab === 'droppedids' && (
+                                                        <div className="space-y-2">
+                                                            {analyzerData.droppedIds.map((item) => (
+                                                                <div key={item.vulnId} className="p-4 rounded-xl border bg-red-50/10 border-red-100 dark:border-red-900/30 flex items-center justify-between opacity-75">
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="font-mono font-bold text-sm text-gray-500 line-through">{item.vulnId}</div>
+                                                                        <div className="text-xs text-gray-400">{item.finding.title}</div>
+                                                                    </div>
+                                                                    <div className="text-xs font-medium px-2 py-1 bg-gray-100 text-gray-500 rounded">Removed</div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Reviewed Tab */}
+                                                    {analyzerTab === 'reviewed' && (
+                                                        <div className="space-y-4">
+                                                            {/* Reviewed Controls */}
+                                                            <div className="flex items-center justify-between bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
+                                                                <div className="flex items-center gap-4">
+                                                                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                                                                        <div className={`w-8 h-4 rounded-full p-0.5 transition-colors ${analyzerShowAllReviewed ? 'bg-blue-600' : 'bg-gray-300'}`} onClick={() => setAnalyzerShowAllReviewed(!analyzerShowAllReviewed)}>
+                                                                            <div className={`h-3 w-3 rounded-full bg-white shadow transition-transform ${analyzerShowAllReviewed ? 'translate-x-4' : 'translate-x-0'}`} />
+                                                                        </div>
+                                                                        <span className="text-gray-600">Show All Processed Findings</span>
+                                                                    </label>
+                                                                    <div className="h-4 w-px bg-gray-300" />
+                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                        <span className="text-gray-500 font-medium">Sort By:</span>
+                                                                        {(['severity', 'groupid', 'status'] as const).map(key => (
+                                                                            <button
+                                                                                key={key}
+                                                                                onClick={() => setAnalyzerSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }))}
+                                                                                className={`px-2 py-1 rounded capitalize transition-colors ${analyzerSort.key === key ? 'bg-white shadow text-blue-600 font-semibold' : 'text-gray-500 hover:bg-gray-200'}`}
+                                                                            >
+                                                                                {key === 'groupid' ? 'Group ID' : key} {analyzerSort.key === key && (analyzerSort.dir === 'asc' ? '↑' : '↓')}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 font-medium">
+                                                                    {sortedReviewed.length} items
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Reviewed List */}
+                                                            {sortedReviewed.map(f => (
+                                                                <div key={f.vulnId} className="p-4 rounded-xl border bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <span className="font-mono font-bold text-sm bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{f.vulnId}</span>
+                                                                            <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${(f.severity || '').toLowerCase().includes('high') ? 'bg-red-100 text-red-700' :
+                                                                                (f.severity || '').toLowerCase().includes('medium') ? 'bg-orange-100 text-orange-700' :
+                                                                                    'bg-yellow-100 text-yellow-700'
+                                                                                }`}>{f.severity}</span>
+                                                                        </div>
+                                                                        <div className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${(f.status || '').toLowerCase().includes('open') ? 'bg-red-50 border-red-100 text-red-600' :
+                                                                            (f.status || '').toLowerCase().includes('notafinding') ? 'bg-green-50 border-green-100 text-green-600' :
+                                                                                'bg-gray-50 border-gray-100 text-gray-600'
+                                                                            }`}>
+                                                                            {f.status}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-sm">
+                                                                        <textarea
+                                                                            className="w-full text-sm p-2 bg-gray-50 border rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500 transition-colors"
+                                                                            value={f.findingDetails || ''}
+                                                                            onChange={(e) => {
+                                                                                const val = e.target.value;
+                                                                                setAnalyzerNewChecklist((prev: any) => {
+                                                                                    if (!prev) return null;
+                                                                                    const findings = prev.findings.map((finding: any) => finding.vulnId === f.vulnId ? { ...finding, findingDetails: val } : finding);
+                                                                                    return { ...prev, findings };
+                                                                                });
+                                                                                setAnalyzerEditedIds(prev => new Set(prev).add(f.vulnId));
+                                                                            }}
+                                                                        />
                                                                     </div>
                                                                 </div>
                                                             ))}
-                                                        {analyzerData.droppedIds.length === 0 && (
-                                                            <div className="p-8 text-center text-gray-400">
-                                                                No Group IDs were dropped from the old checklist.
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {(!analyzerOldChecklist || !analyzerNewChecklist) && (
+                                                <div className="p-8 text-center text-gray-400 border-2 border-dashed rounded-xl">
+                                                    Upload both old and new STIG checklists to begin analysis.
                                                 </div>
                                             )}
-                                        </>
-                                    )}
-
-                                    {(!analyzerOldChecklist || !analyzerNewChecklist) && (
-                                        <div className="p-8 text-center text-gray-400 border-2 border-dashed rounded-xl">
-                                            Upload both old and new STIG checklists to begin analysis.
                                         </div>
                                     )}
-                                    {/* DEBUG INFO */}
-                                    <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-900 rounded border border-red-500 overflow-auto max-h-96">
-                                        <h3 className="font-bold text-red-500 mb-2">DEBUG: Raw JSON Structure (For Troubleshooting - Copy this config)</h3>
-                                        <p className="text-xs text-gray-500 mb-2">If your export is failing, upload a WORKING file here, look at this debug info, and verify if the structure (especially "status" fields) matches what you expect.</p>
-                                        <pre className="text-xs font-mono whitespace-pre-wrap text-left select-all">
-                                            {analyzerNewChecklist?.rawJson ? JSON.stringify({
-                                                keys: Object.keys(analyzerNewChecklist.rawJson),
-                                                stigKeys: Object.keys(analyzerNewChecklist.rawJson.stigs?.[0] || {}),
-                                                ruleSample: analyzerNewChecklist.rawJson.stigs?.[0]?.rules?.[0],
-                                                targetData: analyzerNewChecklist.rawJson.target_data
-                                            }, null, 2) : 'No New Checklist Raw JSON available.'}
-                                        </pre>
-                                    </div>
                                 </div>
-                                    )}
                             </div>
                         </div>
-                        </div>
-                ) : null
+                    ) : null
                     }
 
 
-                {/* Removed Source Preview Modal - details now inline */}
+                    {/* Removed Source Preview Modal - details now inline */}
 
-                {/* DETAIL MODAL */}
-                {
-                    selectedRule && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-8" onClick={() => setSelectedRule(null)}>
-                            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">{selectedRule.vulnId}</span>
-                                        <span className="text-sm font-mono text-gray-500">{selectedRule.stigId}</span>
-                                        <span className={`text-xs uppercase font-medium px-2 py-1 rounded ${selectedRule.severity === 'high' ? 'bg-red-100 text-red-600' :
-                                            selectedRule.severity === 'medium' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
-                                            }`}>CAT {selectedRule.severity === 'high' ? 'I' : selectedRule.severity === 'medium' ? 'II' : 'III'}</span>
-                                    </div>
-                                    <button onClick={() => setSelectedRule(null)} className="p-2 hover:bg-gray-200 rounded-lg">
-                                        <XCircle size={20} />
-                                    </button>
-                                </div>
-
-                                <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)] space-y-6">
-                                    <div>
-                                        <h2 className="text-xl font-semibold text-gray-900 mb-2">{selectedRule.title}</h2>
-                                        <p className="text-gray-600">{selectedRule.description}</p>
-                                    </div>
-
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Check Procedure</h3>
-                                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
-                                            {selectedRule.checkContent || 'No check content available'}
+                    {/* DETAIL MODAL */}
+                    {
+                        selectedRule && (
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-8" onClick={() => setSelectedRule(null)}>
+                                <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">{selectedRule.vulnId}</span>
+                                            <span className="text-sm font-mono text-gray-500">{selectedRule.stigId}</span>
+                                            <span className={`text-xs uppercase font-medium px-2 py-1 rounded ${selectedRule.severity === 'high' ? 'bg-red-100 text-red-600' :
+                                                selectedRule.severity === 'medium' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                                                }`}>CAT {selectedRule.severity === 'high' ? 'I' : selectedRule.severity === 'medium' ? 'II' : 'III'}</span>
                                         </div>
+                                        <button onClick={() => setSelectedRule(null)} className="p-2 hover:bg-gray-200 rounded-lg">
+                                            <XCircle size={20} />
+                                        </button>
                                     </div>
 
-                                    <div>
-                                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Fix Procedure</h3>
-                                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
-                                            {selectedRule.fixContent || 'No fix content available'}
-                                        </div>
-                                    </div>
-
-                                    {selectedRule.automatedCheck && selectedRule.automatedCheck.type !== 'manual' && (
+                                    <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)] space-y-6">
                                         <div>
-                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Automated Check</h3>
-                                            <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
-                                                <div className="text-gray-400 mb-1">Type: {selectedRule.automatedCheck.type}</div>
-                                                {selectedRule.automatedCheck.registryPath && (
-                                                    <div>Registry: {selectedRule.automatedCheck.registryPath}\{selectedRule.automatedCheck.valueName}</div>
-                                                )}
-                                                {selectedRule.automatedCheck.expectedValue !== undefined && (
-                                                    <div>Expected: {selectedRule.automatedCheck.expectedValue}</div>
-                                                )}
-                                                {selectedRule.automatedCheck.command && (
-                                                    <div className="mt-2 text-white">&gt; {selectedRule.automatedCheck.command}</div>
-                                                )}
+                                            <h2 className="text-xl font-semibold text-gray-900 mb-2">{selectedRule.title}</h2>
+                                            <p className="text-gray-600">{selectedRule.description}</p>
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Check Procedure</h3>
+                                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
+                                                {selectedRule.checkContent || 'No check content available'}
                                             </div>
                                         </div>
-                                    )}
 
-                                    {results.get(selectedRule.vulnId) && (
                                         <div>
-                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Last Result</h3>
-                                            <div className={`p-4 rounded-lg border ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <span className={`uppercase font-medium text-sm ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'text-green-600' : 'text-red-600'}`}>
-                                                        {results.get(selectedRule.vulnId)?.status}
-                                                    </span>
+                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Fix Procedure</h3>
+                                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
+                                                {selectedRule.fixContent || 'No fix content available'}
+                                            </div>
+                                        </div>
+
+                                        {selectedRule.automatedCheck && selectedRule.automatedCheck.type !== 'manual' && (
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Automated Check</h3>
+                                                <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm">
+                                                    <div className="text-gray-400 mb-1">Type: {selectedRule.automatedCheck.type}</div>
+                                                    {selectedRule.automatedCheck.registryPath && (
+                                                        <div>Registry: {selectedRule.automatedCheck.registryPath}\{selectedRule.automatedCheck.valueName}</div>
+                                                    )}
+                                                    {selectedRule.automatedCheck.expectedValue !== undefined && (
+                                                        <div>Expected: {selectedRule.automatedCheck.expectedValue}</div>
+                                                    )}
+                                                    {selectedRule.automatedCheck.command && (
+                                                        <div className="mt-2 text-white">&gt; {selectedRule.automatedCheck.command}</div>
+                                                    )}
                                                 </div>
-                                                <pre className="font-mono text-xs whitespace-pre-wrap text-gray-700">{results.get(selectedRule.vulnId)?.output}</pre>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    <div className="flex gap-3 pt-4 border-t border-gray-100">
-                                        <button
-                                            onClick={() => { runCheck(selectedRule); }}
-                                            className="bg-black hover:bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-                                        >
-                                            <Play size={16} /> Run Check
-                                        </button>
-                                        <button
-                                            onClick={() => { captureEvidence(selectedRule); }}
-                                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-                                        >
-                                            <Camera size={16} /> Capture Evidence
-                                        </button>
+                                        {results.get(selectedRule.vulnId) && (
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Last Result</h3>
+                                                <div className={`p-4 rounded-lg border ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className={`uppercase font-medium text-sm ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {results.get(selectedRule.vulnId)?.status}
+                                                        </span>
+                                                    </div>
+                                                    <pre className="font-mono text-xs whitespace-pre-wrap text-gray-700">{results.get(selectedRule.vulnId)?.output}</pre>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-3 pt-4 border-t border-gray-100">
+                                            <button
+                                                onClick={() => { runCheck(selectedRule); }}
+                                                className="bg-black hover:bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                                            >
+                                                <Play size={16} /> Run Check
+                                            </button>
+                                            <button
+                                                onClick={() => { captureEvidence(selectedRule); }}
+                                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                                            >
+                                                <Camera size={16} /> Capture Evidence
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )
-                }
-        </div >
+                        )
+                    }
+                </div>
             </main >
         </div >
     );
