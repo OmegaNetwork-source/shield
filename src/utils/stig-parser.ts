@@ -299,7 +299,8 @@ export interface ParsedChecklist {
     hostname: string;
     stigName: string;
     findings: Array<{
-        vulnId: string;
+        vulnId: string; // Group ID (V-XXXX)
+        ruleId: string; // Rule ID (SV-XXXX)
         status: string;
         severity: string;
         title: string;
@@ -337,19 +338,26 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                     const title = vuln.getElementsByTagName('RULE_TITLE')[0]?.textContent || '';
                     const severity = vuln.getElementsByTagName('SEVERITY')[0]?.textContent || 'low';
 
-                    // Extract CCIs from STIG_DATA
+                    // Extract CCIs and Rule_ID from STIG_DATA
                     const ccis: string[] = [];
+                    let ruleId = '';
+
                     const stigData = vuln.getElementsByTagName('STIG_DATA');
                     for (let j = 0; j < stigData.length; j++) {
                         const attr = stigData[j].getElementsByTagName('VULN_ATTRIBUTE')[0]?.textContent;
                         const data = stigData[j].getElementsByTagName('ATTRIBUTE_DATA')[0]?.textContent;
+
                         if (attr === 'CCI_REF' && data) {
                             ccis.push(data);
+                        }
+                        if (attr === 'Rule_ID' && data) {
+                            ruleId = data;
                         }
                     }
 
                     findings.push({
                         vulnId,
+                        ruleId,
                         status,
                         severity,
                         title,

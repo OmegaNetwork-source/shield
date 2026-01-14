@@ -66,8 +66,10 @@ function App() {
             severity: string;
             title: string;
             comments: string;
-            ruleId?: string;
-            groupId?: string;
+            title: string;
+            comments: string;
+            ruleId: string; // SV-XXXX
+            groupId?: string; // V-XXXX (Redundant with vulnId usually)
             fixText?: string;
             checkText?: string;
             description?: string;
@@ -1132,8 +1134,8 @@ function App() {
 
                         detailData.push([
                             ckl.hostname,
-                            f.vulnId,
-                            f.ruleId || '',
+                            f.vulnId,           // Group ID (V-XXXX)
+                            f.ruleId || 'N/A',  // Rule ID (SV-XXXX)
                             ckl.stigName,
                             sev,
                             f.classification || 'UNCLASSIFIED',
