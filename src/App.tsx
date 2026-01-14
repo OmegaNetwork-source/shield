@@ -2134,7 +2134,7 @@ function App() {
                     </p>
                 </div>
 
-                <div className={`${activeTab === 'copy' ? 'w-full px-6' : 'max-w-5xl mx-auto'} p-10`}>
+                <div className={`${activeTab === 'copy' || (activeTab === 'tools' && toolsMode === 'analyzer') ? 'w-full px-6' : 'max-w-5xl mx-auto'} p-10`}>
 
                     {activeTab === 'scan' ? (
                         <>
@@ -4979,24 +4979,25 @@ function App() {
                                                                             />
                                                                             <button
                                                                                 onClick={() => {
-                                                                                    if (!analyzerFindText || analyzerSelectedIds.size === 0) return;
+                                                                                    if (!analyzerFindText) return;
                                                                                     setAnalyzerNewChecklist(prev => {
                                                                                         if (!prev) return prev;
                                                                                         const updated = { ...prev, findings: [...prev.findings] };
                                                                                         updated.findings = updated.findings.map(f => {
-                                                                                            if (analyzerSelectedIds.has(f.vulnId)) {
-                                                                                                return {
-                                                                                                    ...f,
-                                                                                                    findingDetails: (f.findingDetails || '').replaceAll(analyzerFindText, analyzerReplaceText)
-                                                                                                };
+                                                                                            // If selection exists, only update selected. Otherwise update ALL.
+                                                                                            if (analyzerSelectedIds.size > 0 && !analyzerSelectedIds.has(f.vulnId)) {
+                                                                                                return f;
                                                                                             }
-                                                                                            return f;
+                                                                                            return {
+                                                                                                ...f,
+                                                                                                findingDetails: (f.findingDetails || '').replaceAll(analyzerFindText, analyzerReplaceText)
+                                                                                            };
                                                                                         });
                                                                                         return updated;
                                                                                     });
                                                                                 }}
-                                                                                disabled={!analyzerFindText || analyzerSelectedIds.size === 0}
-                                                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${analyzerFindText && analyzerSelectedIds.size > 0
+                                                                                disabled={!analyzerFindText}
+                                                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${analyzerFindText
                                                                                     ? 'bg-blue-600 hover:bg-blue-700 text-white'
                                                                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
                                                                             >
