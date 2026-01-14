@@ -48,6 +48,12 @@ function App() {
     const [selectedRule, setSelectedRule] = useState<ParsedStigRule | null>(null);
     const [availableChecklists, setAvailableChecklists] = useState<StigChecklist[]>([]);
     const [darkMode, setDarkMode] = useState(false);
+
+    // Tools State
+    const [toolsMode, setToolsMode] = useState<'rename'>('rename');
+    const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
+    const [renamePrefix, setRenamePrefix] = useState('');
+    const [renameSuffix, setRenameSuffix] = useState('');
     const [uploadedChecklists, setUploadedChecklists] = useState<Array<{
         id: string;
         filename: string;
@@ -2311,7 +2317,7 @@ function App() {
                                             multiple
                                             accept=".ckl,.cklb,.xml,.json"
                                             className="hidden"
-                                            onChange={handleCklFileUpload}
+                                            onChange={handleFileUpload}
                                             // @ts-ignore
                                             webkitdirectory=""
                                             // @ts-ignore
