@@ -4565,45 +4565,93 @@ function App() {
                                                 </div>
                                             </div>
 
-                                            {/* Heatmap Grid */}
+                                            {/* Visual Heatmap Grid */}
                                             {heatmapData.length > 0 ? (
-                                                <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                                    <div className={`grid grid-cols-5 gap-0 p-3 border-b text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
-                                                        <div>Control Family</div>
-                                                        <div className="text-center">CAT I (High)</div>
-                                                        <div className="text-center">CAT II (Medium)</div>
-                                                        <div className="text-center">CAT III (Low)</div>
-                                                        <div className="text-center">Risk Score</div>
+                                                <div className="space-y-6">
+                                                    {/* Legend */}
+                                                    <div className="flex items-center justify-center gap-6 text-xs">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-4 h-4 rounded bg-green-500" />
+                                                            <span className="text-gray-500">0 Open</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-4 h-4 rounded bg-yellow-400" />
+                                                            <span className="text-gray-500">Low Risk</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-4 h-4 rounded bg-orange-500" />
+                                                            <span className="text-gray-500">Medium Risk</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-4 h-4 rounded bg-red-600" />
+                                                            <span className="text-gray-500">High Risk</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="divide-y dark:divide-gray-800">
-                                                        {heatmapData.map((row, idx) => {
-                                                            const riskScore = row.cat1.open * 10 + row.cat2.open * 5 + row.cat3.open;
-                                                            return (
-                                                                <div key={idx} className="grid grid-cols-5 gap-0 p-3 items-center text-sm">
-                                                                    <div className="font-mono font-bold">{row.family}</div>
-                                                                    <div className="text-center">
-                                                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${getRiskColor(row.cat1.open, row.cat1.open + row.cat1.naf + row.cat1.nr)}`}>
-                                                                            {row.cat1.open} Open
-                                                                        </span>
+
+                                                    {/* Heatmap Grid */}
+                                                    <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                        {/* Header */}
+                                                        <div className={`grid gap-1 p-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`} style={{ gridTemplateColumns: '100px repeat(3, 1fr)' }}>
+                                                            <div className="text-xs font-semibold uppercase text-gray-500 pl-2">Family</div>
+                                                            <div className="text-xs font-semibold uppercase text-center text-red-500">CAT I</div>
+                                                            <div className="text-xs font-semibold uppercase text-center text-orange-500">CAT II</div>
+                                                            <div className="text-xs font-semibold uppercase text-center text-blue-500">CAT III</div>
+                                                        </div>
+
+                                                        {/* Heatmap Rows */}
+                                                        <div className="p-2 space-y-1">
+                                                            {heatmapData.map((row, idx) => {
+                                                                const getHeatCellStyle = (open: number, total: number) => {
+                                                                    if (total === 0) return { bg: 'bg-gray-100', text: 'text-gray-400' };
+                                                                    const pct = total > 0 ? open / total : 0;
+                                                                    if (open === 0) return { bg: 'bg-green-500', text: 'text-white' };
+                                                                    if (pct < 0.25) return { bg: 'bg-yellow-400', text: 'text-yellow-900' };
+                                                                    if (pct < 0.5) return { bg: 'bg-orange-500', text: 'text-white' };
+                                                                    return { bg: 'bg-red-600', text: 'text-white' };
+                                                                };
+
+                                                                const cat1Style = getHeatCellStyle(row.cat1.open, row.cat1.open + row.cat1.naf + row.cat1.nr);
+                                                                const cat2Style = getHeatCellStyle(row.cat2.open, row.cat2.open + row.cat2.naf + row.cat2.nr);
+                                                                const cat3Style = getHeatCellStyle(row.cat3.open, row.cat3.open + row.cat3.naf + row.cat3.nr);
+
+                                                                return (
+                                                                    <div key={idx} className="grid gap-1" style={{ gridTemplateColumns: '100px repeat(3, 1fr)' }}>
+                                                                        <div className={`flex items-center pl-2 py-3 text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                            {row.family}
+                                                                        </div>
+                                                                        <div className={`${cat1Style.bg} ${cat1Style.text} rounded-lg py-4 text-center font-bold text-lg transition-all hover:scale-105 cursor-default shadow-sm`} title={`${row.cat1.open} Open / ${row.cat1.naf} NAF / ${row.cat1.nr} NR`}>
+                                                                            {row.cat1.open}
+                                                                        </div>
+                                                                        <div className={`${cat2Style.bg} ${cat2Style.text} rounded-lg py-4 text-center font-bold text-lg transition-all hover:scale-105 cursor-default shadow-sm`} title={`${row.cat2.open} Open / ${row.cat2.naf} NAF / ${row.cat2.nr} NR`}>
+                                                                            {row.cat2.open}
+                                                                        </div>
+                                                                        <div className={`${cat3Style.bg} ${cat3Style.text} rounded-lg py-4 text-center font-bold text-lg transition-all hover:scale-105 cursor-default shadow-sm`} title={`${row.cat3.open} Open / ${row.cat3.naf} NAF / ${row.cat3.nr} NR`}>
+                                                                            {row.cat3.open}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="text-center">
-                                                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${getRiskColor(row.cat2.open, row.cat2.open + row.cat2.naf + row.cat2.nr)}`}>
-                                                                            {row.cat2.open} Open
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <span className={`px-2 py-1 rounded text-xs font-semibold ${getRiskColor(row.cat3.open, row.cat3.open + row.cat3.naf + row.cat3.nr)}`}>
-                                                                            {row.cat3.open} Open
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${riskScore === 0 ? 'bg-green-500 text-white' : riskScore < 20 ? 'bg-yellow-500 text-white' : riskScore < 50 ? 'bg-orange-500 text-white' : 'bg-red-600 text-white'}`}>
-                                                                            {riskScore}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Summary Stats */}
+                                                    <div className="grid grid-cols-4 gap-4">
+                                                        <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                                                            <div className="text-2xl font-bold text-gray-900 dark:text-white">{heatmapData.length}</div>
+                                                            <div className="text-xs text-gray-500 uppercase">Control Families</div>
+                                                        </div>
+                                                        <div className={`p-4 rounded-xl text-center bg-red-50`}>
+                                                            <div className="text-2xl font-bold text-red-600">{heatmapData.reduce((acc, r) => acc + r.cat1.open, 0)}</div>
+                                                            <div className="text-xs text-red-500 uppercase">CAT I Open</div>
+                                                        </div>
+                                                        <div className={`p-4 rounded-xl text-center bg-orange-50`}>
+                                                            <div className="text-2xl font-bold text-orange-600">{heatmapData.reduce((acc, r) => acc + r.cat2.open, 0)}</div>
+                                                            <div className="text-xs text-orange-500 uppercase">CAT II Open</div>
+                                                        </div>
+                                                        <div className={`p-4 rounded-xl text-center bg-blue-50`}>
+                                                            <div className="text-2xl font-bold text-blue-600">{heatmapData.reduce((acc, r) => acc + r.cat3.open, 0)}</div>
+                                                            <div className="text-xs text-blue-500 uppercase">CAT III Open</div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ) : (
