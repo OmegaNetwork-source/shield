@@ -416,8 +416,10 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                 // Construct rawJson for XML imports to support Export
                 const rawJson = {
                     stigs: [{
+                        uuid: self.crypto.randomUUID(),
                         display_name: stigRef,
                         rules: findings.map(f => ({
+                            uuid: self.crypto.randomUUID(),
                             group_id: f.vulnId,
                             rule_id: f.ruleId,
                             status: f.status,

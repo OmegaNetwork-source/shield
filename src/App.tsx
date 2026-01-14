@@ -5073,9 +5073,23 @@ function App() {
                                                                                     </div>
                                                                                     <div>
                                                                                         <div className="font-semibold text-gray-500 uppercase mb-2">New Finding Details</div>
-                                                                                        <div className={`p-3 rounded-lg max-h-40 overflow-y-auto whitespace-pre-wrap ${darkMode ? 'bg-gray-900 text-gray-300' : 'bg-white text-gray-700 border'}`}>
-                                                                                            {row.newFinding.findingDetails || 'No finding details'}
-                                                                                        </div>
+                                                                                        <textarea
+                                                                                            value={row.newFinding.findingDetails || ''}
+                                                                                            onChange={(e) => {
+                                                                                                const val = e.target.value;
+                                                                                                setAnalyzerNewChecklist(prev => {
+                                                                                                    if (!prev) return prev;
+                                                                                                    const newFindings = [...prev.findings];
+                                                                                                    const idx = newFindings.findIndex(f => f.vulnId === row.vulnId);
+                                                                                                    if (idx !== -1) {
+                                                                                                        newFindings[idx] = { ...newFindings[idx], findingDetails: val };
+                                                                                                    }
+                                                                                                    return { ...prev, findings: newFindings };
+                                                                                                });
+                                                                                            }}
+                                                                                            className={`w-full p-3 rounded-lg text-xs resize-none h-40 border focus:ring-2 focus:ring-blue-500 outline-none transition-all ${darkMode ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-white text-gray-700 border-gray-200 focus:border-blue-500'}`}
+                                                                                            placeholder="Enter finding details..."
+                                                                                        />
                                                                                     </div>
                                                                                 </div>
                                                                             )}
