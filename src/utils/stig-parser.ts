@@ -331,14 +331,14 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
 
                 for (let i = 0; i < vulns.length; i++) {
                     const vuln = vulns[i];
-                    const vulnId = vuln.getElementsByTagName('VULN_NUM')[0]?.textContent || '';
+                    let vulnId = vuln.getElementsByTagName('VULN_NUM')[0]?.textContent || ''; // Default to VULN_NUM tag
                     const status = vuln.getElementsByTagName('STATUS')[0]?.textContent || 'Not_Reviewed';
                     const comments = vuln.getElementsByTagName('COMMENTS')[0]?.textContent || '';
                     const findingDetails = vuln.getElementsByTagName('FINDING_DETAILS')[0]?.textContent || '';
                     const title = vuln.getElementsByTagName('RULE_TITLE')[0]?.textContent || '';
                     const severity = vuln.getElementsByTagName('SEVERITY')[0]?.textContent || 'low';
 
-                    // Extract CCIs and Rule_ID from STIG_DATA
+                    // Extract CCIs and ID overrides from STIG_DATA
                     const ccis: string[] = [];
                     let ruleId = '';
 
@@ -347,11 +347,14 @@ export async function parseCklFile(file: File): Promise<ParsedChecklist | null> 
                         const attr = stigData[j].getElementsByTagName('VULN_ATTRIBUTE')[0]?.textContent;
                         const data = stigData[j].getElementsByTagName('ATTRIBUTE_DATA')[0]?.textContent;
 
-                        if (attr === 'CCI_REF' && data) {
+                        if (!attr || !data) continue;
+
+                        if (attr === 'CCI_REF') {
                             ccis.push(data);
-                        }
-                        if (attr === 'Rule_ID' && data) {
-                            ruleId = data;
+                        } else if (attr === 'Rule_ID') {
+                            ruleId = data; // SV-XXXX
+                        } else if (attr === 'Vuln_Num') {
+                            vulnId = data; // V-XXXX (Override VULN_NUM tag if present)
                         }
                     }
 
