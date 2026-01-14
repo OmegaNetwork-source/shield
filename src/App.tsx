@@ -66,6 +66,8 @@ function App() {
     const [analyzerFindText, setAnalyzerFindText] = useState('');
     const [analyzerReplaceText, setAnalyzerReplaceText] = useState('');
     const [analyzerExpandedRows, setAnalyzerExpandedRows] = useState<Set<string>>(new Set());
+    const [analyzerEditedIds, setAnalyzerEditedIds] = useState<Set<string>>(new Set());
+    const [analyzerShowAllReviewed, setAnalyzerShowAllReviewed] = useState(false);
     const [uploadedChecklists, setUploadedChecklists] = useState<Array<{
         id: string;
         filename: string;
@@ -4847,7 +4849,7 @@ function App() {
                                                                 ? 'bg-blue-600 text-white'
                                                                 : (darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600')}`}
                                                         >
-                                                            Reviewed ({analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').length || 0})
+                                                            Reviewed ({analyzerShowAllReviewed ? analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').length : analyzerEditedIds.size})
                                                         </button>
 
                                                         {/* Export Button */}
@@ -4864,7 +4866,7 @@ function App() {
                                                                             if (finding) {
                                                                                 return {
                                                                                     ...rule,
-                                                                                    status: finding.status,
+                                                                                    status: finding.status === 'Open' ? 'Open' : (finding.status === 'NotAFinding' ? 'NotAFinding' : 'Not_Reviewed'),
                                                                                     finding_details: finding.findingDetails || rule.finding_details,
                                                                                     comments: finding.comments || rule.comments
                                                                                 };
@@ -4932,6 +4934,11 @@ function App() {
                                                                                                 return f;
                                                                                             });
                                                                                             return updated;
+                                                                                        });
+                                                                                        setAnalyzerEditedIds(prev => {
+                                                                                            const next = new Set(prev);
+                                                                                            analyzerSelectedIds.forEach(id => next.add(id));
+                                                                                            return next;
                                                                                         });
                                                                                         setAnalyzerSelectedIds(new Set());
                                                                                     }}
@@ -5189,6 +5196,17 @@ function App() {
                                                     {/* Reviewed Tab */}
                                                     {analyzerTab === 'reviewed' && (
                                                         <div className="space-y-4">
+                                                            <div className="flex justify-between items-center px-1">
+                                                                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                                                                    {analyzerShowAllReviewed ? "All Findings (Not_Reviewed excluded)" : "Findings Edited This Session"}
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => setAnalyzerShowAllReviewed(!analyzerShowAllReviewed)}
+                                                                    className="text-xs text-blue-500 hover:text-blue-600 font-medium"
+                                                                >
+                                                                    {analyzerShowAllReviewed ? 'Show Only My Edits' : 'Show All Processed'}
+                                                                </button>
+                                                            </div>
                                                             <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                                 <div className={`grid grid-cols-12 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
                                                                     <div className="col-span-1 text-center">CAT</div>
@@ -5197,7 +5215,7 @@ function App() {
                                                                     <div className="col-span-6">Finding Details</div>
                                                                 </div>
                                                                 <div className="max-h-[600px] overflow-y-auto divide-y dark:divide-gray-800">
-                                                                    {analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').map((finding, idx) => (
+                                                                    {analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed' && (analyzerShowAllReviewed || analyzerEditedIds.has(f.vulnId))).map((finding, idx) => (
                                                                         <div key={idx} className="border-b dark:border-gray-800">
                                                                             <div
                                                                                 className="grid grid-cols-12 gap-2 p-3 items-center text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
@@ -5232,6 +5250,7 @@ function App() {
                                                                                             value={finding.findingDetails || ''}
                                                                                             onChange={(e) => {
                                                                                                 const val = e.target.value;
+                                                                                                setAnalyzerEditedIds(prev => new Set(prev).add(finding.vulnId));
                                                                                                 setAnalyzerNewChecklist(prev => {
                                                                                                     if (!prev) return prev;
                                                                                                     const newFindings = [...prev.findings];
@@ -5250,7 +5269,7 @@ function App() {
                                                                             )}
                                                                         </div>
                                                                     ))}
-                                                                    {(analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').length || 0) === 0 && (
+                                                                    {(analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed' && (analyzerShowAllReviewed || analyzerEditedIds.has(f.vulnId))).length || 0) === 0 && (
                                                                         <div className="p-8 text-center text-gray-400">
                                                                             No findings have been reviewed yet.
                                                                         </div>
@@ -5265,7 +5284,7 @@ function App() {
                                                         <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                             <div className={`grid grid-cols-6 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
                                                                 <div>Group ID</div>
-                                                                <div>Severity</div>
+                                                                <div>CAT</div>
                                                                 <div className="col-span-3">Title</div>
                                                                 <div>Status</div>
                                                             </div>
@@ -5273,10 +5292,8 @@ function App() {
                                                                 {analyzerData.newIds.map((row, idx) => (
                                                                     <div key={idx} className="grid grid-cols-6 gap-2 p-3 items-center text-sm">
                                                                         <div className="font-mono text-xs">{row.vulnId}</div>
-                                                                        <div>
-                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.finding.severity === 'high' ? 'bg-red-100 text-red-700' : row.finding.severity === 'medium' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                                {row.finding.severity}
-                                                                            </span>
+                                                                        <div className="font-bold text-xs text-gray-500">
+                                                                            {row.finding.severity === 'high' ? 'I' : row.finding.severity === 'medium' ? 'II' : 'III'}
                                                                         </div>
                                                                         <div className="col-span-3 text-xs truncate" title={row.finding.title}>{row.finding.title}</div>
                                                                         <div>
@@ -5300,7 +5317,7 @@ function App() {
                                                         <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                             <div className={`grid grid-cols-6 gap-2 p-3 text-xs font-semibold uppercase ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
                                                                 <div>Group ID</div>
-                                                                <div>Severity</div>
+                                                                <div>CAT</div>
                                                                 <div className="col-span-3">Title</div>
                                                                 <div>Old Status</div>
                                                             </div>
@@ -5308,10 +5325,8 @@ function App() {
                                                                 {analyzerData.droppedIds.map((row, idx) => (
                                                                     <div key={idx} className="grid grid-cols-6 gap-2 p-3 items-center text-sm">
                                                                         <div className="font-mono text-xs">{row.vulnId}</div>
-                                                                        <div>
-                                                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.finding.severity === 'high' ? 'bg-red-100 text-red-700' : row.finding.severity === 'medium' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                                {row.finding.severity}
-                                                                            </span>
+                                                                        <div className="font-bold text-xs text-gray-500">
+                                                                            {row.finding.severity === 'high' ? 'I' : row.finding.severity === 'medium' ? 'II' : 'III'}
                                                                         </div>
                                                                         <div className="col-span-3 text-xs truncate" title={row.finding.title}>{row.finding.title}</div>
                                                                         <div>
