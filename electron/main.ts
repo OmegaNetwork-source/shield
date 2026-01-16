@@ -1378,10 +1378,18 @@ ipcMain.handle('save-file', async (event, { filename, content, type }) => {
 // ----------------------------------------------------------------------
 
 function createWindow() {
+    // Icon path - use build/icon.ico if it exists, otherwise use a default
+    const iconPath = app.isPackaged 
+        ? path.join(__dirname, '../build/icon.ico')
+        : path.join(__dirname, '../build/icon.ico');
+    
+    const iconExists = fs.existsSync(iconPath);
+    
     win = new BrowserWindow({
         width: 1200,
         height: 800,
         backgroundColor: '#020617',
+        icon: iconExists ? iconPath : undefined, // Only set icon if file exists
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,

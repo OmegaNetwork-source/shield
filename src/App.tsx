@@ -4957,15 +4957,22 @@ function App() {
                                         <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-1">
                                             <label className={`block text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Milestone Templates</label>
                                             <div className="flex bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                                                {(['cat1', 'cat2', 'cat3'] as const).map(cat => (
-                                                    <button
-                                                        key={cat}
-                                                        onClick={() => setPoamActiveCat(cat)}
-                                                        className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${poamActiveCat === cat ? 'bg-white dark:bg-gray-600 text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-                                                    >
-                                                        {cat === 'cat1' ? 'CAT I' : cat === 'cat2' ? 'CAT II' : 'CAT III'}
-                                                    </button>
-                                                ))}
+                                                {(['cat1', 'cat2', 'cat3'] as const).map(cat => {
+                                                    const isActive = poamActiveCat === cat;
+                                                    return (
+                                                        <button
+                                                            key={cat}
+                                                            onClick={() => setPoamActiveCat(cat)}
+                                                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all focus:outline-none ${
+                                                                isActive 
+                                                                    ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm' 
+                                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                                                            }`}
+                                                        >
+                                                            {cat === 'cat1' ? 'CAT I' : cat === 'cat2' ? 'CAT II' : 'CAT III'}
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
 
