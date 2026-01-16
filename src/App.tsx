@@ -6557,9 +6557,9 @@ function App() {
                                                                         }
                                                                         filesProcessed++;
 
-                                                                    const stigName = parsed.stigName || 'Unknown STIG';
+                                                                        const stigName = parsed.stigName || 'Unknown STIG';
 
-                                                                    for (const finding of parsed.findings) {
+                                                                        for (const finding of parsed.findings) {
                                                                         const severity = finding.severity?.toLowerCase() || '';
                                                                         const isCatI = severity === 'high' || severity === 'cat i';
                                                                         const isCatII = severity === 'medium' || severity === 'cat ii';
@@ -6594,6 +6594,10 @@ function App() {
                                                                         }
 
                                                                         extractedData.push(row);
+                                                                    }
+                                                                    } catch (fileError: any) {
+                                                                        filesWithErrors++;
+                                                                        console.warn(`Error processing file ${file.name}:`, fileError);
                                                                     }
                                                                 }
 
