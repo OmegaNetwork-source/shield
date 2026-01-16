@@ -6407,14 +6407,9 @@ function App() {
                                             )}
                                         </div>
                                     )}
-                                </div>
-                            </div>
-                        </div>
-                    ) : activeTab === 'network' ? (
-                        <div className="h-[calc(100vh-100px)] w-full">
-                            <NetworkDiagram darkMode={darkMode} />
-                        </div>
-                                    ) : toolsMode === 'extractor' ? (
+
+                                    {/* STIG Data Extractor */}
+                                    {toolsMode === 'extractor' && (
                                         <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                             <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
                                                 <div className="p-3 bg-green-100 text-green-600 rounded-xl">
@@ -6636,7 +6631,15 @@ function App() {
                                                 </div>
                                             )}
                                         </div>
-                                    ) : null}
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : activeTab === 'network' ? (
+                        <div className="h-[calc(100vh-100px)] w-full">
+                            <NetworkDiagram darkMode={darkMode} />
+                        </div>
+                    ) : null}
 
                     {/* Removed Source Preview Modal - details now inline */}
 
