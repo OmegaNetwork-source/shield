@@ -2,12 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book
+    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, Network
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
+import NetworkDiagram from './components/NetworkDiagram';
 
 // --- Configuration ---
 
@@ -39,7 +40,7 @@ function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'evidence' | 'checklist' | 'review' | 'results' | 'report' | 'poam' | 'controls' | 'compare' | 'copy' | 'tools'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'evidence' | 'checklist' | 'review' | 'results' | 'report' | 'poam' | 'controls' | 'compare' | 'copy' | 'tools' | 'network'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -85,7 +86,7 @@ function App() {
     }, [showEvidenceModal, evidenceModalRule]);
 
     // Tools State
-    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer'>('rename');
+    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [showDocsModal, setShowDocsModal] = useState(false);
     const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
@@ -93,6 +94,17 @@ function App() {
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
     const [heatmapChecklists, setHeatmapChecklists] = useState<typeof uploadedChecklists>([]);
+    
+    // Extractor state
+    const [extractorFiles, setExtractorFiles] = useState<File[]>([]);
+    const [extractorOptions, setExtractorOptions] = useState({
+        catI: false,
+        catII: false,
+        catIII: false,
+        ruleId: false,
+        groupId: false,
+    });
+    const [extractorProcessing, setExtractorProcessing] = useState(false);
 
     // Analyzer State
     const [analyzerOldChecklist, setAnalyzerOldChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
@@ -2756,6 +2768,7 @@ function App() {
                     <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
                     <SidebarItem icon={<Shield size={18} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
+                    <SidebarItem icon={<Network size={18} />} label="Network Diagram" active={activeTab === 'network'} onClick={() => setActiveTab('network')} darkMode={darkMode} />
 
                     {/* Tools Dropdown */}
                     <div className="mb-1">
@@ -2804,6 +2817,16 @@ function App() {
                                 >
                                     <div className="size-1 rounded-full bg-current opacity-50" />
                                     STIG Analyzer
+                                </button>
+                                <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('extractor'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'extractor'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Extractor
                                 </button>
                                 <button
                                     onClick={() => setShowDocsModal(true)}
@@ -5335,10 +5358,21 @@ function App() {
                                         </button>
                                         <button
                                             onClick={() => setToolsMode('analyzer')}
-                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'analyzer'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
                                         >
                                             <GitCompare size={18} />
                                             <div className="font-medium">STIG Analyzer</div>
+                                        </button>
+                                        <button
+                                            onClick={() => setToolsMode('extractor')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'extractor'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <Download size={18} />
+                                            <div className="font-medium">Extractor</div>
                                         </button>
                                     </div>
                                 )}
@@ -6376,7 +6410,233 @@ function App() {
                                 </div>
                             </div>
                         </div>
-                    ) : null}
+                    ) : activeTab === 'network' ? (
+                        <div className="h-[calc(100vh-100px)] w-full">
+                            <NetworkDiagram darkMode={darkMode} />
+                        </div>
+                                    ) : toolsMode === 'extractor' ? (
+                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <div className="p-3 bg-green-100 text-green-600 rounded-xl">
+                                                    <Download size={24} />
+                                                </div>
+                                                <div>
+                                                    <h2 className="text-xl font-semibold">STIG Data Extractor</h2>
+                                                    <p className="text-sm text-gray-500">Upload a folder of STIG files and extract specific information to CSV.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Folder Upload */}
+                                            <div className="w-full relative group cursor-pointer mb-8">
+                                                <div className={`absolute inset-0 rounded-xl bg-green-500/5 opacity-0 group-hover:opacity-100 transition-opacity border-2 border-dashed border-green-500/50`} />
+                                                <div className={`relative z-10 p-10 rounded-xl border-2 border-dashed text-center transition-colors ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                                    <div className="size-16 mx-auto bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
+                                                        <FolderOpen size={30} />
+                                                    </div>
+                                                    <h3 className="text-lg font-medium mb-1">Upload Folder</h3>
+                                                    <p className="text-sm text-gray-500 mb-4">Select a folder containing .ckl, .cklb, or .xml STIG files</p>
+                                                    <label className="inline-block relative">
+                                                        <span className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-full text-sm font-medium transition-all shadow-lg active:scale-95 cursor-pointer">
+                                                            Browse Folder
+                                                        </span>
+                                                        <input
+                                                            type="file"
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                            multiple
+                                                            // @ts-ignore
+                                                            webkitdirectory=""
+                                                            directory=""
+                                                            onChange={(e) => {
+                                                                const files = Array.from(e.target.files || []);
+                                                                const stigFiles = files.filter(f => 
+                                                                    f.name.endsWith('.ckl') || 
+                                                                    f.name.endsWith('.cklb') || 
+                                                                    f.name.endsWith('.xml') ||
+                                                                    f.name.endsWith('.json')
+                                                                );
+                                                                setExtractorFiles(stigFiles);
+                                                            }}
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            {extractorFiles.length > 0 && (
+                                                <div className="mb-6">
+                                                    <div className={`p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-blue-50'} mb-4`}>
+                                                        <p className="text-sm font-medium mb-2">
+                                                            {extractorFiles.length} STIG file(s) selected
+                                                        </p>
+                                                        <div className="text-xs text-gray-600 dark:text-gray-400 max-h-32 overflow-y-auto">
+                                                            {extractorFiles.map((f, i) => (
+                                                                <div key={i} className="truncate">{f.name}</div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Extraction Options */}
+                                                    <div className="mb-6">
+                                                        <h3 className="text-sm font-semibold uppercase text-gray-500 mb-3">Select Information to Extract</h3>
+                                                        <div className="space-y-3">
+                                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={extractorOptions.catI}
+                                                                    onChange={(e) => setExtractorOptions(prev => ({ ...prev, catI: e.target.checked }))}
+                                                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                                                />
+                                                                <span className="text-sm font-medium">CAT I (High Severity)</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={extractorOptions.catII}
+                                                                    onChange={(e) => setExtractorOptions(prev => ({ ...prev, catII: e.target.checked }))}
+                                                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                                                />
+                                                                <span className="text-sm font-medium">CAT II (Medium Severity)</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={extractorOptions.catIII}
+                                                                    onChange={(e) => setExtractorOptions(prev => ({ ...prev, catIII: e.target.checked }))}
+                                                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                                                />
+                                                                <span className="text-sm font-medium">CAT III (Low Severity)</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={extractorOptions.ruleId}
+                                                                    onChange={(e) => setExtractorOptions(prev => ({ ...prev, ruleId: e.target.checked }))}
+                                                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                                                />
+                                                                <span className="text-sm font-medium">SV- (Rule ID)</span>
+                                                            </label>
+                                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={extractorOptions.groupId}
+                                                                    onChange={(e) => setExtractorOptions(prev => ({ ...prev, groupId: e.target.checked }))}
+                                                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                                                />
+                                                                <span className="text-sm font-medium">Group ID (V- numbers)</span>
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Extract Button */}
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!extractorOptions.catI && !extractorOptions.catII && !extractorOptions.catIII && !extractorOptions.ruleId && !extractorOptions.groupId) {
+                                                                alert('Please select at least one option to extract.');
+                                                                return;
+                                                            }
+
+                                                            setExtractorProcessing(true);
+                                                            try {
+                                                                const extractedData: any[] = [];
+
+                                                                for (const file of extractorFiles) {
+                                                                    const parsed = await parseCklFile(file);
+                                                                    if (!parsed) continue;
+
+                                                                    const stigName = parsed.stigName || 'Unknown STIG';
+
+                                                                    for (const finding of parsed.findings) {
+                                                                        const severity = finding.severity?.toLowerCase() || '';
+                                                                        const isCatI = severity === 'high' || severity === 'cat i';
+                                                                        const isCatII = severity === 'medium' || severity === 'cat ii';
+                                                                        const isCatIII = severity === 'low' || severity === 'cat iii';
+
+                                                                        // Filter by selected categories
+                                                                        if (extractorOptions.catI && !isCatI) continue;
+                                                                        if (extractorOptions.catII && !isCatII) continue;
+                                                                        if (extractorOptions.catIII && !isCatIII) continue;
+                                                                        if (!extractorOptions.catI && !extractorOptions.catII && !extractorOptions.catIII) {
+                                                                            // If no category selected, include all
+                                                                        } else {
+                                                                            // If categories are selected, must match at least one
+                                                                            if (!isCatI && !isCatII && !isCatIII) continue;
+                                                                        }
+
+                                                                        const row: any = {
+                                                                            'STIG Name': stigName,
+                                                                        };
+
+                                                                        if (extractorOptions.ruleId) {
+                                                                            row['Rule ID (SV-)'] = finding.ruleId || '';
+                                                                        }
+                                                                        if (extractorOptions.groupId) {
+                                                                            row['Group ID (V-)'] = finding.groupId || finding.vulnId || '';
+                                                                        }
+                                                                        if (extractorOptions.catI || extractorOptions.catII || extractorOptions.catIII) {
+                                                                            row['Severity'] = finding.severity || '';
+                                                                        }
+
+                                                                        extractedData.push(row);
+                                                                    }
+                                                                }
+
+                                                                // Generate CSV
+                                                                if (extractedData.length === 0) {
+                                                                    alert('No data found matching your criteria.');
+                                                                    setExtractorProcessing(false);
+                                                                    return;
+                                                                }
+
+                                                                const headers = Object.keys(extractedData[0]);
+                                                                const csvRows = [
+                                                                    headers.join(','),
+                                                                    ...extractedData.map(row => 
+                                                                        headers.map(header => {
+                                                                            const value = row[header] || '';
+                                                                            // Escape commas and quotes
+                                                                            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                                                                                return `"${value.replace(/"/g, '""')}"`;
+                                                                            }
+                                                                            return value;
+                                                                        }).join(',')
+                                                                    )
+                                                                ];
+
+                                                                const csvContent = csvRows.join('\n');
+                                                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                                                const url = URL.createObjectURL(blob);
+                                                                const link = document.createElement('a');
+                                                                link.href = url;
+                                                                link.download = `stig_extract_${new Date().toISOString().split('T')[0]}.csv`;
+                                                                link.click();
+                                                                URL.revokeObjectURL(url);
+
+                                                                alert(`Successfully extracted ${extractedData.length} rows to CSV!`);
+                                                            } catch (error: any) {
+                                                                console.error('Extraction error:', error);
+                                                                alert(`Error during extraction: ${error.message}`);
+                                                            } finally {
+                                                                setExtractorProcessing(false);
+                                                            }
+                                                        }}
+                                                        disabled={extractorProcessing || extractorFiles.length === 0}
+                                                        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-medium transition-all shadow-lg flex items-center justify-center gap-2"
+                                                    >
+                                                        {extractorProcessing ? (
+                                                            <>
+                                                                <Loader2 size={18} className="animate-spin" />
+                                                                Processing...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Download size={18} />
+                                                                Extract to CSV
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : null}
 
                     {/* Removed Source Preview Modal - details now inline */}
 
