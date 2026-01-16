@@ -6450,6 +6450,13 @@ function App() {
                                                                     f.name.endsWith('.json')
                                                                 );
                                                                 setExtractorFiles(stigFiles);
+                                                                if (stigFiles.length === 0 && files.length > 0) {
+                                                                    alert('No STIG files (.ckl, .cklb, .xml, .json) found in the selected folder.');
+                                                                }
+                                                            }}
+                                                            onClick={(e) => {
+                                                                // Reset the input so the same folder can be selected again
+                                                                (e.target as HTMLInputElement).value = '';
                                                             }}
                                                         />
                                                     </label>
@@ -6529,13 +6536,26 @@ function App() {
                                                                 return;
                                                             }
 
+                                                            if (extractorFiles.length === 0) {
+                                                                alert('Please upload a folder with STIG files first.');
+                                                                return;
+                                                            }
+
                                                             setExtractorProcessing(true);
                                                             try {
                                                                 const extractedData: any[] = [];
+                                                                let filesProcessed = 0;
+                                                                let filesWithErrors = 0;
 
                                                                 for (const file of extractorFiles) {
-                                                                    const parsed = await parseCklFile(file);
-                                                                    if (!parsed) continue;
+                                                                    try {
+                                                                        const parsed = await parseCklFile(file);
+                                                                        if (!parsed) {
+                                                                            filesWithErrors++;
+                                                                            console.warn(`Failed to parse file: ${file.name}`);
+                                                                            continue;
+                                                                        }
+                                                                        filesProcessed++;
 
                                                                     const stigName = parsed.stigName || 'Unknown STIG';
 
@@ -6545,16 +6565,19 @@ function App() {
                                                                         const isCatII = severity === 'medium' || severity === 'cat ii';
                                                                         const isCatIII = severity === 'low' || severity === 'cat iii';
 
-                                                                        // Filter by selected categories
-                                                                        if (extractorOptions.catI && !isCatI) continue;
-                                                                        if (extractorOptions.catII && !isCatII) continue;
-                                                                        if (extractorOptions.catIII && !isCatIII) continue;
-                                                                        if (!extractorOptions.catI && !extractorOptions.catII && !extractorOptions.catIII) {
-                                                                            // If no category selected, include all
-                                                                        } else {
-                                                                            // If categories are selected, must match at least one
-                                                                            if (!isCatI && !isCatII && !isCatIII) continue;
+                                                                        // Filter by selected categories - if any categories are selected, must match at least one
+                                                                        const hasCategorySelected = extractorOptions.catI || extractorOptions.catII || extractorOptions.catIII;
+                                                                        if (hasCategorySelected) {
+                                                                            // Check if this finding matches any of the selected categories
+                                                                            const matchesSelected = 
+                                                                                (extractorOptions.catI && isCatI) ||
+                                                                                (extractorOptions.catII && isCatII) ||
+                                                                                (extractorOptions.catIII && isCatIII);
+                                                                            
+                                                                            // If it doesn't match any selected category, skip it
+                                                                            if (!matchesSelected) continue;
                                                                         }
+                                                                        // If no categories selected, include all findings
 
                                                                         const row: any = {
                                                                             'STIG Name': stigName,
@@ -6576,7 +6599,16 @@ function App() {
 
                                                                 // Generate CSV
                                                                 if (extractedData.length === 0) {
-                                                                    alert('No data found matching your criteria.');
+                                                                    let errorMsg = 'No data found matching your criteria.\n\n';
+                                                                    errorMsg += `Files processed: ${filesProcessed}\n`;
+                                                                    if (filesWithErrors > 0) {
+                                                                        errorMsg += `Files with errors: ${filesWithErrors}\n`;
+                                                                    }
+                                                                    errorMsg += '\nPlease check:\n';
+                                                                    errorMsg += '- Are the files valid STIG checklists?\n';
+                                                                    errorMsg += '- Do the selected categories match the findings in the files?\n';
+                                                                    errorMsg += '- Try selecting different options or all options.';
+                                                                    alert(errorMsg);
                                                                     setExtractorProcessing(false);
                                                                     return;
                                                                 }
@@ -6605,10 +6637,10 @@ function App() {
                                                                 link.click();
                                                                 URL.revokeObjectURL(url);
 
-                                                                alert(`Successfully extracted ${extractedData.length} rows to CSV!`);
+                                                                alert(`Successfully extracted ${extractedData.length} rows to CSV!\n\nFiles processed: ${filesProcessed}${filesWithErrors > 0 ? `\nFiles with errors: ${filesWithErrors}` : ''}`);
                                                             } catch (error: any) {
                                                                 console.error('Extraction error:', error);
-                                                                alert(`Error during extraction: ${error.message}`);
+                                                                alert(`Error during extraction: ${error.message}\n\nPlease try uploading the folder again.`);
                                                             } finally {
                                                                 setExtractorProcessing(false);
                                                             }
