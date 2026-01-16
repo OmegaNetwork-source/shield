@@ -6,7 +6,7 @@
     "scripts": {
         "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
         "dev:vite": "vite",
-        "dev:electron": "wait-on tcp:5173 && tsc -p electron/tsconfig.json && electron .",
+        "dev:electron": "wait-on tcp:5174 && tsc -p electron/tsconfig.json && electron .",
         "build": "tsc && vite build && tsc -p electron/tsconfig.json",
         "build:web": "tsc && vite build",
         "preview": "vite preview"
@@ -30,10 +30,26 @@
         "autoprefixer": "^10.4.16",
         "concurrently": "^8.2.2",
         "electron": "^28.1.0",
+        "electron-builder": "^24.13.3",
         "postcss": "^8.4.33",
         "tailwindcss": "^3.4.1",
         "typescript": "^5.2.2",
         "vite": "^5.0.8",
         "wait-on": "^7.2.0"
+    },
+    "build": {
+        "appId": "com.stigops.app",
+        "productName": "STIG Ops",
+        "directories": {
+            "output": "release"
+        },
+        "win": {
+            "target": "nsis",
+            "requestedExecutionLevel": "requireAdministrator"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true
+        }
     }
 }

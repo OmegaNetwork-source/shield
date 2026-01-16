@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight, ChevronLeft
+    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
@@ -26,6 +26,7 @@ interface CheckResult {
     output?: string;
     command?: string;
     timestamp?: Date;
+    findingDetails?: string;
 }
 
 interface StigChecklist {
@@ -49,9 +50,45 @@ function App() {
     const [availableChecklists, setAvailableChecklists] = useState<StigChecklist[]>([]);
     const [darkMode, setDarkMode] = useState(false);
 
+    // Evidence Capture Modal State
+    const [showEvidenceModal, setShowEvidenceModal] = useState(false);
+    const [evidenceModalRule, setEvidenceModalRule] = useState<ParsedStigRule | null>(null);
+    const [evidenceFolderName, setEvidenceFolderName] = useState('');
+    const [evidenceScreenshot, setEvidenceScreenshot] = useState<string | null>(null);
+    
+    // Evidence Type Selection Modal State
+    const [showEvidenceTypeModal, setShowEvidenceTypeModal] = useState(false);
+    const [showUsernameModal, setShowUsernameModal] = useState(false);
+    const [scanUsername, setScanUsername] = useState<string>('');
+    const detailEvidenceCardRef = React.useRef<HTMLDivElement>(null);
+    const virtualEvidenceRef = React.useRef<HTMLDivElement>(null); // NEW: For capturing virtual tools
+
+    // Auto-Capture Virtual Evidence when Modal triggers
+    useEffect(() => {
+        if (showEvidenceModal && evidenceModalRule && !evidenceScreenshot) {
+            // Short timeout to ensure DOM render
+            const timer = setTimeout(async () => {
+                if (virtualEvidenceRef.current) {
+                    try {
+                        const canvas = await html2canvas(virtualEvidenceRef.current, {
+                            backgroundColor: null, // Transparent wrapper
+                            scale: 1.5 // Higher quality
+                        });
+                        setEvidenceScreenshot(canvas.toDataURL('image/png'));
+                    } catch (e) {
+                        console.error("Virtual capture failed:", e);
+                    }
+                }
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [showEvidenceModal, evidenceModalRule]);
+
     // Tools State
     const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
+    const [showDocsModal, setShowDocsModal] = useState(false);
+    const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
     const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
@@ -583,7 +620,8 @@ function App() {
     // Load available checklists on mount
     useEffect(() => {
         loadChecklists();
-        loadStigFile('win11'); // Default to Windows 11
+        // Default to Edge STIG for agent scanning (can be changed via dropdown)
+        loadStigFile('edge'); // Default to Edge STIG for focus
     }, []);
 
     const loadChecklists = async () => {
@@ -757,17 +795,18 @@ function App() {
         return true;
     });
 
-    // Run a single check
-    const runCheck = async (rule: ParsedStigRule) => {
+    // Run a single check - launches visible PowerShell window
+    const runCheck = async (rule: ParsedStigRule): Promise<CheckResult> => {
         const command = generateCheckCommand(rule);
         if (!command) {
-            setResults(prev => new Map(prev).set(rule.vulnId, {
+            const result: CheckResult = {
                 ruleId: rule.vulnId,
                 status: 'notapplicable',
                 output: 'Manual check required - no automated check available',
                 command: 'N/A'
-            }));
-            return;
+            };
+            setResults(prev => new Map(prev).set(rule.vulnId, result));
+            return result;
         }
 
         setResults(prev => new Map(prev).set(rule.vulnId, {
@@ -777,13 +816,19 @@ function App() {
         }));
 
         try {
-            const result = await window.ipcRenderer.invoke('run-command', command);
+            // Launch PowerShell window visibly with the command
+            // @ts-ignore
+            const res = await window.ipcRenderer.invoke('run-command-visible', {
+                command: command,
+                ruleId: rule.vulnId,
+                ruleTitle: rule.title
+            });
 
             // Handle the output
-            let output = result.output?.trim() || '';
+            let output = res.output?.trim() || '';
             let passed = false;
 
-            if (result.success) {
+            if (res.success) {
                 // Command succeeded - check if value matches expected
                 passed = evaluateCheckResult(rule, output);
             } else {
@@ -799,20 +844,26 @@ function App() {
                 }
             }
 
-            setResults(prev => new Map(prev).set(rule.vulnId, {
+            const result: CheckResult = {
                 ruleId: rule.vulnId,
                 status: passed ? 'pass' : 'fail',
                 output,
                 command,
                 timestamp: new Date()
-            }));
+            };
+
+            setResults(prev => new Map(prev).set(rule.vulnId, result));
+            return result;
+
         } catch (e: any) {
-            setResults(prev => new Map(prev).set(rule.vulnId, {
+            const result: CheckResult = {
                 ruleId: rule.vulnId,
                 status: 'error',
                 output: e.toString(),
                 command
-            }));
+            };
+            setResults(prev => new Map(prev).set(rule.vulnId, result));
+            return result;
         }
     };
 
@@ -826,21 +877,466 @@ function App() {
         setIsScanning(false);
     };
 
+    // Auto-Capture Batch Evidence (Agentic Mode)
+    const [isBatchCapturing, setIsBatchCapturing] = useState(false);
+
+    // Agent State
+    interface AgentState {
+        status: 'idle' | 'working' | 'complete' | 'stopped';
+        currentRuleId: string;
+        currentAction: string;
+        logs: string[];
+        progress: number;
+        total: number;
+    }
+    const [agentState, setAgentState] = useState<AgentState>({
+        status: 'idle',
+        currentRuleId: '',
+        currentAction: 'Waiting for orders...',
+        logs: [],
+        progress: 0,
+        total: 0
+    });
+
+    // Cancellation ref for stopping scans
+    const scanCancelledRef = useRef(false);
+
+    const addAgentLog = (msg: string) => {
+        setAgentState(prev => ({
+            ...prev,
+            logs: [...prev.logs.slice(-4), `> ${msg}`] // Keep last 5 logs
+        }));
+    };
+
+    const stopScan = () => {
+        scanCancelledRef.current = true;
+        setIsBatchCapturing(false);
+        setAgentState(prev => ({
+            ...prev,
+            status: 'stopped',
+            currentAction: 'Scan cancelled by user'
+        }));
+        addAgentLog('Scan cancelled by user');
+    };
+
+    const runAgent = async () => {
+        // Reset cancellation flag
+        scanCancelledRef.current = false;
+
+        // Filter rules that CAN be automated - focus on Edge STIG registry checks
+        const rulesToProcess = filteredRules.filter(r => {
+            // For Edge STIG, focus on registry checks that have automated checks
+            return r.automatedCheck?.type !== 'manual' && r.automatedCheck?.type === 'registry';
+        });
+        const total = rulesToProcess.length;
+
+        if (total === 0) {
+            alert("No automated registry checks found. Make sure you've loaded the Edge STIG.");
+            return;
+        }
+
+        // Show evidence type selection modal and wait for user selection
+        let evidenceTypeForScan: 'powershell' | 'regedit' | 'both' = 'powershell';
+        
+        const evidenceTypePromise = new Promise<'powershell' | 'regedit' | 'both' | null>((resolve) => {
+            // Store the resolve function so the modal can call it
+            (window as any).__evidenceTypeResolver = resolve;
+            setShowEvidenceTypeModal(true);
+        });
+        
+        const evidenceType = await evidenceTypePromise;
+        
+        if (!evidenceType) {
+            setShowEvidenceTypeModal(false);
+            return; // User cancelled
+        }
+        
+        evidenceTypeForScan = evidenceType;
+        setShowEvidenceTypeModal(false);
+
+        // Prompt for username
+        const usernamePromise = new Promise<string | null>((resolve) => {
+            (window as any).__usernameResolver = resolve;
+            setShowUsernameModal(true);
+        });
+        
+        const username = await usernamePromise;
+        
+        if (!username || username.trim() === '') {
+            setShowUsernameModal(false);
+            return; // User cancelled or didn't enter username
+        }
+        
+        const scanUsernameValue = username.trim(); // Store in local variable for use in finding details
+        setScanUsername(scanUsernameValue);
+        setShowUsernameModal(false);
+
+        setIsBatchCapturing(true);
+
+        setAgentState({
+            status: 'working',
+            currentRuleId: 'INIT',
+            currentAction: 'Launching Admin PowerShell...',
+            logs: ['Initializing Agent...', 'Loading Edge STIG Rules...', 'Preparing PowerShell Interface...'],
+            progress: 0,
+            total
+        });
+
+        // Launch PowerShell window first (user will need to accept UAC)
+        addAgentLog('Requesting admin PowerShell window...');
+        try {
+            // @ts-ignore
+            const launchResult = await window.ipcRenderer.invoke('launch-admin-powershell');
+            if (!launchResult.success) {
+                alert(`Failed to launch PowerShell: ${launchResult.error}`);
+                setIsBatchCapturing(false);
+                setAgentState(prev => ({ ...prev, status: 'idle' }));
+                return;
+            }
+            addAgentLog('PowerShell window launched. Please position it on the left side.');
+            // Give user time to position window and accept UAC
+            await new Promise(r => setTimeout(r, 3000));
+        } catch (e: any) {
+            console.error('Error launching PowerShell:', e);
+            addAgentLog(`Error: ${e.message}`);
+        }
+
+        // Create folder name with STIG name and date: "Edge_STIG_V2R3_2024-01-15"
+        const today = new Date();
+        const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const stigName = stigInfo.version.replace(/[^a-zA-Z0-9]/g, '_') || 'Edge_STIG';
+        const safeFolder = `${stigName}_${dateStr}`;
+
+        // Process all commands - start with first one
+        let processedCount = 0;
+        const firstRule = rulesToProcess[0];
+        if (!firstRule) {
+            addAgentLog('No rules to process');
+            setIsBatchCapturing(false);
+            setAgentState(prev => ({ ...prev, status: 'idle' }));
+            return;
+        }
+
+        addAgentLog(`Processing first command: ${firstRule.vulnId}`);
+        addAgentLog('Waiting 5 seconds for PowerShell to be ready...');
+        await new Promise(r => setTimeout(r, 5000)); // Give PowerShell time to initialize
+
+        // Check if scan was cancelled during wait
+        if (scanCancelledRef.current) {
+            addAgentLog('⚠️ Scan cancelled - stopping processing');
+            setIsBatchCapturing(false);
+            setAgentState(prev => ({
+                ...prev,
+                status: 'stopped',
+                currentAction: 'Scan cancelled by user'
+            }));
+            return;
+        }
+
+        // Update agent state for first rule
+        processedCount++;
+        setAgentState(prev => ({
+            ...prev,
+            currentRuleId: firstRule.vulnId,
+            currentAction: `Checking: ${firstRule.vulnId} - ${firstRule.title.substring(0, 50)}...`,
+            progress: processedCount,
+            logs: [...prev.logs.slice(-3), `Processing: ${firstRule.vulnId} (${firstRule.severity})`]
+        }));
+
+        // Get the command to execute
+        const command = generateCheckCommand(firstRule);
+        if (!command) {
+            addAgentLog(`ERROR: No automated check available for ${firstRule.vulnId}`);
+            setIsBatchCapturing(false);
+            setAgentState(prev => ({ ...prev, status: 'idle' }));
+            return;
+        }
+
+        addAgentLog(`Command: ${command}`);
+        addAgentLog('Writing command to queue file...');
+
+        try {
+            // Execute command in PowerShell and capture screenshot
+            // @ts-ignore
+            const execResult = await window.ipcRenderer.invoke('execute-command-with-screenshot', {
+                command: command,
+                groupId: firstRule.vulnId,
+                evidenceType: evidenceTypeForScan
+            });
+
+            addAgentLog(`Execution completed. Success: ${execResult.success}`);
+            if (execResult.error) {
+                addAgentLog(`Error: ${execResult.error}`);
+            }
+            if (execResult.output) {
+                addAgentLog(`Output: ${execResult.output.substring(0, 100)}...`);
+            }
+
+            // Wait longer to ensure PowerShell has time to process
+            await new Promise(r => setTimeout(r, 2000));
+
+            // Check if we got valid results
+            if (!execResult.success) {
+                addAgentLog(`❌ FIRST COMMAND FAILED - STOPPING`);
+                addAgentLog(`Reason: ${execResult.error || 'Unknown error'}`);
+                addAgentLog(`Check the PowerShell window to see if commands are executing.`);
+                setIsBatchCapturing(false);
+                setAgentState(prev => ({ ...prev, status: 'stopped', currentAction: 'First command failed - check PowerShell window' }));
+                return;
+            }
+
+            // Check if we got output
+            if (!execResult.output || execResult.output.trim().length === 0) {
+                addAgentLog(`⚠️ WARNING: Command executed but no output received`);
+                addAgentLog(`This might mean the command didn't run in PowerShell.`);
+            } else {
+                addAgentLog(`✅ SUCCESS: Command executed and got output!`);
+            }
+
+            // Evaluate the result
+            const passed = evaluateCheckResult(firstRule, execResult.output || '');
+            const status = passed ? 'pass' : 'fail';
+            
+            addAgentLog(`Result: ${status.toUpperCase()} - ${passed ? 'Compliant' : 'Non-Compliant'}`);
+            
+            // Generate finding details text
+            const dateStr = new Date().toLocaleString();
+            // If passed (compliant) = "isn't a finding", if failed (non-compliant) = "is a finding"
+            const findingStatus = passed ? "isn't" : "is";
+            const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
+            
+            // Save evidence with screenshot
+            if (execResult.screenshot) {
+                addAgentLog(`✅ Screenshot captured (${Math.round(execResult.screenshot.length / 1024)}KB)`);
+                
+                // @ts-ignore
+                await window.ipcRenderer.invoke('save-evidence', {
+                    ruleId: firstRule.vulnId,
+                    ruleTitle: firstRule.title,
+                    command: command,
+                    output: execResult.output || '',
+                    status: status,
+                    captureScreenshot: false,
+                    screenshotDataUrl: execResult.screenshot,
+                    folder: safeFolder,
+                    findingDetails: findingDetails
+                });
+                
+                addAgentLog(`✅ Evidence saved for ${firstRule.vulnId}`);
+            } else {
+                addAgentLog(`❌ Screenshot capture failed - this is a problem!`);
+            }
+
+            // Update the results map for UI
+            setResults(prev => new Map(prev).set(firstRule.vulnId, {
+                ruleId: firstRule.vulnId,
+                status: status,
+                output: execResult.output || '',
+                command: command,
+                timestamp: new Date(),
+                findingDetails: findingDetails
+            }));
+
+            // Confirm first command worked before proceeding
+            if (!execResult.success || !execResult.screenshot) {
+                addAgentLog(`❌ FIRST COMMAND HAD ISSUES - Stopping`);
+                addAgentLog(`Success: ${execResult.success}, Screenshot: ${execResult.screenshot ? 'Yes' : 'No'}`);
+                setIsBatchCapturing(false);
+                setAgentState(prev => ({ ...prev, status: 'stopped' }));
+                await loadEvidence(); // Refresh gallery even on failure
+                return;
+            }
+
+            // First command successful - continue!
+            addAgentLog(`✅ FIRST COMMAND SUCCESSFUL - Processing remaining ${total - 1} commands...`);
+
+        } catch (e: any) {
+            console.error(`Error processing ${firstRule.vulnId}:`, e);
+            addAgentLog(`❌ CRITICAL ERROR: ${e.message}`);
+            setIsBatchCapturing(false);
+            setAgentState(prev => ({ ...prev, status: 'stopped' }));
+            await loadEvidence(); // Refresh gallery even on error
+            return;
+        }
+
+        // Process remaining commands automatically - this loop should execute!
+        addAgentLog(`🔄 Starting batch processing of ${rulesToProcess.length - 1} remaining commands...`);
+        
+        for (let ruleIndex = 1; ruleIndex < rulesToProcess.length; ruleIndex++) {
+            // Check if scan was cancelled
+            if (scanCancelledRef.current) {
+                addAgentLog('⚠️ Scan cancelled - stopping processing');
+                setIsBatchCapturing(false);
+                setAgentState(prev => ({
+                    ...prev,
+                    status: 'stopped',
+                    currentAction: 'Scan cancelled by user'
+                }));
+                return;
+            }
+
+            const rule = rulesToProcess[ruleIndex];
+            processedCount++;
+            
+            addAgentLog(`\n--- Processing command ${processedCount}/${total}: ${rule.vulnId} ---`);
+
+            // Update agent state
+            setAgentState(prev => ({
+                ...prev,
+                currentRuleId: rule.vulnId,
+                currentAction: `Checking: ${rule.vulnId} - ${rule.title.substring(0, 50)}...`,
+                progress: processedCount,
+                logs: [...prev.logs.slice(-4), `Processing: ${rule.vulnId} (${rule.severity})`]
+            }));
+
+            // Get the command to execute
+            const command = generateCheckCommand(rule);
+            if (!command) {
+                addAgentLog(`Skipping ${rule.vulnId}: No automated check available`);
+                continue;
+            }
+
+            addAgentLog(`Executing: ${command.substring(0, 60)}...`);
+
+            try {
+                // @ts-ignore
+                const execResult = await window.ipcRenderer.invoke('execute-command-with-screenshot', {
+                    command: command,
+                    groupId: rule.vulnId,
+                    evidenceType: evidenceTypeForScan
+                });
+
+                await new Promise(r => setTimeout(r, 1500));
+
+                if (execResult.success) {
+                    const passed = evaluateCheckResult(rule, execResult.output || '');
+                    const status = passed ? 'pass' : 'fail';
+                    
+                    addAgentLog(`${rule.vulnId}: ${status.toUpperCase()}`);
+                    
+                    // Generate finding details text
+                    const dateStr = new Date().toLocaleString();
+                    // If passed (compliant) = "isn't a finding", if failed (non-compliant) = "is a finding"
+                    const findingStatus = passed ? "isn't" : "is";
+                    const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
+                    
+                    // Save evidence with screenshot
+                    if (execResult.screenshot) {
+                        // @ts-ignore
+                        await window.ipcRenderer.invoke('save-evidence', {
+                            ruleId: rule.vulnId,
+                            ruleTitle: rule.title,
+                            command: command,
+                            output: execResult.output || '',
+                            status: status,
+                            captureScreenshot: false,
+                            screenshotDataUrl: execResult.screenshot,
+                            folder: safeFolder,
+                            findingDetails: findingDetails
+                        });
+                        addAgentLog(`Screenshot saved for ${rule.vulnId}`);
+                    } else {
+                        addAgentLog(`⚠️ No screenshot for ${rule.vulnId}`);
+                    }
+
+                    // Update results map
+                    setResults(prev => new Map(prev).set(rule.vulnId, {
+                        ruleId: rule.vulnId,
+                        status: status,
+                        output: execResult.output || '',
+                        command: command,
+                        timestamp: new Date(),
+                        findingDetails: findingDetails
+                    }));
+                } else {
+                    addAgentLog(`❌ Error: ${execResult.error || 'Unknown error'}`);
+                    
+                    // Generate finding details for error case
+                    const dateStr = new Date().toLocaleString();
+                    const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || 'Command execution failed'}\nAccording to the Check Text, this is a finding (error occurred). Reference Evidence in ${safeFolder}`;
+                    
+                    // Save with error status even if screenshot failed
+                    if (execResult.screenshot) {
+                        // @ts-ignore
+                        await window.ipcRenderer.invoke('save-evidence', {
+                            ruleId: rule.vulnId,
+                            ruleTitle: rule.title,
+                            command: command,
+                            output: execResult.output || 'Command execution failed',
+                            status: 'error',
+                            captureScreenshot: false,
+                            screenshotDataUrl: execResult.screenshot,
+                            folder: safeFolder,
+                            findingDetails: findingDetails
+                        });
+                    }
+                }
+
+            } catch (e: any) {
+                addAgentLog(`❌ Exception: ${e.message}`);
+            }
+
+            // Small delay between commands
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        setAgentState(prev => ({
+            ...prev,
+            status: 'complete',
+            currentAction: `Scan Complete! ${processedCount}/${total} checks processed`,
+            currentRuleId: 'DONE'
+        }));
+
+        setIsBatchCapturing(false);
+        
+        // Refresh evidence gallery to show all saved screenshots
+        await loadEvidence();
+        
+        addAgentLog(`✅ Scan complete! ${processedCount} checks processed.`);
+        addAgentLog(`Evidence saved to folder: ${safeFolder}`);
+    };
+
+
+    // Open Evidence Capture Modal
+    // Open Evidence Capture Modal
+    const openEvidenceModal = async (rule: ParsedStigRule) => {
+        setEvidenceScreenshot(null); // Clear previous screenshot
+        setEvidenceModalRule(rule);
+        setEvidenceFolderName(stigInfo.version.replace(/[^a-zA-Z0-9]/g, '_')); // Default folder name
+        setShowEvidenceModal(true);
+    };
+
     // Capture evidence for a single rule
-    const captureEvidence = async (rule: ParsedStigRule, skipReload = false) => {
+    const captureEvidence = async (rule: ParsedStigRule, skipReload = false, folder?: string, screenshotDataUrl?: string) => {
         const result = results.get(rule.vulnId);
         const command = generateCheckCommand(rule);
 
+        // Format: VulnID_CCI (e.g., V-253254_CCI-000366)
+        const cciPart = rule.ccis && rule.ccis.length > 0 ? `_${rule.ccis[0]}` : '';
+        const ruleIdForFile = `${rule.vulnId}${cciPart}`;
+
         await window.ipcRenderer.invoke('save-evidence', {
-            ruleId: `${rule.vulnId} (${rule.stigId})`,
+            ruleId: ruleIdForFile,
             ruleTitle: rule.title,
             command: command || 'Manual check',
             output: result?.output || 'No output captured - run check first',
             status: result?.status || 'pending',
-            captureScreenshot: false // Skip screenshots for bulk capture
+            captureScreenshot: false,
+            screenshotDataUrl: screenshotDataUrl || null,
+            folder: folder || '' // Optional folder for organization
         });
         if (!skipReload) {
             loadEvidence();
+        }
+    };
+
+    // Confirm and capture from modal
+    const confirmCaptureEvidence = async () => {
+        if (evidenceModalRule) {
+            await captureEvidence(evidenceModalRule, false, evidenceFolderName, evidenceScreenshot || undefined);
+            setShowEvidenceModal(false);
+            setEvidenceModalRule(null);
+            setEvidenceScreenshot(null);
         }
     };
 
@@ -871,6 +1367,184 @@ function App() {
         const a = document.createElement('a');
         a.href = url;
         a.download = `stig-evidence-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+    };
+
+    // Clear all evidence
+    const clearEvidence = async () => {
+        if (window.confirm('Are you sure you want to delete ALL evidence? This cannot be undone.')) {
+            await window.ipcRenderer.invoke('clear-evidence');
+            setEvidenceList([]);
+        }
+    };
+
+    // Delete single evidence item
+    const deleteEvidenceItem = async (ruleId: string, folder?: string) => {
+        if (window.confirm(`Delete evidence for ${ruleId}?`)) {
+            await window.ipcRenderer.invoke('delete-evidence', { ruleId, folder });
+            await loadEvidence();
+        }
+    };
+
+    // Create new evidence folder
+    const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+    const createEvidenceFolder = async () => {
+        if (newFolderName.trim()) {
+            await window.ipcRenderer.invoke('create-evidence-folder', newFolderName.trim());
+            setShowNewFolderModal(false);
+            setNewFolderName('');
+            await loadEvidence();
+        }
+    };
+
+    // Delete Evidence Folder
+    const deleteEvidenceFolder = async (folderName: string) => {
+        if (window.confirm(`Are you sure you want to PERMANENTLY delete the folder "${folderName}" and all its contents?`)) {
+            const result = await window.ipcRenderer.invoke('delete-evidence-folder', folderName);
+            if (result.success) {
+                await loadEvidence();
+            } else {
+                alert(`Error deleting folder: ${result.error}`);
+            }
+        }
+    };
+
+    // Collapsed Folders State
+    const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+    const toggleFolder = (folderName: string) => {
+        setCollapsedFolders(prev => {
+            const next = new Set(prev);
+            if (next.has(folderName)) next.delete(folderName);
+            else next.add(folderName);
+            return next;
+        });
+    };
+
+    // Helper to merge images vertically
+    const mergeImages = async (images: string[]): Promise<string | null> => {
+        if (!images.length) return null;
+
+        const loadedButtonImages = await Promise.all(images.map(src => new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = src;
+        })));
+
+        const width = Math.max(...loadedButtonImages.map(img => img.width));
+        const height = loadedButtonImages.reduce((acc, img) => acc + img.height + 20, 0); // 20px padding
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        // Fill white background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+
+        let yOffset = 0;
+        loadedButtonImages.forEach((img) => {
+            ctx.drawImage(img, 0, yOffset);
+            yOffset += img.height + 20;
+        });
+
+        return canvas.toDataURL('image/png');
+    };
+
+    // Export Evidence as Word Doc (HTML with .doc extension)
+    const exportToWord = async () => {
+        if (evidenceList.length === 0) return;
+
+        const content: string[] = [];
+
+        // CSS Styles for Word
+        content.push(`
+            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    body { font-family: 'Calibri', sans-serif; }
+                    h1 { color: #2E74B5; font-size: 24pt; border-bottom: 2px solid #2E74B5; padding-bottom: 10px; }
+                    h2 { color: #1F4D78; font-size: 18pt; margin-top: 20px; background-color: #f2f2f2; padding: 5px; }
+                    h3 { font-size: 14pt; color: #444; border-bottom: 1px solid #ddd; margin-top: 15px; }
+                    .item { border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; }
+                    .meta { font-size: 10pt; color: #666; margin-bottom: 10px; }
+                    .status { font-weight: bold; color: white; padding: 2px 6px; border-radius: 4px; }
+                    .pass { background-color: #2e7d32; }
+                    .fail { background-color: #d32f2f; }
+                    .code { background-color: #f5f5f5; font-family: 'Consolas', monospace; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; font-size: 9pt; }
+                    img { max-width: 600px; height: auto; border: 1px solid #999; margin-top: 10px; display: block; }
+                </style>
+            </head>
+            <body>
+                <h1>STIG Evidence Report</h1>
+                <p>Generated: ${new Date().toLocaleString()}</p>
+                <p>Total Items: ${evidenceList.length}</p>
+        `);
+
+        // Group by folder
+        const grouped: Record<string, typeof evidenceList> = {};
+        evidenceList.forEach(item => {
+            const folder = item.folder || 'General Evidence';
+            if (!grouped[folder]) grouped[folder] = [];
+            grouped[folder].push(item);
+        });
+
+        // Loop folders
+        for (const folder of Object.keys(grouped).sort()) {
+            content.push(`<h2>📁 ${folder}</h2>`);
+
+            for (const item of grouped[folder]) {
+                const statusColor = item.status === 'pass' ? 'pass' : item.status === 'fail' ? 'fail' : 'code';
+                content.push(`
+                    <div class="item">
+                        <h3>${item.ruleId} - ${item.ruleTitle}</h3>
+                        <div class="meta">
+                            Status: <span class="status ${statusColor}">${item.status.toUpperCase()}</span> | 
+                            Time: ${item.timestampReadable}
+                        </div>
+                        
+                        <p><strong>Command:</strong></p>
+                        <div class="code">${item.command}</div>
+                        
+                        <p><strong>Output:</strong></p>
+                        <div class="code">${item.output}</div>
+                `);
+
+                // Embed screenshot if exists
+                if (item.screenshotPath) {
+                    try {
+                        const result = await window.ipcRenderer.invoke('read-file-base64', item.screenshotPath);
+                        if (result.success && result.data) {
+                            content.push(`
+                                <p><strong>Evidence Screenshot:</strong></p>
+                                <img src="data:image/png;base64,${result.data}" width="600" />
+                                <br/>
+                                <small style="color:#999; font-size:8pt;">Source: ${item.screenshotPath}</small>
+                            `);
+                        } else {
+                            content.push(`<p style="color:red;"><em>Failed to load image: ${result.error || 'Unknown error'}</em></p>`);
+                        }
+                    } catch (e) {
+                        content.push(`<p style="color:red;"><em>Error loading image: ${e}</em></p>`);
+                    }
+                }
+
+                content.push(`</div>`);
+            }
+        }
+
+        content.push(`</body></html>`);
+
+        // Create Blob and Download
+        const blob = new Blob([content.join('')], { type: 'application/msword' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `STIG_Evidence_Report_${new Date().toISOString().split('T')[0]}.doc`;
         a.click();
     };
 
@@ -2131,6 +2805,56 @@ function App() {
                                     <div className="size-1 rounded-full bg-current opacity-50" />
                                     STIG Analyzer
                                 </button>
+                                <button
+                                    onClick={() => setShowDocsModal(true)}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Docs
+                                </button>
+
+                                {/* Useful Links Section */}
+                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                    <div className="px-3 mb-2">
+                                        <h3 className="text-xs font-semibold uppercase text-gray-500">Useful Links</h3>
+                                    </div>
+                                    <a
+                                        href="https://i-assure.com/products/rmf-templates/"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
+                                    >
+                                        <ExternalLink size={14} />
+                                        <span>RMF Templates</span>
+                                    </a>
+                                    <a
+                                        href="https://patches.csd.disa.mil/"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
+                                    >
+                                        <ExternalLink size={14} />
+                                        <span>DoD Repo</span>
+                                    </a>
+                                    <a
+                                        href="https://www.archives.gov/cui/registry/category-detail/personnel-records"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
+                                    >
+                                        <ExternalLink size={14} />
+                                        <span>CUI</span>
+                                    </a>
+                                    <a
+                                        href="https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fspork.navsea.navy.mil%2Fnswc-crane-division%2Fevaluate-stig%2F-%2Freleases&data=05%7C02%7Crgaertner%40deloitte.com%7Ca651e843956d42bd3fdf08de53a40e1b%7C36da45f1dd2c4d1faf135abe46b99921%7C0%7C0%7C639040161322443506%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=pEcXKOoMlDLpKyu%2Btm%2BYkvrDSltyJ%2FmyCkDLyVAvXAI%3D&reserved=0"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
+                                    >
+                                        <ExternalLink size={14} />
+                                        <span>Evaluate STIG</span>
+                                    </a>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -2216,8 +2940,20 @@ function App() {
                         <>
                             <div className="flex items-end justify-between mb-8">
                                 <div>
-                                    <h1 className="text-3xl font-semibold tracking-tight mb-1">{stigInfo.version}</h1>
-                                    <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <select
+                                            value={stigInfo.stigId}
+                                            onChange={(e) => loadStigFile(e.target.value)}
+                                            className={`text-xl font-semibold tracking-tight cursor-pointer px-3 py-2 rounded-lg border transition-colors ${darkMode ? 'text-white bg-gray-800 border-gray-700 hover:border-gray-600' : 'text-gray-900 bg-gray-50 border-gray-200 hover:border-gray-400'}`}
+                                        >
+                                            {Object.entries(STIG_PATHS).map(([id, info]) => (
+                                                <option key={id} value={id} className="text-gray-900 text-base">
+                                                    {info.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <p className={`pl-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                         {selectedStatus ? `Showing ${selectedStatus} results` : selectedSeverity ? `Showing ${selectedSeverity} severity` : `${stigInfo.ruleCount} Controls`} • DISA STIG Compliance Scanner
                                     </p>
                                 </div>
@@ -2230,20 +2966,12 @@ function App() {
                                         <Download className="size-4" /> Export CKLB
                                     </button>
                                     <button
-                                        onClick={captureAllEvidence}
-                                        disabled={isCapturingAll || scanned === 0}
-                                        className="bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 disabled:text-gray-400 text-gray-700 px-4 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2"
+                                        onClick={runAgent}
+                                        disabled={isBatchCapturing || rules.length === 0}
+                                        className="bg-black hover:bg-black/80 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 shadow-lg"
                                     >
-                                        {isCapturingAll ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-                                        {isCapturingAll ? 'Capturing...' : `Capture All (${scanned})`}
-                                    </button>
-                                    <button
-                                        onClick={runAllChecks}
-                                        disabled={isScanning}
-                                        className="bg-black hover:bg-black/80 disabled:bg-gray-300 text-white px-5 py-2.5 rounded-full text-sm font-medium transition-all shadow-lg flex items-center gap-2"
-                                    >
-                                        {isScanning ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4 fill-white" />}
-                                        {isScanning ? 'Scanning...' : 'Run All Checks'}
+                                        {isBatchCapturing ? <Loader2 className="size-4 animate-spin" /> : <Cpu className="size-4" />}
+                                        {isBatchCapturing ? 'Scanning...' : 'Run Scan'}
                                     </button>
                                 </div>
                             </div>
@@ -2293,6 +3021,15 @@ function App() {
                                                             <pre className="whitespace-pre-wrap text-gray-700 max-h-20 overflow-auto">{result.output.substring(0, 300)}{result.output.length > 300 ? '...' : ''}</pre>
                                                         </div>
                                                     )}
+                                                    
+                                                    {result?.findingDetails && (
+                                                        <div className="mt-3 bg-blue-50 rounded-lg p-3 text-xs border border-blue-100">
+                                                            <div className="flex justify-between text-blue-600 mb-1 pb-1 border-b border-blue-200 font-semibold">
+                                                                <span>Finding Details</span>
+                                                            </div>
+                                                            <pre className="whitespace-pre-wrap text-gray-700 text-xs leading-relaxed">{result.findingDetails}</pre>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
@@ -2320,8 +3057,21 @@ function App() {
                                     <p className="text-gray-500">{evidenceList.length} evidence items captured</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={exportAllEvidence} className="bg-black hover:bg-black/80 text-white px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2">
-                                        <Download size={16} /> Export All
+                                    <button
+                                        onClick={() => setShowNewFolderModal(true)}
+                                        className="bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-colors"
+                                    >
+                                        <FolderPlus size={16} /> New Folder
+                                    </button>
+                                    <button
+                                        onClick={clearEvidence}
+                                        disabled={evidenceList.length === 0}
+                                        className="bg-red-50 hover:bg-red-100 disabled:bg-gray-100 text-red-600 disabled:text-gray-400 border border-red-200 disabled:border-gray-200 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-colors"
+                                    >
+                                        <Trash2 size={16} /> Clear All
+                                    </button>
+                                    <button onClick={exportToWord} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2">
+                                        <FileText size={16} /> Export Doc
                                     </button>
                                     <button onClick={loadEvidence} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
                                         <RefreshCw size={18} />
@@ -2329,63 +3079,130 @@ function App() {
                                 </div>
                             </div>
 
-                            {/* Evidence List - Full Width */}
-                            <div className="space-y-4">
-                                {evidenceList.map((item, idx) => (
-                                    <div key={idx} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-all">
-                                        <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100">
-                                            <div className="flex items-center gap-3">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${item.status === 'pass' ? 'bg-green-100 text-green-700' :
-                                                    item.status === 'fail' ? 'bg-red-100 text-red-600' :
-                                                        'bg-gray-100 text-gray-600'
-                                                    }`}>{item.status}</span>
-                                                <span className="font-mono text-sm font-medium text-gray-700">{item.ruleId}</span>
+                            {/* Evidence List - Grouped by Folder */}
+                            <div className="space-y-6">
+                                {(() => {
+                                    // Group evidence by folder
+                                    const grouped: Record<string, typeof evidenceList> = {};
+                                    evidenceList.forEach(item => {
+                                        const folder = item.folder || 'Ungrouped';
+                                        if (!grouped[folder]) grouped[folder] = [];
+                                        grouped[folder].push(item);
+                                    });
+
+                                    const folders = Object.keys(grouped).sort();
+
+                                    if (folders.length === 0) {
+                                        return (
+                                            <div className="py-20 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                                                <Camera className="mx-auto size-12 mb-4 opacity-20" />
+                                                <p className="font-medium text-lg">No evidence captured yet</p>
+                                                <p className="text-sm mt-1">Run a check and click the camera icon to capture evidence</p>
                                             </div>
-                                            <div className="text-xs text-gray-400 font-mono">
-                                                {item.timestampReadable}
-                                            </div>
-                                        </div>
+                                        );
+                                    }
 
-                                        <div className="p-5">
-                                            <div className="text-sm font-medium text-gray-700 mb-4">{item.ruleTitle}</div>
-
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Command Executed</div>
-                                                    <div className="bg-gray-900 text-green-400 font-mono text-xs p-4 rounded-lg overflow-x-auto">
-                                                        <pre className="whitespace-pre-wrap">{item.command}</pre>
+                                    return folders.map(folder => {
+                                        const isCollapsed = collapsedFolders.has(folder);
+                                        return (
+                                            <div key={folder} className="border border-gray-200 rounded-xl overflow-hidden">
+                                                <div
+                                                    className="bg-gray-100 px-5 py-3 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-200 transition-colors"
+                                                    onClick={() => toggleFolder(folder)}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        {isCollapsed ? <ChevronRight size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
+                                                        <FolderOpen size={18} className="text-gray-500" />
+                                                        <span className="font-medium text-gray-700">{folder}</span>
+                                                        <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{grouped[folder].length} items</span>
                                                     </div>
+                                                    {folder !== 'Ungrouped' && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); deleteEvidenceFolder(folder); }}
+                                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-white rounded-lg transition-colors"
+                                                            title="Delete Folder"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
                                                 </div>
+                                                {!isCollapsed && (
+                                                    <div className="divide-y divide-gray-100">
+                                                        {grouped[folder].map((item, idx) => (
+                                                            <div key={idx} className="bg-white hover:bg-gray-50 transition-all group">
+                                                                <div className="flex items-center justify-between px-5 py-3">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium uppercase ${item.status === 'pass' ? 'bg-green-100 text-green-700' :
+                                                                            item.status === 'fail' ? 'bg-red-100 text-red-600' :
+                                                                                'bg-gray-100 text-gray-600'
+                                                                            }`}>{item.status}</span>
+                                                                        <span className="font-mono text-sm font-medium text-gray-700">{item.ruleId}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="text-xs text-gray-400 font-mono">
+                                                                            {item.timestampReadable}
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => deleteEvidenceItem(item.ruleId, item.folder)}
+                                                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                                            title="Delete Evidence"
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
 
-                                                <div>
-                                                    <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Output</div>
-                                                    <div className="bg-gray-50 font-mono text-xs p-4 rounded-lg border border-gray-100 max-h-40 overflow-auto">
-                                                        <pre className="whitespace-pre-wrap text-gray-700">{item.output}</pre>
-                                                    </div>
-                                                </div>
+                                                                <div className="px-5 pb-4">
+                                                                    <div className="text-sm font-medium text-gray-700 mb-3">{item.ruleTitle}</div>
 
-                                                {item.screenshotPath && (
-                                                    <div>
-                                                        <div className="text-xs font-semibold text-gray-400 uppercase mb-2">Screenshot Evidence</div>
-                                                        <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                                            📁 Saved to: {item.screenshotPath}
-                                                            <br />
-                                                            <span className="text-gray-400">Captured at: {item.timestampReadable}</span>
-                                                        </div>
+                                                                    <div className="space-y-3">
+                                                                        {/* Screenshot Image - MOST IMPORTANT */}
+                                                                        {item.screenshotPath && (
+                                                                            <div>
+                                                                                <div className="text-xs font-semibold text-gray-400 uppercase mb-1">PowerShell Screenshot</div>
+                                                                                <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-900">
+                                                                                    <img 
+                                                                                        src={item.screenshotUrl || `file://${item.screenshotPath}`} 
+                                                                                        alt={`Screenshot for ${item.ruleId}`}
+                                                                                        className="w-full h-auto"
+                                                                                        onError={(e) => {
+                                                                                            // Fallback: try reading file directly
+                                                                                            if (isElectron && item.screenshotPath) {
+                                                                                                window.ipcRenderer.invoke('read-file-base64', item.screenshotPath).then((result: any) => {
+                                                                                                    if (result.success) {
+                                                                                                        (e.target as HTMLImageElement).src = `data:image/png;base64,${result.data}`;
+                                                                                                    }
+                                                                                                });
+                                                                                            }
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                        
+                                                                        <div>
+                                                                            <div className="text-xs font-semibold text-gray-400 uppercase mb-1">Command</div>
+                                                                            <div className="bg-gray-900 text-green-400 font-mono text-xs p-3 rounded-lg overflow-x-auto">
+                                                                                <pre className="whitespace-pre-wrap">{item.command}</pre>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div>
+                                                                            <div className="text-xs font-semibold text-gray-400 uppercase mb-1">Output</div>
+                                                                            <div className="bg-gray-50 font-mono text-xs p-3 rounded-lg border border-gray-100 max-h-32 overflow-auto">
+                                                                                <pre className="whitespace-pre-wrap text-gray-700">{item.output}</pre>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 )}
                                             </div>
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {evidenceList.length === 0 && (
-                                    <div className="py-20 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
-                                        <Camera className="mx-auto size-12 mb-4 opacity-20" />
-                                        <p className="font-medium text-lg">No evidence captured yet</p>
-                                        <p className="text-sm mt-1">Run a check and click the camera icon to capture evidence</p>
-                                    </div>
-                                )}
+                                        );
+                                    });
+                                })()}
                             </div>
                         </div>
                     ) : activeTab === 'checklist' ? (
@@ -2889,14 +3706,6 @@ function App() {
                                             <span className="text-xs text-gray-500">{new Set(uploadedChecklists.map(c => c.stigName)).size} Total STIGs</span>
                                         </div>
                                     </div>
-                                </div>
-                            )}
-
-                            {uploadedChecklists.length === 0 && (
-                                <div className={`text-center py-12 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    <FileSpreadsheet className="size-16 mx-auto mb-4 opacity-50" />
-                                    <p className="text-lg font-medium mb-1">No checklists uploaded</p>
-                                    <p className="text-sm">Upload .ckl or .cklb files from STIG Viewer to generate reports</p>
                                 </div>
                             )}
                         </div>
@@ -3614,21 +4423,7 @@ function App() {
                                                     )}
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1">
-                                                        <Upload size={12} /> Import Checklist
-                                                        <input type="file" className="hidden" accept=".ckl,.cklb,.xml,.json" multiple onChange={async (e) => {
-                                                            if (e.target.files) {
-                                                                const files = Array.from(e.target.files);
-                                                                for (const file of files) {
-                                                                    const parsed = await parseCklFile(file);
-                                                                    if (parsed) {
-                                                                        setUploadedChecklists(prev => [...prev, parsed]);
-                                                                        setEditFile(parsed);
-                                                                    }
-                                                                }
-                                                            }
-                                                        }} />
-                                                    </label>
+                                                    {/* Duplicate Import Button Removed */}
                                                 </div>
                                             </div>
 
@@ -3636,7 +4431,7 @@ function App() {
                                             <div className="flex items-center gap-2 flex-1 justify-end">
                                                 <div className={`flex items-center rounded-md border px-2 py-1 gap-2 ${darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300'}`}>
                                                     <Filter size={12} className="text-gray-400" />
-                                                    <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="bg-transparent text-xs font-medium outline-none w-24 dark:text-gray-200">
+                                                    <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={`bg-transparent text-xs font-medium outline-none w-24 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
                                                         <option value="All">All Status</option>
                                                         <option value="Open">Open</option>
                                                         <option value="NotAFinding">Not A Finding</option>
@@ -3644,7 +4439,7 @@ function App() {
                                                         <option value="Not_Applicable">N/A</option>
                                                     </select>
                                                     <div className="w-px h-3 bg-gray-300 dark:bg-gray-600"></div>
-                                                    <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)} className="bg-transparent text-xs font-medium outline-none w-24 dark:text-gray-200">
+                                                    <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)} className={`bg-transparent text-xs font-medium outline-none w-24 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
                                                         <option value="All">All Severity</option>
                                                         <option value="high">High (CAT I)</option>
                                                         <option value="medium">Medium (CAT II)</option>
@@ -3657,7 +4452,7 @@ function App() {
                                                         value={findText}
                                                         onChange={e => setFindText(e.target.value)}
                                                         placeholder="Search rules..."
-                                                        className="bg-transparent text-xs outline-none flex-1 dark:text-gray-200"
+                                                        className={`bg-transparent text-xs outline-none flex-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}
                                                     />
                                                 </div>
                                                 <button
@@ -3847,7 +4642,7 @@ function App() {
                                             </div>
 
                                             {/* Right Main Panel - Detail Editor */}
-                                            <div className={`flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden relative`}>
+                                            <div className={`flex-1 flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} overflow-hidden relative`}>
                                                 {editFile && editFile.findings[expandedEditIdx ?? -1] ? (
                                                     (() => {
                                                         const f = editFile.findings[expandedEditIdx!];
@@ -4013,11 +4808,12 @@ function App() {
                                                         );
                                                     })()
                                                 ) : (
-                                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4">
-                                                        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                                                            <Target size={32} />
+                                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-4 opacity-70">
+                                                        <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mb-2 ${darkMode ? 'bg-gray-800' : 'bg-white border shadow-sm'}`}>
+                                                            <Target size={40} className="opacity-50" />
                                                         </div>
-                                                        <div className="text-sm font-medium">Select a finding to details</div>
+                                                        <h3 className="text-lg font-semibold">No Finding Selected</h3>
+                                                        <p className="text-sm max-w-xs text-center leading-relaxed">Select a finding from the list on the left to view and edit details, status, and comments.</p>
                                                     </div>
                                                 )}
                                             </div>
@@ -5582,8 +6378,6 @@ function App() {
                         </div>
                     ) : null}
 
-
-
                     {/* Removed Source Preview Modal - details now inline */}
 
                     {/* DETAIL MODAL */}
@@ -5592,12 +6386,22 @@ function App() {
                             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-8" onClick={() => setSelectedRule(null)}>
                                 <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
                                     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50">
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 flex-wrap">
                                             <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">{selectedRule.vulnId}</span>
                                             <span className="text-sm font-mono text-gray-500">{selectedRule.stigId}</span>
                                             <span className={`text-xs uppercase font-medium px-2 py-1 rounded ${selectedRule.severity === 'high' ? 'bg-red-100 text-red-600' :
                                                 selectedRule.severity === 'medium' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
                                                 }`}>CAT {selectedRule.severity === 'high' ? 'I' : selectedRule.severity === 'medium' ? 'II' : 'III'}</span>
+                                            {selectedRule.ccis && selectedRule.ccis.length > 0 && (
+                                                <div className="flex items-center gap-1">
+                                                    {selectedRule.ccis.slice(0, 3).map((cci, idx) => (
+                                                        <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-mono">{cci}</span>
+                                                    ))}
+                                                    {selectedRule.ccis.length > 3 && (
+                                                        <span className="text-xs text-gray-400">+{selectedRule.ccis.length - 3} more</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                         <button onClick={() => setSelectedRule(null)} className="p-2 hover:bg-gray-200 rounded-lg">
                                             <XCircle size={20} />
@@ -5611,14 +6415,14 @@ function App() {
                                         </div>
 
                                         <div>
-                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Check Procedure</h3>
+                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Check Text</h3>
                                             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
                                                 {selectedRule.checkContent || 'No check content available'}
                                             </div>
                                         </div>
 
                                         <div>
-                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Fix Procedure</h3>
+                                            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Fix Text</h3>
                                             <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 font-mono text-sm whitespace-pre-wrap text-gray-700 max-h-60 overflow-auto">
                                                 {selectedRule.fixContent || 'No fix content available'}
                                             </div>
@@ -5644,14 +6448,49 @@ function App() {
 
                                         {results.get(selectedRule.vulnId) && (
                                             <div>
-                                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Last Result</h3>
-                                                <div className={`p-4 rounded-lg border ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <span className={`uppercase font-medium text-sm ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'text-green-600' : 'text-red-600'}`}>
+                                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Scan Evidence</h3>
+                                                <div ref={detailEvidenceCardRef} className={`p-4 rounded-lg border ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-50 border-green-200' : results.get(selectedRule.vulnId)?.status === 'fail' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+                                                    {/* Status Badge */}
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className={`uppercase font-bold text-sm px-2 py-0.5 rounded ${results.get(selectedRule.vulnId)?.status === 'pass' ? 'bg-green-600 text-white' : results.get(selectedRule.vulnId)?.status === 'fail' ? 'bg-red-600 text-white' : 'bg-gray-600 text-white'}`}>
                                                             {results.get(selectedRule.vulnId)?.status}
                                                         </span>
+                                                        {results.get(selectedRule.vulnId)?.timestamp && (
+                                                            <span className="text-xs text-gray-400">
+                                                                {new Date(results.get(selectedRule.vulnId)!.timestamp!).toLocaleString()}
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <pre className="font-mono text-xs whitespace-pre-wrap text-gray-700">{results.get(selectedRule.vulnId)?.output}</pre>
+
+                                                    {/* Command Executed */}
+                                                    {results.get(selectedRule.vulnId)?.command && (
+                                                        <div className="mb-3">
+                                                            <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Command Executed</div>
+                                                            <div className="bg-gray-900 text-green-400 p-3 rounded font-mono text-xs overflow-x-auto">
+                                                                PS&gt; {results.get(selectedRule.vulnId)?.command}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Registry Path + Value (for registry checks) */}
+                                                    {selectedRule.automatedCheck?.type === 'registry' && selectedRule.automatedCheck.registryPath && (
+                                                        <div className="mb-3">
+                                                            <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Registry Location</div>
+                                                            <div className="bg-blue-50 border border-blue-100 p-3 rounded font-mono text-xs">
+                                                                <div><span className="text-gray-500">Path:</span> {selectedRule.automatedCheck.registryPath}</div>
+                                                                <div><span className="text-gray-500">Value:</span> {selectedRule.automatedCheck.valueName}</div>
+                                                                <div><span className="text-gray-500">Expected:</span> {selectedRule.automatedCheck.expectedValue ?? 'Any'}</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Output Value */}
+                                                    <div>
+                                                        <div className="text-xs font-semibold text-gray-500 uppercase mb-1">Actual Value / Output</div>
+                                                        <pre className="bg-white border border-gray-200 p-3 rounded font-mono text-sm whitespace-pre-wrap text-gray-800 max-h-48 overflow-auto">
+                                                            {results.get(selectedRule.vulnId)?.output || '(empty)'}
+                                                        </pre>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
@@ -5664,7 +6503,7 @@ function App() {
                                                 <Play size={16} /> Run Check
                                             </button>
                                             <button
-                                                onClick={() => { captureEvidence(selectedRule); }}
+                                                onClick={() => { openEvidenceModal(selectedRule); }}
                                                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
                                             >
                                                 <Camera size={16} /> Capture Evidence
@@ -5675,8 +6514,845 @@ function App() {
                             </div>
                         )
                     }
-                </div >
-            </main >
+                </div>
+            </main>
+
+            {/* --- Hidden Virtual Evidence Rendering Area --- */}
+            {/* Using absolute positioning to keep it out of view but renderable. Opacity 0 makes it invisible but html2canvas can still capture it if we temporarily make it visible or use specific settings. */}
+            <div
+                ref={virtualEvidenceRef}
+                className="fixed top-0 left-[-9999px] flex flex-col gap-8 p-8 bg-white"
+            >
+                {/* 1. PowerShell View (Always rendered if we have a command) */}
+                {evidenceModalRule && results.get(evidenceModalRule.vulnId) && (
+                    <VirtualPowerShell
+                        command={results.get(evidenceModalRule.vulnId)?.command || ''}
+                        output={results.get(evidenceModalRule.vulnId)?.output || ''}
+                        isFail={results.get(evidenceModalRule.vulnId)?.status === 'fail'}
+                    />
+                )}
+
+                {/* 2. Regedit View (Rendered if it's a registry check) */}
+                {evidenceModalRule &&
+                    evidenceModalRule.automatedCheck?.type === 'registry' &&
+                    evidenceModalRule.automatedCheck.registryPath &&
+                    evidenceModalRule.automatedCheck.valueName && (
+                        <VirtualRegedit
+                            path={evidenceModalRule.automatedCheck.registryPath}
+                            valueName={evidenceModalRule.automatedCheck.valueName}
+                            expected={evidenceModalRule.automatedCheck.expectedValue || ''}
+                            actual={results.get(evidenceModalRule.vulnId)?.output || ''} // In basic mode, output is often the value
+                            checkType={results.get(evidenceModalRule.vulnId)?.status === 'fail' ? 'mismatch' : 'match'}
+                        />
+                    )}
+            </div>
+
+            {/* Evidence Capture Confirmation Modal */}
+            {showEvidenceModal && evidenceModalRule && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                    onPaste={async (e) => {
+                        const items = e.clipboardData.items;
+                        for (let i = 0; i < items.length; i++) {
+                            if (items[i].type.indexOf('image') !== -1) {
+                                const blob = items[i].getAsFile();
+                                if (blob) {
+                                    const reader = new FileReader();
+                                    reader.onload = async (event) => {
+                                        if (event.target?.result) {
+                                            const newImg = event.target.result as string;
+                                            // Merge with existing
+                                            const base = evidenceScreenshot || '';
+                                            const merged = await mergeImages(base ? [base, newImg] : [newImg]);
+                                            setEvidenceScreenshot(merged);
+                                        }
+                                    };
+                                    reader.readAsDataURL(blob);
+                                }
+                            }
+                        }
+                    }}
+                >
+                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-gray-900">Capture Evidence</h3>
+                            <button onClick={() => setShowEvidenceModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle size={20} /></button>
+                        </div>
+
+                        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                            {/* Rule Info */}
+                            <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-100">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-mono text-xs font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{evidenceModalRule.vulnId}</span>
+                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Target Folder:</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={evidenceFolderName}
+                                    onChange={(e) => setEvidenceFolderName(e.target.value)}
+                                    placeholder="Folder Name"
+                                    className="w-full bg-white px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                />
+                            </div>
+
+                            {/* Screenshot Preview Area */}
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-medium text-gray-700">Evidence Image</label>
+                                    <span className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded font-medium animate-pulse">
+                                        💡 Tip: Paste (Ctrl+V) to attach Regedit/PowerShell screenshots!
+                                    </span>
+                                </div>
+                                <div className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 min-h-[200px] flex items-center justify-center relative group">
+                                    {evidenceScreenshot ? (
+                                        <div className="relative w-full">
+                                            <img src={evidenceScreenshot} alt="Evidence Preview" className="w-full h-auto object-contain" />
+                                            <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => setEvidenceScreenshot(null)}
+                                                    className="bg-red-600 text-white p-1.5 rounded-lg shadow-lg hover:bg-red-700 text-xs font-bold"
+                                                >
+                                                    Clear Image
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center p-8 text-gray-400">
+                                            <ImageIcon size={48} className="mx-auto mb-2 opacity-20" />
+                                            <p className="text-sm">No evidence captured yet.</p>
+                                            <p className="text-xs mt-1">Run check to auto-capture, or Paste (Ctrl+V) an image here.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+                            <button
+                                onClick={() => { setShowEvidenceModal(false); setEvidenceModalRule(null); setEvidenceScreenshot(null); }}
+                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!evidenceModalRule) return;
+                                    const rule = evidenceModalRule;
+                                    const res = results.get(rule.vulnId);
+                                    let rpaType: 'regedit' | 'powershell' = 'powershell';
+                                    let rpaPath = '';
+                                    let rpaCommand = res?.command || 'Write-Host "No Command Recorded"';
+
+                                    if (rule.automatedCheck?.type === 'registry' && rule.automatedCheck.registryPath) {
+                                        rpaType = 'regedit';
+                                        rpaPath = rule.automatedCheck.registryPath;
+                                    }
+
+                                    // Guide User
+                                    if (rpaType === 'regedit') {
+                                        alert("GUIDED CAPTURE MODE:\n\n1. Please Open 'Registry Editor' (Regedit) manually.\n2. In Regedit, navigate to: " + rpaPath + "\n\nPress OK when Regedit is open and visible on screen.");
+                                    } else {
+                                        await navigator.clipboard.writeText(rpaCommand);
+                                        alert("GUIDED CAPTURE MODE:\n\n1. I have COPIED the command to your clipboard.\n2. Please OPEN 'PowerShell' (Run as Administrator).\n3. PASTE the command and press Enter.\n\nPress OK when the result is visible on screen.");
+                                    }
+
+                                    // Give user a moment to put their hand back on the mouse if they want, but really we just want them to click OK, then we snap.
+                                    // Actually, we need to hide the browser window or ensure it doesn't block? 
+                                    // The screenshot captures PRIMARY SCREEN.
+                                    // We will minimize the app? No, just alert.
+
+                                    try {
+                                        // @ts-ignore
+                                        const captureRes = await window.ipcRenderer.invoke('capture-real-evidence', {
+                                            type: rpaType,
+                                            path: rpaPath,
+                                            command: rpaCommand,
+                                            manual: true // <--- NEW FLAG
+                                        });
+
+                                        if (captureRes.success && captureRes.base64) {
+                                            setEvidenceScreenshot(captureRes.base64);
+                                        } else {
+                                            alert("Capture failed: " + (captureRes.error || "Unknown error"));
+                                        }
+                                    } catch (e: any) {
+                                        alert("Capture failed: " + e.message);
+                                    }
+                                }}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+                            >
+                                Capture Evidence
+                            </button>
+                            <button
+                                onClick={runAgent}
+                                disabled={isScanning || isBatchCapturing || rules.length === 0 || filteredRules.filter(r => r.automatedCheck?.type === 'registry').length === 0}
+                                className="px-4 py-2 bg-black hover:bg-black/80 text-white text-sm font-bold rounded-lg shadow-lg flex items-center gap-2 group transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Cpu size={16} className={`${isBatchCapturing ? 'animate-pulse' : 'group-hover:animate-bounce'}`} />
+                                {isBatchCapturing ? 'Scanning...' : 'Run Scan'}
+                            </button>
+                            <button
+                                onClick={confirmCaptureEvidence}
+                                disabled={!evidenceScreenshot}
+                                className="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Save size={16} /> Save Evidence
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Evidence Type Selection Modal */}
+            {showEvidenceTypeModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
+                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-900">Select Evidence Type</h3>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                                <p className="text-sm text-yellow-800 font-medium">
+                                    <strong>⚠️ Disclaimer:</strong> The AI Audit Agent will automatically capture screenshots of the selected evidence type(s) during the scan.
+                                </p>
+                            </div>
+
+                            <p className="text-sm text-gray-700 mb-4">
+                                Choose what type of evidence you want to gather for each registry check:
+                            </p>
+
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => {
+                                        if ((window as any).__evidenceTypeResolver) {
+                                            (window as any).__evidenceTypeResolver('powershell');
+                                            (window as any).__evidenceTypeResolver = null;
+                                        }
+                                    }}
+                                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                                        <div className="flex-1">
+                                            <div className="font-semibold text-gray-900">PowerShell Only</div>
+                                            <div className="text-xs text-gray-600 mt-1">Capture PowerShell console with command output</div>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        if ((window as any).__evidenceTypeResolver) {
+                                            (window as any).__evidenceTypeResolver('regedit');
+                                            (window as any).__evidenceTypeResolver = null;
+                                        }
+                                    }}
+                                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                                        <div className="flex-1">
+                                            <div className="font-semibold text-gray-900">Regedit Only</div>
+                                            <div className="text-xs text-gray-600 mt-1">Capture Registry Editor showing the registry path</div>
+                                        </div>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        if ((window as any).__evidenceTypeResolver) {
+                                            (window as any).__evidenceTypeResolver('both');
+                                            (window as any).__evidenceTypeResolver = null;
+                                        }
+                                    }}
+                                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                                        <div className="flex-1">
+                                            <div className="font-semibold text-gray-900">Both (PowerShell + Regedit)</div>
+                                            <div className="text-xs text-gray-600 mt-1">Capture both PowerShell console and Registry Editor side-by-side</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        if ((window as any).__evidenceTypeResolver) {
+                                            (window as any).__evidenceTypeResolver(null);
+                                            (window as any).__evidenceTypeResolver = null;
+                                        }
+                                        setShowEvidenceTypeModal(false);
+                                    }}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Username Input Modal */}
+            {showUsernameModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-900">Enter Username</h3>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-700">
+                                Please enter your username for the scan. This will be included in the finding details for each check.
+                            </p>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Username
+                                </label>
+                                <input
+                                    type="text"
+                                    value={scanUsername}
+                                    onChange={(e) => setScanUsername(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && scanUsername.trim()) {
+                                            if ((window as any).__usernameResolver) {
+                                                (window as any).__usernameResolver(scanUsername.trim());
+                                                (window as any).__usernameResolver = null;
+                                            }
+                                            setShowUsernameModal(false);
+                                        }
+                                    }}
+                                    placeholder="Enter your username"
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        if ((window as any).__usernameResolver) {
+                                            (window as any).__usernameResolver(null);
+                                            (window as any).__usernameResolver = null;
+                                        }
+                                        setShowUsernameModal(false);
+                                        setScanUsername('');
+                                    }}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (scanUsername.trim()) {
+                                            if ((window as any).__usernameResolver) {
+                                                (window as any).__usernameResolver(scanUsername.trim());
+                                                (window as any).__usernameResolver = null;
+                                            }
+                                            setShowUsernameModal(false);
+                                        }
+                                    }}
+                                    disabled={!scanUsername.trim()}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg"
+                                >
+                                    Continue
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* New Evidence Folder Modal */}
+            {showNewFolderModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
+                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-900">New Evidence Folder</h3>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Folder Name</label>
+                                <input
+                                    type="text"
+                                    value={newFolderName}
+                                    onChange={e => setNewFolderName(e.target.value)}
+                                    placeholder="e.g. Server_Audit_v1"
+                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button
+                                    onClick={() => setShowNewFolderModal(false)}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={createEvidenceFolder}
+                                    disabled={!newFolderName.trim()}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                >
+                                    Create Folder
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- AGENT OVERLAY --- */}
+            {agentState.status !== 'idle' && (
+                <div className="fixed bottom-6 right-6 z-[100] w-[450px] shadow-2xl font-mono text-sm overflow-hidden rounded-xl border border-gray-800 bg-gray-950 text-green-500 flex flex-col animate-in slide-in-from-bottom duration-300">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+                        <div className="flex items-center gap-2">
+                            <div className={`size-3 rounded-full ${agentState.status === 'working' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                            <span className="font-bold text-gray-100">SCAN MANAGER</span>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                            {agentState.progress} / {agentState.total}
+                        </div>
+                    </div>
+
+                    {/* Activity Monitor */}
+                    <div className="p-4 space-y-3 bg-black/90 h-[280px] overflow-y-auto flex flex-col-reverse">
+
+                        {/* Current Status */}
+                        <div className="pt-2 border-t border-gray-800/50 mt-2">
+                            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500 mb-1">
+                                Current Task
+                            </div>
+                            <div className="font-semibold text-green-400 text-base leading-tight">
+                                {agentState.currentAction}
+                            </div>
+                        </div>
+
+                        {/* Logs */}
+                        <div className="space-y-1">
+                            {agentState.logs.map((log, i) => (
+                                <div key={i} className="text-gray-400 text-xs font-mono break-all opacity-80">
+                                    {log}
+                                </div>
+                            ))}
+                        </div>
+
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="h-1 bg-gray-800 w-full">
+                        <div
+                            className="h-full bg-green-500 transition-all duration-300 ease-out"
+                            style={{ width: `${(agentState.progress / Math.max(agentState.total, 1)) * 100}%` }}
+                        />
+                    </div>
+
+                    {/* Footer Controls */}
+                    <div className="bg-gray-900 p-2 flex justify-between items-center text-xs text-gray-500">
+                        <span>v1.0.4 AGENT</span>
+                        {agentState.status === 'complete' || agentState.status === 'stopped' ? (
+                            <button
+                                onClick={() => {
+                                    setAgentState(prev => ({ ...prev, status: 'idle' }));
+                                    scanCancelledRef.current = false;
+                                }}
+                                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-white transition-colors"
+                            >
+                                CLOSE
+                            </button>
+                        ) : agentState.status === 'working' ? (
+                            <button
+                                onClick={stopScan}
+                                className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white transition-colors font-medium"
+                            >
+                                STOP SCAN
+                            </button>
+                        ) : (
+                            <div className="flex gap-2">
+                                <span className="animate-pulse">PROCESSING...</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* STIG Ops Documentation Modal - Root Level */}
+            {showDocsModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDocsModal(false)}>
+                    <div className={`w-full max-w-5xl h-[85vh] rounded-2xl shadow-xl flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                            <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STIG Ops Technical Documentation</h2>
+                            <button 
+                                onClick={() => setShowDocsModal(false)} 
+                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content Area */}
+                        <div className="flex flex-1 overflow-hidden">
+                            {/* Left Sidebar Navigation */}
+                            <div className={`w-64 border-r overflow-y-auto ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+                                <div className="p-4 space-y-1">
+                                    {[
+                                        { id: 'intro', label: 'Intro to STIG Ops' },
+                                        { id: 'how-it-works', label: 'How It Works' },
+                                        { id: 'getting-started', label: 'Getting Started' },
+                                        { id: 'checklist-editor', label: 'Checklist Editor' },
+                                        { id: 'evidence-gallery', label: 'Evidence Gallery' },
+                                        { id: 'reports', label: 'Reports' },
+                                        { id: 'tools', label: 'Tools & Utilities' },
+                                        { id: 'technical', label: 'Technical Details' },
+                                        { id: 'troubleshooting', label: 'Troubleshooting' },
+                                        { id: 'faq', label: 'FAQ' },
+                                    ].map((section) => (
+                                        <button
+                                            key={section.id}
+                                            onClick={() => setSelectedDocSection(section.id)}
+                                            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-colors ${
+                                                selectedDocSection === section.id
+                                                    ? (darkMode ? 'bg-gray-700 text-white font-medium' : 'bg-white text-gray-900 font-medium shadow-sm')
+                                                    : (darkMode ? 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200' : 'text-gray-600 hover:bg-white hover:text-gray-900')
+                                            }`}
+                                        >
+                                            {section.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Right Content Area */}
+                            <div className="flex-1 overflow-y-auto p-8">
+                                <div className="max-w-3xl mx-auto space-y-6">
+                                    {selectedDocSection === 'intro' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Introduction to STIG Ops</h3>
+                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                STIG Ops is a comprehensive tool designed to help security professionals manage, analyze, and document STIG (Security Technical Implementation Guide) compliance. Built with modern web technologies, STIG Ops provides an intuitive interface for creating checklists, capturing evidence, generating reports, and analyzing compliance data.
+                                            </p>
+                                            <div className="space-y-3">
+                                                <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Core Philosophy</h4>
+                                                <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    STIG Ops emphasizes privacy, local processing, and user control. All data processing is performed locally on your machine—no files are uploaded to any server or database. This ensures maximum security and compliance with sensitive government and enterprise data requirements.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Key Characteristics</h4>
+                                                <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    <li>Privacy-First Design: All processing happens locally</li>
+                                                    <li>Comprehensive STIG Support: Works with multiple STIG formats (CKL, CKLB, XML, JSON)</li>
+                                                    <li>Evidence Management: Built-in gallery for organizing compliance evidence</li>
+                                                    <li>Advanced Reporting: Generate detailed compliance reports and POA&M documents</li>
+                                                    <li>Risk Analysis: Visualize compliance risk with heatmaps and analytics</li>
+                                                    <li>Cross-Platform: Available as both web application and Electron desktop app</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'how-it-works' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How It Works</h3>
+                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                STIG Ops operates on a local-first architecture where all data processing occurs on your device.
+                                            </p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>1. STIG Selection</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Start by selecting a STIG checklist from the main dashboard. STIG Ops supports Windows 11, Windows Server 2019, SQL Server, IIS, Edge, Defender, and more.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>2. Checklist Management</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Use the Checklist Editor to review, update, and manage STIG findings. Mark rules as Pass, Fail, Not Applicable, or Not Reviewed, and add comments and evidence references.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>3. Evidence Capture</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Capture screenshots, command outputs, and other evidence directly within the application. The Evidence Gallery helps organize and reference evidence across multiple checklists.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>4. Reporting</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Generate comprehensive reports including compliance summaries, POA&M documents, and detailed findings. Export to various formats for documentation and audit purposes.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'getting-started' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Getting Started</h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 1: Select a STIG</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        From the main dashboard, choose the STIG that matches your system. Click the "CSV" or "CKLB" button to download the checklist format you prefer.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 2: Load Your Checklist</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Navigate to the Checklist Editor and upload your checklist file. STIG Ops supports .ckl, .cklb, .json, and .xml formats.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 3: Review Findings</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Review each STIG rule, update statuses, and add comments. Use filters to focus on specific severity levels or statuses.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 4: Capture Evidence</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        For each finding, capture screenshots or command outputs as evidence. Organize evidence in the Evidence Gallery for easy reference.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 5: Generate Reports</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Once your checklist is complete, generate reports and POA&M documents from the Reports section.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'checklist-editor' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Editor</h3>
+                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                The Checklist Editor is the core of STIG Ops, allowing you to manage and update STIG compliance findings.
+                                            </p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Features</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li>Upload and manage multiple checklists simultaneously</li>
+                                                        <li>Filter by severity (CAT I, CAT II, CAT III) and status</li>
+                                                        <li>Search for specific rules by ID or title</li>
+                                                        <li>Bulk update statuses for multiple findings</li>
+                                                        <li>Add comments and evidence references</li>
+                                                        <li>Export updated checklists in multiple formats</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Status Types</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li><strong>Pass:</strong> The system complies with the STIG requirement</li>
+                                                        <li><strong>Fail:</strong> The system does not comply with the requirement</li>
+                                                        <li><strong>Not Applicable:</strong> The requirement does not apply to this system</li>
+                                                        <li><strong>Not Reviewed:</strong> The requirement has not yet been evaluated</li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'evidence-gallery' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evidence Gallery</h3>
+                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                The Evidence Gallery helps you organize and manage compliance evidence across all your checklists.
+                                            </p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Capturing Evidence</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Evidence can be captured in several ways:
+                                                    </p>
+                                                    <ul className={`list-disc list-inside space-y-2 mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li>Screenshots: Capture full screen or specific windows</li>
+                                                        <li>Command Outputs: Copy and paste command results</li>
+                                                        <li>File Uploads: Attach configuration files or logs</li>
+                                                        <li>Virtual Evidence: Capture registry editor views and other virtual tools</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Organization</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Evidence is organized by folder and can be tagged with rule IDs, hostnames, and custom metadata. Use the gallery to quickly find and reference evidence when updating checklists or generating reports.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'reports' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reports</h3>
+                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                STIG Ops provides comprehensive reporting capabilities to document compliance status and generate required documentation.
+                                            </p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Report Types</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li><strong>Compliance Summary:</strong> High-level overview of compliance status</li>
+                                                        <li><strong>Detailed Findings:</strong> Complete list of all findings with status and comments</li>
+                                                        <li><strong>POA&M:</strong> Plan of Action and Milestones document for tracking remediation</li>
+                                                        <li><strong>Risk Heatmap:</strong> Visual representation of compliance risk by control family</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Export Formats</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Reports can be exported as PDF, Excel, CSV, or HTML formats for sharing with stakeholders and auditors.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'tools' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tools & Utilities</h3>
+                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                STIG Ops includes several utility tools to help streamline your compliance workflow.
+                                            </p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Bulk File Renamer</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Add prefixes or suffixes to multiple files at once. Useful for organizing checklist files with consistent naming conventions.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Risk Heatmap</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Upload multiple checklists to generate a visual heatmap showing compliance risk by NIST control family. Identify areas of concern at a glance.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STIG Analyzer</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Compare old and new STIG versions to migrate statuses and comments. Automatically maps findings between versions when possible.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'technical' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Technical Details</h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Architecture</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        STIG Ops is built with React and TypeScript, providing a modern, responsive user interface. The application can run as a web application in any modern browser or as a desktop application using Electron.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Data Storage</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        All data is stored locally in your browser's IndexedDB (web version) or local file system (Electron version). No data is transmitted to external servers.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Supported Formats</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li>STIG Checklist (.ckl, .cklb)</li>
+                                                        <li>STIG XML (.xml)</li>
+                                                        <li>JSON exports (.json)</li>
+                                                        <li>CSV exports (.csv)</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Browser Requirements</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        STIG Ops requires a modern browser with support for ES6+, IndexedDB, and File API. Recommended browsers include Chrome, Firefox, Edge, and Safari (latest versions).
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'troubleshooting' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Troubleshooting</h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Won't Load</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li>Verify the file format is supported (.ckl, .cklb, .xml, .json)</li>
+                                                        <li>Check that the file is not corrupted</li>
+                                                        <li>Try opening the file in a text editor to verify it's valid XML/JSON</li>
+                                                        <li>Clear browser cache and try again</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evidence Not Saving</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li>Check browser storage permissions</li>
+                                                        <li>Verify you have sufficient disk space</li>
+                                                        <li>Try clearing browser storage and reloading</li>
+                                                        <li>In Electron version, check file system permissions</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Performance Issues</h4>
+                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        <li>Large checklists may take time to load - be patient</li>
+                                                        <li>Close other browser tabs to free up memory</li>
+                                                        <li>Consider splitting very large checklists into smaller files</li>
+                                                        <li>Clear old evidence and checklists if storage is full</li>
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedDocSection === 'faq' && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Frequently Asked Questions</h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Is my data secure?</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Yes. All data processing happens locally on your device. No files or data are uploaded to any server. Your checklists and evidence remain completely private.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I use STIG Ops offline?</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Yes. Once loaded, STIG Ops works completely offline. The Electron desktop version is fully offline-capable.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How do I backup my data?</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        Export your checklists regularly using the export functions. Evidence can be downloaded from the Evidence Gallery. In Electron version, data is stored in local files that can be backed up.
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I import data from other STIG tools?</h4>
+                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                        STIG Ops supports standard STIG formats (.ckl, .cklb, .xml) that are compatible with most STIG tools. You can import checklists created in other tools.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div >
     );
 }
@@ -5700,4 +7376,202 @@ function SidebarItem({ icon, label, active, onClick, darkMode }: { icon: any, la
     );
 }
 
-export default App;
+// --- Virtual Tool Mockups ---
+
+// 1. Virtual PowerShell Component
+const VirtualPowerShell = ({ command, output, isFail }: { command: string, output: string, isFail: boolean }) => {
+    return (
+        <div className="w-[800px] bg-[#012456] rounded-md shadow-2xl font-mono text-sm overflow-hidden flex flex-col border border-gray-600">
+            {/* Title Bar */}
+            <div className="bg-white flex items-center h-8 px-2 justify-between shrink-0">
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-[#012456] text-white flex items-center justify-center text-[10px] font-bold">∑</div>
+                    <span className="text-xs text-black">Administrator: Windows PowerShell</span>
+                </div>
+                <div className="flex gap-1">
+                    <div className="w-8 h-full flex items-center justify-center hover:bg-gray-200">
+                        <Minimize2 size={12} className="text-black" />
+                    </div>
+                    <div className="w-8 h-full flex items-center justify-center hover:bg-gray-200">
+                        <Maximize2 size={12} className="text-black" />
+                    </div>
+                    <div className="w-8 h-full flex items-center justify-center hover:bg-red-500 hover:text-white group">
+                        <X size={14} className="text-black group-hover:text-white" />
+                    </div>
+                </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-2 text-white font-normal whitespace-pre-wrap leading-tight font-con">
+                <div className="mb-2">Windows PowerShell</div>
+                <div className="mb-4">Copyright (C) Microsoft Corporation. All rights reserved.</div>
+
+                <div className="flex flex-col gap-1">
+                    <div>
+                        <span className="text-white">PS C:\Windows\system32&gt; </span>
+                        <span className="text-gray-100">{command}</span>
+                    </div>
+                    {output && (
+                        <div className={`${isFail ? 'text-red-300' : 'text-gray-300'} mt-1`}>
+                            {output}
+                        </div>
+                    )}
+                    <div className="mt-2">
+                        <span className="text-white">PS C:\Windows\system32&gt; </span>
+                        <span className="animate-pulse">_</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// 2. Virtual Regedit Component
+const VirtualRegedit = ({ path, valueName, expected, actual, checkType }: { path: string, valueName: string, expected: string | number, actual: any, checkType: 'missing' | 'mismatch' | 'match' }) => {
+    // Parse path to get tree structure for display
+    const hives = ['Computer', 'HKEY_CLASSES_ROOT', 'HKEY_CURRENT_USER', 'HKEY_LOCAL_MACHINE', 'HKEY_USERS', 'HKEY_CURRENT_CONFIG'];
+    const parts = path.replace('HKLM:', 'HKEY_LOCAL_MACHINE').split('\\');
+    const currentKey = parts[parts.length - 1];
+
+    // Determine data type display
+    const isNum = typeof actual === 'number' || (typeof expected === 'number');
+    const typeStr = isNum ? 'REG_DWORD' : 'REG_SZ';
+    const dataStr = isNum
+        ? `0x${Number(actual || 0).toString(16).padStart(8, '0')} (${actual || 0})`
+        : (actual || '(value not set)');
+
+    return (
+        <div className="w-[800px] bg-white rounded-md shadow-2xl text-xs flex flex-col border border-gray-400 font-sans h-[500px] relative">
+            {/* Error Popup (Overlay) if the status implies the Key Path itself was invalid/missing */}
+            {checkType === 'missing' && !actual && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 border border-gray-400 shadow-xl bg-[#F0F0F0] p-0.5 w-80">
+                    <div className="flex justify-between items-center bg-white px-2 py-1 mb-3">
+                        <span>Error Opening Key</span>
+                        <X size={14} className="text-gray-500 hover:bg-gray-200 cursor-pointer" />
+                    </div>
+                    <div className="px-4 py-2 flex gap-4">
+                        <div className="text-red-600"><AlertCircle size={32} /></div>
+                        <div className="text-sm">
+                            {path} could not be opened.<br />
+                            An error is preventing this key from being opened.<br />
+                            Details: The system cannot find the file specified.
+                        </div>
+                    </div>
+                    <div className="flex justify-center p-3">
+                        <div className="bg-[#E1E1E1] border border-[#ADADAD] px-6 py-1 hover:border-[#0078D7] hover:bg-[#E5F1FB] cursor-default text-black min-w-[70px] text-center">OK</div>
+                    </div>
+                </div>
+            )}
+            {/* Title Bar */}
+            <div className="bg-white flex items-center h-8 px-2 justify-between shrink-0 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-blue-300 border border-blue-800 mockup-reg-icon" />
+                    <span className="text-xs text-black">Registry Editor</span>
+                </div>
+                <div className="flex gap-1">
+                    <div className="w-8 h-full flex items-center justify-center hover:bg-gray-200"><Minimize2 size={12} className="text-black" /></div>
+                    <div className="w-8 h-full flex items-center justify-center hover:bg-gray-200"><Maximize2 size={12} className="text-black" /></div>
+                    <div className="w-8 h-full flex items-center justify-center hover:bg-red-500 group"><X size={14} className="text-black group-hover:text-white" /></div>
+                </div>
+            </div>
+
+            {/* Menu Bar */}
+            <div className="bg-white border-b border-gray-200 px-2 py-1 flex gap-4 text-black">
+                <span>File</span><span>Edit</span><span>View</span><span>Favorites</span><span>Help</span>
+            </div>
+
+            {/* Address Bar */}
+            <div className="bg-white border-b border-gray-200 px-2 py-1 flex gap-2 items-center">
+                <span className="text-gray-500">Computer\{parts.join('\\')}</span>
+            </div>
+
+            <div className="flex flex-1 overflow-hidden">
+                {/* Left Tree */}
+                <div className="w-1/3 border-r border-gray-200 p-2 overflow-y-auto bg-white">
+                    <div className="pl-0">
+                        {hives.map(hive => {
+                            const isActiveHive = parts[0] === hive;
+                            return (
+                                <div key={hive}>
+                                    <div className="flex items-center gap-1 hover:bg-blue-50 px-1 py-0.5 cursor-default">
+                                        <ChevronRight size={10} className={`text-gray-400 ${isActiveHive ? 'rotate-90' : ''}`} />
+                                        <FolderClosed size={12} className="text-yellow-500 fill-yellow-100" />
+                                        <span>{hive}</span>
+                                    </div>
+                                    {isActiveHive && (
+                                        <div className="pl-4 border-l border-gray-300 ml-2">
+                                            {/* Simplified simulation of tree path */}
+                                            {parts.slice(1).map((p, idx) => (
+                                                <div key={idx} className="pl-2">
+                                                    <div className={`flex items-center gap-1 px-1 py-0.5 ${idx === parts.length - 2 ? 'bg-blue-100 border border-blue-200' : 'hover:bg-blue-50'}`}>
+                                                        <ChevronRight size={10} className="text-gray-400 rotate-90" />
+                                                        <FolderOpen size={12} className="text-yellow-500 fill-yellow-100" />
+                                                        <span>{p}</span>
+                                                    </div>
+                                                    {idx < parts.length - 2 && <div className="pl-4 border-l border-gray-300 ml-2 h-2" />}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Right List */}
+                <div className="flex-1 bg-white overflow-y-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr>
+                                <th className="border-r border-b border-gray-200 px-2 py-1 w-1/3 font-normal text-gray-500">Name</th>
+                                <th className="border-r border-b border-gray-200 px-2 py-1 w-1/4 font-normal text-gray-500">Type</th>
+                                <th className="border-b border-gray-200 px-2 py-1 font-normal text-gray-500">Data</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="hover:bg-blue-50">
+                                <td className="px-2 py-1 border-r border-gray-100 flex items-center gap-2">
+                                    <div className="text-red-800 text-[10px] font-bold">ab</div>
+                                    (Default)
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100">REG_SZ</td>
+                                <td className="px-2 py-1">(value not set)</td>
+                            </tr>
+
+                            {/* If Check is MATCH/MISMATCH (exists but wrong), show it. If MISSING, DO NOT SHOW IT in list */}
+                            {checkType !== 'missing' && (
+                                <tr className={`hover:bg-blue-50 bg-blue-50`}>
+                                    <td className="px-2 py-1 border-r border-gray-100 flex items-center gap-2">
+                                        <div className="text-blue-800 text-[10px] font-bold">01</div>
+                                        {valueName}
+                                    </td>
+                                    <td className="px-2 py-1 border-r border-gray-100">{typeStr}</td>
+                                    <td className="px-2 py-1">{dataStr}</td>
+                                </tr>
+                            )}
+                            {/* Filler rows */}
+                            {[1, 2, 3, 4, 5].map(i => (
+                                <tr key={i} className="hover:bg-blue-50">
+                                    <td className="px-2 py-1 border-r border-gray-100 flex items-center gap-2">
+                                        <div className="text-blue-800 text-[10px] font-bold">01</div>
+                                        Example_Key_{i}
+                                    </td>
+                                    <td className="px-2 py-1 border-r border-gray-100">REG_DWORD</td>
+                                    <td className="px-2 py-1">0x0000000{i} ({i})</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-100 border-t border-gray-200 px-2 py-0.5 text-gray-500 flex justify-between">
+                <span>Computer\{parts.join('\\')}</span>
+            </div>
+        </div>
+    );
+};
+
+export default App; // End of File
