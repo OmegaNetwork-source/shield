@@ -56,7 +56,7 @@ function App() {
     const [evidenceModalRule, setEvidenceModalRule] = useState<ParsedStigRule | null>(null);
     const [evidenceFolderName, setEvidenceFolderName] = useState('');
     const [evidenceScreenshot, setEvidenceScreenshot] = useState<string | null>(null);
-    
+
     // Evidence Type Selection Modal State
     const [showEvidenceTypeModal, setShowEvidenceTypeModal] = useState(false);
     const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -86,7 +86,7 @@ function App() {
     }, [showEvidenceModal, evidenceModalRule]);
 
     // Tools State
-    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor'>('rename');
+    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor' | 'reportanalyzer'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [showDocsModal, setShowDocsModal] = useState(false);
     const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
@@ -94,7 +94,7 @@ function App() {
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
     const [heatmapChecklists, setHeatmapChecklists] = useState<typeof uploadedChecklists>([]);
-    
+
     // Extractor state
     const [extractorFiles, setExtractorFiles] = useState<File[]>([]);
     const [extractorOptions, setExtractorOptions] = useState({
@@ -105,6 +105,33 @@ function App() {
         groupId: false,
     });
     const [extractorProcessing, setExtractorProcessing] = useState(false);
+
+    // Report Analyzer State
+    const [reportBaseData, setReportBaseData] = useState<{
+        filename: string;
+        rows: Array<Record<string, string>>;
+        headers: string[];
+    } | null>(null);
+    const [reportComparisonFiles, setReportComparisonFiles] = useState<typeof uploadedChecklists>([]);
+    const [reportAnalysisResults, setReportAnalysisResults] = useState<Array<{
+        groupId: string;
+        ruleId: string;
+        stigName: string;
+        oldSeverity: string;
+        newSeverity: string;
+        severityChanged: boolean;
+        title: string;
+        checkText: string;
+        fixText: string;
+        description: string;
+        status: string;
+        findingDetails: string;
+        comments: string;
+        // Keep original CSV row data for reference
+        originalCsvRow: Record<string, string>;
+    }> | null>(null);
+    const [reportProcessing, setReportProcessing] = useState(false);
+    const [reportFilterSeverityChange, setReportFilterSeverityChange] = useState(false);
 
     // Analyzer State
     const [analyzerOldChecklist, setAnalyzerOldChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
@@ -949,20 +976,20 @@ function App() {
 
         // Show evidence type selection modal and wait for user selection
         let evidenceTypeForScan: 'powershell' | 'regedit' | 'both' = 'powershell';
-        
+
         const evidenceTypePromise = new Promise<'powershell' | 'regedit' | 'both' | null>((resolve) => {
             // Store the resolve function so the modal can call it
             (window as any).__evidenceTypeResolver = resolve;
             setShowEvidenceTypeModal(true);
         });
-        
+
         const evidenceType = await evidenceTypePromise;
-        
+
         if (!evidenceType) {
             setShowEvidenceTypeModal(false);
             return; // User cancelled
         }
-        
+
         evidenceTypeForScan = evidenceType;
         setShowEvidenceTypeModal(false);
 
@@ -971,14 +998,14 @@ function App() {
             (window as any).__usernameResolver = resolve;
             setShowUsernameModal(true);
         });
-        
+
         const username = await usernamePromise;
-        
+
         if (!username || username.trim() === '') {
             setShowUsernameModal(false);
             return; // User cancelled or didn't enter username
         }
-        
+
         const scanUsernameValue = username.trim(); // Store in local variable for use in finding details
         setScanUsername(scanUsernameValue);
         setShowUsernameModal(false);
@@ -1108,19 +1135,19 @@ function App() {
             // Evaluate the result
             const passed = evaluateCheckResult(firstRule, execResult.output || '');
             const status = passed ? 'pass' : 'fail';
-            
+
             addAgentLog(`Result: ${status.toUpperCase()} - ${passed ? 'Compliant' : 'Non-Compliant'}`);
-            
+
             // Generate finding details text
             const dateStr = new Date().toLocaleString();
             // If passed (compliant) = "isn't a finding", if failed (non-compliant) = "is a finding"
             const findingStatus = passed ? "isn't" : "is";
             const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
-            
+
             // Save evidence with screenshot
             if (execResult.screenshot) {
                 addAgentLog(`✅ Screenshot captured (${Math.round(execResult.screenshot.length / 1024)}KB)`);
-                
+
                 // @ts-ignore
                 await window.ipcRenderer.invoke('save-evidence', {
                     ruleId: firstRule.vulnId,
@@ -1133,7 +1160,7 @@ function App() {
                     folder: safeFolder,
                     findingDetails: findingDetails
                 });
-                
+
                 addAgentLog(`✅ Evidence saved for ${firstRule.vulnId}`);
             } else {
                 addAgentLog(`❌ Screenshot capture failed - this is a problem!`);
@@ -1173,7 +1200,7 @@ function App() {
 
         // Process remaining commands automatically - this loop should execute!
         addAgentLog(`🔄 Starting batch processing of ${rulesToProcess.length - 1} remaining commands...`);
-        
+
         for (let ruleIndex = 1; ruleIndex < rulesToProcess.length; ruleIndex++) {
             // Check if scan was cancelled
             if (scanCancelledRef.current) {
@@ -1189,7 +1216,7 @@ function App() {
 
             const rule = rulesToProcess[ruleIndex];
             processedCount++;
-            
+
             addAgentLog(`\n--- Processing command ${processedCount}/${total}: ${rule.vulnId} ---`);
 
             // Update agent state
@@ -1223,15 +1250,15 @@ function App() {
                 if (execResult.success) {
                     const passed = evaluateCheckResult(rule, execResult.output || '');
                     const status = passed ? 'pass' : 'fail';
-                    
+
                     addAgentLog(`${rule.vulnId}: ${status.toUpperCase()}`);
-                    
+
                     // Generate finding details text
                     const dateStr = new Date().toLocaleString();
                     // If passed (compliant) = "isn't a finding", if failed (non-compliant) = "is a finding"
                     const findingStatus = passed ? "isn't" : "is";
                     const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
-                    
+
                     // Save evidence with screenshot
                     if (execResult.screenshot) {
                         // @ts-ignore
@@ -1262,11 +1289,11 @@ function App() {
                     }));
                 } else {
                     addAgentLog(`❌ Error: ${execResult.error || 'Unknown error'}`);
-                    
+
                     // Generate finding details for error case
                     const dateStr = new Date().toLocaleString();
                     const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || 'Command execution failed'}\nAccording to the Check Text, this is a finding (error occurred). Reference Evidence in ${safeFolder}`;
-                    
+
                     // Save with error status even if screenshot failed
                     if (execResult.screenshot) {
                         // @ts-ignore
@@ -1300,10 +1327,10 @@ function App() {
         }));
 
         setIsBatchCapturing(false);
-        
+
         // Refresh evidence gallery to show all saved screenshots
         await loadEvidence();
-        
+
         addAgentLog(`✅ Scan complete! ${processedCount} checks processed.`);
         addAgentLog(`Evidence saved to folder: ${safeFolder}`);
     };
@@ -2829,6 +2856,16 @@ function App() {
                                     Extractor
                                 </button>
                                 <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('reportanalyzer'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'reportanalyzer'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Report Analyzer
+                                </button>
+                                <button
                                     onClick={() => setShowDocsModal(true)}
                                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
                                 >
@@ -3044,7 +3081,7 @@ function App() {
                                                             <pre className="whitespace-pre-wrap text-gray-700 max-h-20 overflow-auto">{result.output.substring(0, 300)}{result.output.length > 300 ? '...' : ''}</pre>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {result?.findingDetails && (
                                                         <div className="mt-3 bg-blue-50 rounded-lg p-3 text-xs border border-blue-100">
                                                             <div className="flex justify-between text-blue-600 mb-1 pb-1 border-b border-blue-200 font-semibold">
@@ -3184,8 +3221,8 @@ function App() {
                                                                             <div>
                                                                                 <div className="text-xs font-semibold text-gray-400 uppercase mb-1">PowerShell Screenshot</div>
                                                                                 <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-900">
-                                                                                    <img 
-                                                                                        src={item.screenshotUrl || `file://${item.screenshotPath}`} 
+                                                                                    <img
+                                                                                        src={item.screenshotUrl || `file://${item.screenshotPath}`}
                                                                                         alt={`Screenshot for ${item.ruleId}`}
                                                                                         className="w-full h-auto"
                                                                                         onError={(e) => {
@@ -3202,7 +3239,7 @@ function App() {
                                                                                 </div>
                                                                             </div>
                                                                         )}
-                                                                        
+
                                                                         <div>
                                                                             <div className="text-xs font-semibold text-gray-400 uppercase mb-1">Command</div>
                                                                             <div className="bg-gray-900 text-green-400 font-mono text-xs p-3 rounded-lg overflow-x-auto">
@@ -4963,11 +5000,10 @@ function App() {
                                                         <button
                                                             key={cat}
                                                             onClick={() => setPoamActiveCat(cat)}
-                                                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all focus:outline-none ${
-                                                                isActive 
-                                                                    ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm' 
-                                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                                                            }`}
+                                                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all focus:outline-none ${isActive
+                                                                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                                                                }`}
                                                         >
                                                             {cat === 'cat1' ? 'CAT I' : cat === 'cat2' ? 'CAT II' : 'CAT III'}
                                                         </button>
@@ -5341,9 +5377,9 @@ function App() {
                         <div className="space-y-6">
                             <h1 className="text-3xl font-semibold tracking-tight mb-8">Tools & Utilities</h1>
 
-                            <div className={`grid gap-6 ${toolsMode === 'analyzer' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-4'}`}>
+                            <div className={`grid gap-6 ${toolsMode === 'analyzer' || toolsMode === 'reportanalyzer' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-4'}`}>
                                 {/* Tools Sidebar/Menu */}
-                                {toolsMode !== 'analyzer' && (
+                                {toolsMode !== 'analyzer' && toolsMode !== 'reportanalyzer' && (
                                     <div className="space-y-2">
                                         <button
                                             onClick={() => setToolsMode('rename')}
@@ -5381,11 +5417,20 @@ function App() {
                                             <Download size={18} />
                                             <div className="font-medium">Extractor</div>
                                         </button>
+                                        <button
+                                            onClick={() => setToolsMode('reportanalyzer')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'reportanalyzer'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <FileWarning size={18} />
+                                            <div className="font-medium">Report Analyzer</div>
+                                        </button>
                                     </div>
                                 )}
 
                                 {/* Tool Content */}
-                                <div className={toolsMode === 'analyzer' ? '' : 'md:col-span-3'}>
+                                <div className={toolsMode === 'analyzer' || toolsMode === 'reportanalyzer' ? '' : 'md:col-span-3'}>
                                     {toolsMode === 'rename' && (
                                         <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                             <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
@@ -6450,9 +6495,9 @@ function App() {
                                                             directory=""
                                                             onChange={(e) => {
                                                                 const files = Array.from(e.target.files || []);
-                                                                const stigFiles = files.filter(f => 
-                                                                    f.name.endsWith('.ckl') || 
-                                                                    f.name.endsWith('.cklb') || 
+                                                                const stigFiles = files.filter(f =>
+                                                                    f.name.endsWith('.ckl') ||
+                                                                    f.name.endsWith('.cklb') ||
                                                                     f.name.endsWith('.xml') ||
                                                                     f.name.endsWith('.json')
                                                                 );
@@ -6567,41 +6612,41 @@ function App() {
                                                                         const stigName = parsed.stigName || 'Unknown STIG';
 
                                                                         for (const finding of parsed.findings) {
-                                                                        const severity = finding.severity?.toLowerCase() || '';
-                                                                        const isCatI = severity === 'high' || severity === 'cat i';
-                                                                        const isCatII = severity === 'medium' || severity === 'cat ii';
-                                                                        const isCatIII = severity === 'low' || severity === 'cat iii';
+                                                                            const severity = finding.severity?.toLowerCase() || '';
+                                                                            const isCatI = severity === 'high' || severity === 'cat i';
+                                                                            const isCatII = severity === 'medium' || severity === 'cat ii';
+                                                                            const isCatIII = severity === 'low' || severity === 'cat iii';
 
-                                                                        // Filter by selected categories - if any categories are selected, must match at least one
-                                                                        const hasCategorySelected = extractorOptions.catI || extractorOptions.catII || extractorOptions.catIII;
-                                                                        if (hasCategorySelected) {
-                                                                            // Check if this finding matches any of the selected categories
-                                                                            const matchesSelected = 
-                                                                                (extractorOptions.catI && isCatI) ||
-                                                                                (extractorOptions.catII && isCatII) ||
-                                                                                (extractorOptions.catIII && isCatIII);
-                                                                            
-                                                                            // If it doesn't match any selected category, skip it
-                                                                            if (!matchesSelected) continue;
-                                                                        }
-                                                                        // If no categories selected, include all findings
+                                                                            // Filter by selected categories - if any categories are selected, must match at least one
+                                                                            const hasCategorySelected = extractorOptions.catI || extractorOptions.catII || extractorOptions.catIII;
+                                                                            if (hasCategorySelected) {
+                                                                                // Check if this finding matches any of the selected categories
+                                                                                const matchesSelected =
+                                                                                    (extractorOptions.catI && isCatI) ||
+                                                                                    (extractorOptions.catII && isCatII) ||
+                                                                                    (extractorOptions.catIII && isCatIII);
 
-                                                                        const row: any = {
-                                                                            'STIG Name': stigName,
-                                                                        };
+                                                                                // If it doesn't match any selected category, skip it
+                                                                                if (!matchesSelected) continue;
+                                                                            }
+                                                                            // If no categories selected, include all findings
 
-                                                                        if (extractorOptions.ruleId) {
-                                                                            row['Rule ID (SV-)'] = finding.ruleId || '';
-                                                                        }
-                                                                        if (extractorOptions.groupId) {
-                                                                            row['Group ID (V-)'] = finding.groupId || finding.vulnId || '';
-                                                                        }
-                                                                        if (extractorOptions.catI || extractorOptions.catII || extractorOptions.catIII) {
-                                                                            row['Severity'] = finding.severity || '';
-                                                                        }
+                                                                            const row: any = {
+                                                                                'STIG Name': stigName,
+                                                                            };
 
-                                                                        extractedData.push(row);
-                                                                    }
+                                                                            if (extractorOptions.ruleId) {
+                                                                                row['Rule ID (SV-)'] = finding.ruleId || '';
+                                                                            }
+                                                                            if (extractorOptions.groupId) {
+                                                                                row['Group ID (V-)'] = finding.groupId || finding.vulnId || '';
+                                                                            }
+                                                                            if (extractorOptions.catI || extractorOptions.catII || extractorOptions.catIII) {
+                                                                                row['Severity'] = finding.severity || '';
+                                                                            }
+
+                                                                            extractedData.push(row);
+                                                                        }
                                                                     } catch (fileError: any) {
                                                                         filesWithErrors++;
                                                                         console.warn(`Error processing file ${file.name}:`, fileError);
@@ -6627,7 +6672,7 @@ function App() {
                                                                 const headers = Object.keys(extractedData[0]);
                                                                 const csvRows = [
                                                                     headers.join(','),
-                                                                    ...extractedData.map(row => 
+                                                                    ...extractedData.map(row =>
                                                                         headers.map(header => {
                                                                             const value = row[header] || '';
                                                                             // Escape commas and quotes
@@ -6671,6 +6716,416 @@ function App() {
                                                             </>
                                                         )}
                                                     </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Report Analyzer Panel */}
+                                    {toolsMode === 'reportanalyzer' && (
+                                        <div id="report-analyzer-panel" className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <button
+                                                    onClick={() => setToolsMode('rename')}
+                                                    className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+                                                    title="Back to Tools"
+                                                >
+                                                    <ChevronLeft size={20} />
+                                                </button>
+                                                <div className="p-3 bg-amber-100 text-amber-600 rounded-xl">
+                                                    <FileWarning size={24} />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <h2 className="text-xl font-semibold">Report Analyzer</h2>
+                                                    <p className="text-sm text-gray-500">Upload CSV/Excel with Group IDs, compare against CKLB folder to track severity changes.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Dual Upload Zone */}
+                                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                                {/* Base File Upload - CSV/Excel */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${reportBaseData ? 'border-green-500 bg-green-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">Base File (CSV/Excel - Old Data)</div>
+                                                    {reportBaseData ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium truncate">{reportBaseData.filename}</div>
+                                                            <div className="text-xs text-gray-500">{reportBaseData.rows.length} rows • {reportBaseData.headers.length} columns</div>
+                                                            <div className="text-xs text-gray-400 mt-1 truncate">Columns: {reportBaseData.headers.slice(0, 4).join(', ')}{reportBaseData.headers.length > 4 ? '...' : ''}</div>
+                                                            <button onClick={() => { setReportBaseData(null); setReportAnalysisResults(null); }} className="text-xs text-red-500 hover:underline mt-1">Remove</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-10 mx-auto bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center mb-2">
+                                                                <FileSpreadsheet size={20} />
+                                                            </div>
+                                                            <span className="text-sm text-gray-500">Upload CSV or Excel file</span>
+                                                            <p className="text-xs text-gray-400 mt-1">Must contain Group ID column</p>
+                                                            <input
+                                                                type="file"
+                                                                className="hidden"
+                                                                accept=".csv,.xlsx,.xls"
+                                                                onChange={async (e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (file) {
+                                                                        try {
+                                                                            const arrayBuffer = await file.arrayBuffer();
+                                                                            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                                                                            const sheetName = workbook.SheetNames[0];
+                                                                            const worksheet = workbook.Sheets[sheetName];
+                                                                            const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet, { defval: '' });
+
+                                                                            if (jsonData.length > 0) {
+                                                                                const headers = Object.keys(jsonData[0]);
+                                                                                setReportBaseData({
+                                                                                    filename: file.name,
+                                                                                    rows: jsonData.map(row => {
+                                                                                        const normalizedRow: Record<string, string> = {};
+                                                                                        Object.entries(row).forEach(([key, value]) => {
+                                                                                            normalizedRow[key] = String(value || '');
+                                                                                        });
+                                                                                        return normalizedRow;
+                                                                                    }),
+                                                                                    headers
+                                                                                });
+                                                                            } else {
+                                                                                alert('The file appears to be empty or has no valid data.');
+                                                                            }
+                                                                        } catch (err) {
+                                                                            console.error('Error parsing CSV/Excel:', err);
+                                                                            alert('Failed to parse the file. Please ensure it is a valid CSV or Excel file.');
+                                                                        }
+                                                                    }
+                                                                    e.target.value = '';
+                                                                }}
+                                                            />
+                                                        </label>
+                                                    )}
+                                                </div>
+
+                                                {/* Comparison Folder Upload - CKLB files */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${reportComparisonFiles.length > 0 ? 'border-blue-500 bg-blue-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">Checklist Folder (CKLB - New Scans)</div>
+                                                    {reportComparisonFiles.length > 0 ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium">{reportComparisonFiles.length} CKLB files loaded</div>
+                                                            <div className="text-xs text-gray-500">{reportComparisonFiles.reduce((acc, f) => acc + f.findings.length, 0)} total findings</div>
+                                                            <button onClick={() => { setReportComparisonFiles([]); setReportAnalysisResults(null); }} className="text-xs text-red-500 hover:underline mt-1">Remove All</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-10 mx-auto bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center mb-2">
+                                                                <FolderOpen size={20} />
+                                                            </div>
+                                                            <span className="text-sm text-gray-500">Upload folder with CKLB files</span>
+                                                            <p className="text-xs text-gray-400 mt-1">Contains newest scan data</p>
+                                                            <input
+                                                                type="file"
+                                                                className="hidden"
+                                                                // @ts-ignore
+                                                                webkitdirectory=""
+                                                                directory=""
+                                                                multiple
+                                                                onChange={async (e) => {
+                                                                    const files = Array.from(e.target.files || []);
+                                                                    const stigFiles = files.filter(f =>
+                                                                        f.name.endsWith('.ckl') ||
+                                                                        f.name.endsWith('.cklb') ||
+                                                                        f.name.endsWith('.json')
+                                                                    );
+                                                                    const parsed: typeof uploadedChecklists = [];
+                                                                    for (const file of stigFiles) {
+                                                                        const p = await parseCklFile(file);
+                                                                        if (p) parsed.push(p as any);
+                                                                    }
+                                                                    setReportComparisonFiles(parsed);
+                                                                    if (parsed.length === 0 && stigFiles.length > 0) {
+                                                                        alert('No valid CKLB files found in the folder.');
+                                                                    }
+                                                                    e.target.value = '';
+                                                                }}
+                                                            />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Column Preview & Mapping Info */}
+                                            {reportBaseData && reportBaseData.headers.length > 0 && (
+                                                <div className={`mb-6 p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
+                                                    <div className="text-sm font-semibold mb-2">Detected Columns:</div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {reportBaseData.headers.map((h, i) => (
+                                                            <span key={i} className={`px-2 py-1 rounded text-xs font-medium ${h.toLowerCase().includes('group') || h.toLowerCase().includes('v-') || h.toLowerCase() === 'vuln' || h.toLowerCase() === 'vulnid'
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : h.toLowerCase().includes('severity') || h.toLowerCase() === 'cat'
+                                                                    ? 'bg-amber-100 text-amber-700'
+                                                                    : 'bg-gray-100 text-gray-600'
+                                                                }`}>{h}</span>
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-2">
+                                                        <strong>Green</strong> = Group ID columns, <strong>Amber</strong> = Severity columns
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Analyze Button */}
+                                            {reportBaseData && reportComparisonFiles.length > 0 && !reportAnalysisResults && (
+                                                <button
+                                                    onClick={async () => {
+                                                        setReportProcessing(true);
+                                                        try {
+                                                            // Build a map of all findings from CKLB files by various IDs
+                                                            const comparisonMap = new Map<string, typeof reportComparisonFiles[0]['findings'][0] & { stigName: string }>();
+                                                            reportComparisonFiles.forEach(ckl => {
+                                                                ckl.findings.forEach(f => {
+                                                                    const findingWithStig = { ...f, stigName: ckl.stigName || '' };
+                                                                    // Store by various ID formats
+                                                                    if (f.ruleId) comparisonMap.set(f.ruleId.toUpperCase(), findingWithStig);
+                                                                    if (f.vulnId) comparisonMap.set(f.vulnId.toUpperCase(), findingWithStig);
+                                                                    if (f.groupId) comparisonMap.set(f.groupId.toUpperCase(), findingWithStig);
+                                                                    // Also store without V- prefix
+                                                                    if (f.vulnId?.startsWith('V-')) comparisonMap.set(f.vulnId.substring(2).toUpperCase(), findingWithStig);
+                                                                });
+                                                            });
+
+                                                            // Find the Group ID and Severity columns in CSV
+                                                            const headers = reportBaseData.headers;
+                                                            const groupIdCol = headers.find(h =>
+                                                                h.toLowerCase().includes('group') ||
+                                                                h.toLowerCase().includes('v-') ||
+                                                                h.toLowerCase() === 'vuln' ||
+                                                                h.toLowerCase() === 'vulnid' ||
+                                                                h.toLowerCase() === 'groupid' ||
+                                                                h.toLowerCase() === 'group_id' ||
+                                                                h.toLowerCase() === 'id'
+                                                            ) || headers[0];
+
+                                                            const severityCol = headers.find(h =>
+                                                                h.toLowerCase().includes('severity') ||
+                                                                h.toLowerCase() === 'cat' ||
+                                                                h.toLowerCase() === 'category'
+                                                            );
+
+                                                            // Compare CSV rows with CKLB findings
+                                                            const results: Array<{
+                                                                groupId: string;
+                                                                ruleId: string;
+                                                                stigName: string;
+                                                                oldSeverity: string;
+                                                                newSeverity: string;
+                                                                severityChanged: boolean;
+                                                                title: string;
+                                                                checkText: string;
+                                                                fixText: string;
+                                                                description: string;
+                                                                status: string;
+                                                                findingDetails: string;
+                                                                comments: string;
+                                                                originalCsvRow: Record<string, string>;
+                                                            }> = [];
+                                                            reportBaseData.rows.forEach(csvRow => {
+                                                                let groupId = csvRow[groupIdCol] || '';
+                                                                // Normalize the group ID
+                                                                groupId = groupId.trim().toUpperCase();
+
+                                                                // Try to find matching finding in CKLB files
+                                                                const matchedFinding =
+                                                                    comparisonMap.get(groupId) ||
+                                                                    comparisonMap.get('V-' + groupId) ||
+                                                                    comparisonMap.get(groupId.replace('V-', ''));
+
+                                                                const oldSev = severityCol ? (csvRow[severityCol] || 'Unknown') : 'N/A';
+                                                                const newSev = matchedFinding?.severity || 'Not Found';
+                                                                const oldSevNorm = oldSev.toLowerCase().replace(/\s+/g, '');
+                                                                const newSevNorm = newSev.toLowerCase().replace(/\s+/g, '');
+                                                                const sevChanged = matchedFinding ? (oldSevNorm !== newSevNorm) : false;
+
+                                                                results.push({
+                                                                    groupId: groupId,
+                                                                    ruleId: matchedFinding?.ruleId || '',
+                                                                    stigName: matchedFinding?.stigName || '',
+                                                                    oldSeverity: oldSev,
+                                                                    newSeverity: newSev,
+                                                                    severityChanged: sevChanged,
+                                                                    title: matchedFinding?.title || '',
+                                                                    checkText: matchedFinding?.checkText || '',
+                                                                    fixText: matchedFinding?.fixText || '',
+                                                                    description: matchedFinding?.description || '',
+                                                                    status: matchedFinding?.status || 'Not Found',
+                                                                    findingDetails: matchedFinding?.findingDetails || '',
+                                                                    comments: matchedFinding?.comments || '',
+                                                                    originalCsvRow: csvRow
+                                                                });
+                                                            });
+
+                                                            setReportAnalysisResults(results);
+                                                        } finally {
+                                                            setReportProcessing(false);
+                                                        }
+                                                    }}
+                                                    disabled={reportProcessing}
+                                                    className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-xl font-medium transition-all shadow-lg flex items-center justify-center gap-2 mb-6"
+                                                >
+                                                    {reportProcessing ? (
+                                                        <>
+                                                            <Loader2 size={18} className="animate-spin" />
+                                                            Analyzing...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <GitCompare size={18} />
+                                                            Analyze & Compare
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {/* Results Display */}
+                                            {reportAnalysisResults && (
+                                                <div className="space-y-4">
+                                                    {/* Summary Stats */}
+                                                    <div className="grid grid-cols-4 gap-4 mb-6">
+                                                        <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                                                            <div className="text-2xl font-bold">{reportAnalysisResults.length}</div>
+                                                            <div className="text-xs text-gray-500 uppercase">CSV Rows</div>
+                                                        </div>
+                                                        <div className="p-4 rounded-xl text-center bg-amber-50">
+                                                            <div className="text-2xl font-bold text-amber-600">{reportAnalysisResults.filter(r => r.severityChanged).length}</div>
+                                                            <div className="text-xs text-amber-500 uppercase">Severity Changed</div>
+                                                        </div>
+                                                        <div className="p-4 rounded-xl text-center bg-green-50">
+                                                            <div className="text-2xl font-bold text-green-600">{reportAnalysisResults.filter(r => r.newSeverity !== 'Not Found').length}</div>
+                                                            <div className="text-xs text-green-500 uppercase">Found in CKLB</div>
+                                                        </div>
+                                                        <div className="p-4 rounded-xl text-center bg-red-50">
+                                                            <div className="text-2xl font-bold text-red-600">{reportAnalysisResults.filter(r => r.newSeverity === 'Not Found').length}</div>
+                                                            <div className="text-xs text-red-500 uppercase">Not Found</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Filter and Export Controls */}
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={reportFilterSeverityChange}
+                                                                onChange={(e) => setReportFilterSeverityChange(e.target.checked)}
+                                                                className="rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                                            />
+                                                            Show only severity changes
+                                                        </label>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (!reportAnalysisResults) return;
+                                                                    const dataToExport = reportFilterSeverityChange
+                                                                        ? reportAnalysisResults.filter(r => r.severityChanged)
+                                                                        : reportAnalysisResults;
+
+                                                                    const wb = XLSX.utils.book_new();
+                                                                    const wsData = dataToExport.map(r => ({
+                                                                        'Group ID': r.groupId,
+                                                                        'Rule ID': r.ruleId,
+                                                                        'STIG Name': r.stigName,
+                                                                        'Title': r.title,
+                                                                        'Old Severity (CSV)': r.oldSeverity,
+                                                                        'New Severity (CKLB)': r.newSeverity,
+                                                                        'Severity Changed': r.severityChanged ? 'Yes' : 'No',
+                                                                        'Status': r.status,
+                                                                        'Check Text': r.checkText,
+                                                                        'Fix Text': r.fixText,
+                                                                        'Description': r.description,
+                                                                        'Finding Details': r.findingDetails,
+                                                                        'Comments': r.comments
+                                                                    }));
+                                                                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wsData), 'Report Analysis');
+                                                                    XLSX.writeFile(wb, `report_analysis_${new Date().toISOString().split('T')[0]}.xlsx`);
+                                                                }}
+                                                                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+                                                            >
+                                                                <FileSpreadsheet size={16} />
+                                                                Export Excel
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setReportAnalysisResults(null);
+                                                                    setReportBaseData(null);
+                                                                    setReportComparisonFiles([]);
+                                                                }}
+                                                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium"
+                                                            >
+                                                                Reset
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Results Table */}
+                                                    <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                        <div className={`grid gap-2 p-3 border-b font-semibold text-xs uppercase tracking-wider ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'}`} style={{ gridTemplateColumns: '100px 1fr 100px 100px 100px 80px' }}>
+                                                            <div>Group ID</div>
+                                                            <div>Title / STIG</div>
+                                                            <div className="text-center">Old (CSV)</div>
+                                                            <div className="text-center">New (CKLB)</div>
+                                                            <div className="text-center">Status</div>
+                                                            <div className="text-center">Changed</div>
+                                                        </div>
+                                                        <div className="max-h-[500px] overflow-y-auto">
+                                                            {(reportFilterSeverityChange ? reportAnalysisResults.filter(r => r.severityChanged) : reportAnalysisResults).map((row, idx) => (
+                                                                <div
+                                                                    key={idx}
+                                                                    className={`grid gap-2 p-3 border-b last:border-0 text-sm items-center hover:bg-gray-50/5 cursor-pointer ${darkMode ? 'border-gray-700 text-gray-300' : 'border-gray-100 text-gray-700'} ${row.severityChanged ? 'bg-amber-50/50' : ''}`}
+                                                                    style={{ gridTemplateColumns: '100px 1fr 100px 100px 100px 80px' }}
+                                                                    onClick={() => {
+                                                                        alert(`Rule Details:\n\nGroup ID: ${row.groupId}\nRule ID: ${row.ruleId}\nSTIG: ${row.stigName}\nTitle: ${row.title}\n\nOld Severity (CSV): ${row.oldSeverity}\nNew Severity (CKLB): ${row.newSeverity}\nStatus: ${row.status}\n\nDescription:\n${row.description?.substring(0, 500) || 'N/A'}${row.description?.length > 500 ? '...' : ''}\n\nCheck Text:\n${row.checkText?.substring(0, 500) || 'N/A'}${row.checkText?.length > 500 ? '...' : ''}`);
+                                                                    }}
+                                                                >
+                                                                    <div className="font-mono text-xs">{row.groupId}</div>
+                                                                    <div className="truncate">
+                                                                        <div className="font-medium truncate">{row.title || 'N/A'}</div>
+                                                                        {row.stigName && <div className="text-xs text-gray-400 truncate">{row.stigName}</div>}
+                                                                    </div>
+                                                                    <div className="text-center">
+                                                                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${row.oldSeverity.toLowerCase() === 'high' || row.oldSeverity.toLowerCase().includes('cat i') || row.oldSeverity === '1' ? 'bg-red-100 text-red-700' :
+                                                                            row.oldSeverity.toLowerCase() === 'medium' || row.oldSeverity.toLowerCase().includes('cat ii') || row.oldSeverity === '2' ? 'bg-orange-100 text-orange-700' :
+                                                                                row.oldSeverity.toLowerCase() === 'low' || row.oldSeverity.toLowerCase().includes('cat iii') || row.oldSeverity === '3' ? 'bg-yellow-100 text-yellow-700' :
+                                                                                    'bg-gray-100 text-gray-600'
+                                                                            }`}>{row.oldSeverity}</span>
+                                                                    </div>
+                                                                    <div className="text-center">
+                                                                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${row.newSeverity === 'Not Found' ? 'bg-gray-100 text-gray-500' :
+                                                                            row.newSeverity.toLowerCase() === 'high' || row.newSeverity.toLowerCase().includes('cat i') ? 'bg-red-100 text-red-700' :
+                                                                                row.newSeverity.toLowerCase() === 'medium' || row.newSeverity.toLowerCase().includes('cat ii') ? 'bg-orange-100 text-orange-700' :
+                                                                                    'bg-yellow-100 text-yellow-700'
+                                                                            }`}>{row.newSeverity}</span>
+                                                                    </div>
+                                                                    <div className="text-center">
+                                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${row.status === 'Open' ? 'bg-red-100 text-red-600' :
+                                                                            row.status === 'NotAFinding' || row.status === 'Not_A_Finding' ? 'bg-green-100 text-green-600' :
+                                                                                row.status === 'Not_Reviewed' ? 'bg-gray-100 text-gray-600' :
+                                                                                    'bg-gray-100 text-gray-500'
+                                                                            }`}>{row.status}</span>
+                                                                    </div>
+                                                                    <div className="text-center">
+                                                                        {row.severityChanged ? (
+                                                                            <span className="text-amber-600 font-bold">⚠️ Yes</span>
+                                                                        ) : (
+                                                                            <span className="text-gray-400">-</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Empty State */}
+                                            {!reportBaseData && reportComparisonFiles.length === 0 && (
+                                                <div className="p-8 text-center text-gray-400 border-2 border-dashed rounded-xl">
+                                                    <FileSpreadsheet className="mx-auto size-12 mb-4 opacity-30" />
+                                                    <p className="font-medium">Upload a CSV/Excel file and a CKLB folder to begin analysis</p>
+                                                    <p className="text-sm mt-2">The CSV should contain Group IDs. We'll look them up in your CKLB files to compare severities.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -7294,8 +7749,8 @@ function App() {
                         {/* Header */}
                         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
                             <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STIG Ops Technical Documentation</h2>
-                            <button 
-                                onClick={() => setShowDocsModal(false)} 
+                            <button
+                                onClick={() => setShowDocsModal(false)}
                                 className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
                             >
                                 <X size={20} />
@@ -7322,11 +7777,10 @@ function App() {
                                         <button
                                             key={section.id}
                                             onClick={() => setSelectedDocSection(section.id)}
-                                            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-colors ${
-                                                selectedDocSection === section.id
-                                                    ? (darkMode ? 'bg-gray-700 text-white font-medium' : 'bg-white text-gray-900 font-medium shadow-sm')
-                                                    : (darkMode ? 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200' : 'text-gray-600 hover:bg-white hover:text-gray-900')
-                                            }`}
+                                            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-colors ${selectedDocSection === section.id
+                                                ? (darkMode ? 'bg-gray-700 text-white font-medium' : 'bg-white text-gray-900 font-medium shadow-sm')
+                                                : (darkMode ? 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200' : 'text-gray-600 hover:bg-white hover:text-gray-900')
+                                                }`}
                                         >
                                             {section.label}
                                         </button>
