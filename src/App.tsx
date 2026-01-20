@@ -5419,7 +5419,7 @@ function App() {
                                         </button>
                                         <button
                                             onClick={() => setToolsMode('reportanalyzer')}
-                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'reportanalyzer'
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${(toolsMode as string) === 'reportanalyzer'
                                                 ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
                                                 : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
                                         >
