@@ -7213,7 +7213,28 @@ function App() {
                                                             <button
                                                                 onClick={() => {
                                                                     // Simple CKLB export of Master
-                                                                    const data = JSON.stringify(masterCopyTarget.rawJson || {}, null, 2);
+                                                                    // Clone the raw content
+                                                                    const newJson = JSON.parse(JSON.stringify(masterCopyTarget.rawJson || {}));
+                                                                    const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+
+                                                                    // Sync updates
+                                                                    if (newJson.stigs) {
+                                                                        for (const stig of newJson.stigs) {
+                                                                            if (stig.rules) {
+                                                                                for (const rule of stig.rules) {
+                                                                                    const masterFinding = masterMap.get(rule.group_id);
+                                                                                    if (masterFinding) {
+                                                                                        rule.status = masterFinding.status;
+                                                                                        rule.finding_details = masterFinding.findingDetails;
+                                                                                        rule.comments = masterFinding.comments;
+                                                                                        // rule.severity = masterFinding.severity; // Usually severity isn't changed by user, but if it was, we'd sync it
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+
+                                                                    const data = JSON.stringify(newJson, null, 2);
                                                                     const blob = new Blob([data], { type: 'application/json' });
                                                                     const url = URL.createObjectURL(blob);
                                                                     const a = document.createElement('a');
