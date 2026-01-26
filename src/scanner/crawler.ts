@@ -118,7 +118,7 @@ async function crawlFetch(url: string, config: CrawlerConfig): Promise<{
     finalUrl?: string;
 }> {
     const startTime = Date.now();
-    
+
     if (isElectron) {
         try {
             // @ts-ignore
@@ -133,7 +133,7 @@ async function crawlFetch(url: string, config: CrawlerConfig): Promise<{
                 timeout: config.timeout,
                 followRedirects: config.followRedirects
             });
-            
+
             return {
                 ok: response.success && response.status >= 200 && response.status < 400,
                 status: response.status || 0,
@@ -157,7 +157,7 @@ async function crawlFetch(url: string, config: CrawlerConfig): Promise<{
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), config.timeout);
-            
+
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
@@ -168,15 +168,15 @@ async function crawlFetch(url: string, config: CrawlerConfig): Promise<{
                 signal: controller.signal,
                 redirect: config.followRedirects ? 'follow' : 'manual'
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             const body = await response.text();
             const headers: Record<string, string> = {};
             response.headers.forEach((value, key) => {
                 headers[key] = value;
             });
-            
+
             return {
                 ok: response.ok,
                 status: response.status,
@@ -204,19 +204,19 @@ async function crawlFetch(url: string, config: CrawlerConfig): Promise<{
 export function parseRobotsTxt(content: string): RobotsRule[] {
     const rules: RobotsRule[] = [];
     let currentRule: RobotsRule | null = null;
-    
+
     const lines = content.split('\n');
-    
+
     for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) continue;
-        
+
         const colonIndex = trimmed.indexOf(':');
         if (colonIndex === -1) continue;
-        
+
         const directive = trimmed.substring(0, colonIndex).toLowerCase().trim();
         const value = trimmed.substring(colonIndex + 1).trim();
-        
+
         switch (directive) {
             case 'user-agent':
                 if (currentRule) rules.push(currentRule);
@@ -242,7 +242,7 @@ export function parseRobotsTxt(content: string): RobotsRule[] {
                 break;
         }
     }
-    
+
     if (currentRule) rules.push(currentRule);
     return rules;
 }
@@ -252,14 +252,14 @@ export function parseRobotsTxt(content: string): RobotsRule[] {
  */
 export function parseSitemap(content: string): string[] {
     const urls: string[] = [];
-    
+
     // Match <loc> tags
     const locRegex = /<loc>([^<]+)<\/loc>/gi;
     let match;
     while ((match = locRegex.exec(content)) !== null) {
         urls.push(match[1].trim());
     }
-    
+
     return urls;
 }
 
@@ -270,7 +270,7 @@ export function extractLinks(html: string, baseUrl: string): string[] {
     const links: string[] = [];
     const seen = new Set<string>();
     const base = new URL(baseUrl);
-    
+
     // Standard href links
     const hrefRegex = /href\s*=\s*["']([^"'#]+)/gi;
     let match;
@@ -281,9 +281,9 @@ export function extractLinks(html: string, baseUrl: string): string[] {
                 seen.add(url);
                 links.push(url);
             }
-        } catch {}
+        } catch { }
     }
-    
+
     // src attributes (for scripts, iframes)
     const srcRegex = /src\s*=\s*["']([^"']+)/gi;
     while ((match = srcRegex.exec(html)) !== null) {
@@ -293,9 +293,9 @@ export function extractLinks(html: string, baseUrl: string): string[] {
                 seen.add(url);
                 links.push(url);
             }
-        } catch {}
+        } catch { }
     }
-    
+
     // action attributes (forms)
     const actionRegex = /action\s*=\s*["']([^"']+)/gi;
     while ((match = actionRegex.exec(html)) !== null) {
@@ -305,9 +305,9 @@ export function extractLinks(html: string, baseUrl: string): string[] {
                 seen.add(url);
                 links.push(url);
             }
-        } catch {}
+        } catch { }
     }
-    
+
     // data-href, data-url, data-src attributes
     const dataRegex = /data-(?:href|url|src)\s*=\s*["']([^"']+)/gi;
     while ((match = dataRegex.exec(html)) !== null) {
@@ -317,9 +317,9 @@ export function extractLinks(html: string, baseUrl: string): string[] {
                 seen.add(url);
                 links.push(url);
             }
-        } catch {}
+        } catch { }
     }
-    
+
     return links;
 }
 
@@ -330,7 +330,7 @@ export function extractJsLinks(js: string, baseUrl: string): string[] {
     const links: string[] = [];
     const seen = new Set<string>();
     const base = new URL(baseUrl);
-    
+
     // URL strings in JS
     const patterns = [
         // fetch/axios calls
@@ -347,7 +347,7 @@ export function extractJsLinks(js: string, baseUrl: string): string[] {
         // Relative URLs
         /["'](\/[a-zA-Z][a-zA-Z0-9\-_\/]*\.(?:html|php|asp|aspx|jsp|json))["']/gi,
     ];
-    
+
     for (const pattern of patterns) {
         let match;
         while ((match = pattern.exec(js)) !== null) {
@@ -357,10 +357,10 @@ export function extractJsLinks(js: string, baseUrl: string): string[] {
                     seen.add(url);
                     links.push(url);
                 }
-            } catch {}
+            } catch { }
         }
     }
-    
+
     return links;
 }
 
@@ -370,30 +370,30 @@ export function extractJsLinks(js: string, baseUrl: string): string[] {
 export function extractForms(html: string, baseUrl: string): FormInfo[] {
     const forms: FormInfo[] = [];
     const base = new URL(baseUrl);
-    
+
     // Match form tags with their content
     const formRegex = /<form([^>]*)>([\s\S]*?)<\/form>/gi;
     let formMatch;
-    
+
     while ((formMatch = formRegex.exec(html)) !== null) {
         const attributes = formMatch[1];
         const content = formMatch[2];
-        
+
         // Extract action
         const actionMatch = /action\s*=\s*["']([^"']+)["']/i.exec(attributes);
         const action = actionMatch ? normalizeUrl(actionMatch[1], base) || baseUrl : baseUrl;
-        
+
         // Extract method
         const methodMatch = /method\s*=\s*["']([^"']+)["']/i.exec(attributes);
         const method = (methodMatch ? methodMatch[1].toUpperCase() : 'GET') as 'GET' | 'POST';
-        
+
         // Extract enctype
         const enctypeMatch = /enctype\s*=\s*["']([^"']+)["']/i.exec(attributes);
         const enctype = enctypeMatch ? enctypeMatch[1] : undefined;
-        
+
         // Extract inputs
         const inputs: FormInfo['inputs'] = [];
-        
+
         // Input fields
         const inputRegex = /<input([^>]*)>/gi;
         let inputMatch;
@@ -402,7 +402,7 @@ export function extractForms(html: string, baseUrl: string): FormInfo[] {
             const nameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(inputAttrs);
             const typeMatch = /type\s*=\s*["']([^"']+)["']/i.exec(inputAttrs);
             const valueMatch = /value\s*=\s*["']([^"']+)["']/i.exec(inputAttrs);
-            
+
             if (nameMatch) {
                 inputs.push({
                     name: nameMatch[1],
@@ -411,7 +411,7 @@ export function extractForms(html: string, baseUrl: string): FormInfo[] {
                 });
             }
         }
-        
+
         // Textarea fields
         const textareaRegex = /<textarea([^>]*)>/gi;
         while ((inputMatch = textareaRegex.exec(content)) !== null) {
@@ -423,7 +423,7 @@ export function extractForms(html: string, baseUrl: string): FormInfo[] {
                 });
             }
         }
-        
+
         // Select fields
         const selectRegex = /<select([^>]*)>/gi;
         while ((inputMatch = selectRegex.exec(content)) !== null) {
@@ -435,16 +435,16 @@ export function extractForms(html: string, baseUrl: string): FormInfo[] {
                 });
             }
         }
-        
+
         // Check for CSRF token
-        const hasCSRF = inputs.some(i => 
+        const hasCSRF = inputs.some(i =>
             /csrf|token|nonce|authenticity/i.test(i.name) ||
             i.type === 'hidden' && /^[a-f0-9]{32,}$/i.test(i.value || '')
         );
-        
+
         // Check for file upload
         const hasFileUpload = inputs.some(i => i.type === 'file');
-        
+
         forms.push({
             action,
             method,
@@ -454,7 +454,7 @@ export function extractForms(html: string, baseUrl: string): FormInfo[] {
             hasFileUpload
         });
     }
-    
+
     return forms;
 }
 
@@ -463,10 +463,10 @@ export function extractForms(html: string, baseUrl: string): FormInfo[] {
  */
 export function extractParameters(url: string): ParameterInfo[] {
     const params: ParameterInfo[] = [];
-    
+
     try {
         const parsed = new URL(url);
-        
+
         // Query parameters
         parsed.searchParams.forEach((value, name) => {
             params.push({
@@ -476,7 +476,7 @@ export function extractParameters(url: string): ParameterInfo[] {
                 source: url
             });
         });
-        
+
         // Path parameters (e.g., /users/123/posts/456)
         const pathParts = parsed.pathname.split('/');
         for (let i = 0; i < pathParts.length; i++) {
@@ -491,8 +491,8 @@ export function extractParameters(url: string): ParameterInfo[] {
                 });
             }
         }
-    } catch {}
-    
+    } catch { }
+
     return params;
 }
 
@@ -503,7 +503,7 @@ export function extractComments(html: string): string[] {
     const comments: string[] = [];
     const commentRegex = /<!--([\s\S]*?)-->/g;
     let match;
-    
+
     while ((match = commentRegex.exec(html)) !== null) {
         const comment = match[1].trim();
         // Skip empty or conditional comments
@@ -511,7 +511,7 @@ export function extractComments(html: string): string[] {
             comments.push(comment);
         }
     }
-    
+
     return comments;
 }
 
@@ -523,7 +523,7 @@ export function extractEmails(content: string): string[] {
     const seen = new Set<string>();
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     let match;
-    
+
     while ((match = emailRegex.exec(content)) !== null) {
         const email = match[0].toLowerCase();
         if (!seen.has(email) && !email.includes('example.com') && !email.includes('test.com')) {
@@ -531,7 +531,7 @@ export function extractEmails(content: string): string[] {
             emails.push(email);
         }
     }
-    
+
     return emails;
 }
 
@@ -541,34 +541,38 @@ export function extractEmails(content: string): string[] {
 export function extractScripts(html: string, baseUrl: string): ScriptInfo[] {
     const scripts: ScriptInfo[] = [];
     const base = new URL(baseUrl);
-    
+
     const scriptRegex = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
     let match;
-    
+
     while ((match = scriptRegex.exec(html)) !== null) {
         const attributes = match[1];
         const content = match[2];
-        
+
         const srcMatch = /src\s*=\s*["']([^"']+)["']/i.exec(attributes);
         const typeMatch = /type\s*=\s*["']([^"']+)["']/i.exec(attributes);
-        
+
         if (srcMatch) {
             // External script
             scripts.push({
                 src: normalizeUrl(srcMatch[1], base) || srcMatch[1],
-                type: typeMatch ? typeMatch[1] : 'text/javascript',
-                inline: false
-            });
+                inline: false,
+                hasWeb3: false,
+                libraries: [],
+                suspiciousPatterns: []
+            } as any);
         } else if (content.trim()) {
             // Inline script
             scripts.push({
-                type: typeMatch ? typeMatch[1] : 'text/javascript',
                 inline: true,
-                content: content.length > 1000 ? content.substring(0, 1000) + '...' : content
-            });
+                content: content.length > 1000 ? content.substring(0, 1000) + '...' : content,
+                hasWeb3: false,
+                libraries: [],
+                suspiciousPatterns: []
+            } as any);
         }
     }
-    
+
     return scripts;
 }
 
@@ -577,10 +581,10 @@ export function extractScripts(html: string, baseUrl: string): ScriptInfo[] {
  */
 function normalizeUrl(url: string, base: URL): string | null {
     if (!url) return null;
-    
+
     // Skip javascript:, mailto:, tel:, data: URLs
     if (/^(javascript|mailto|tel|data|#):/i.test(url)) return null;
-    
+
     try {
         const resolved = new URL(url, base.href);
         // Remove fragment
@@ -598,7 +602,7 @@ function isInScope(url: string, baseUrl: string, scope: CrawlerConfig['scope']):
     try {
         const target = new URL(url);
         const base = new URL(baseUrl);
-        
+
         switch (scope) {
             case 'strict':
                 return target.origin === base.origin;
@@ -623,25 +627,25 @@ function shouldExclude(url: string, config: CrawlerConfig): boolean {
     try {
         const parsed = new URL(url);
         const path = parsed.pathname.toLowerCase();
-        
+
         // Check excluded extensions
         const extensions = config.excludedExtensions || DEFAULT_CONFIG.excludedExtensions!;
         for (const ext of extensions) {
             if (path.endsWith(ext)) return true;
         }
-        
+
         // Check excluded paths
         const excludedPaths = [...DEFAULT_EXCLUDED_PATHS, ...(config.excludedPaths || [])];
         for (const excludedPath of excludedPaths) {
             if (path.startsWith(excludedPath)) return true;
         }
-        
+
         // Check included paths (if specified)
         if (config.includedPaths && config.includedPaths.length > 0) {
             const isIncluded = config.includedPaths.some(p => path.startsWith(p));
             if (!isIncluded) return true;
         }
-        
+
         return false;
     } catch {
         return true;
@@ -655,13 +659,13 @@ function isAllowedByRobots(url: string, rules: RobotsRule[]): boolean {
     try {
         const parsed = new URL(url);
         const path = parsed.pathname;
-        
+
         // Find applicable rule (prefer specific user-agent, fallback to *)
-        const rule = rules.find(r => r.userAgent === 'STRIX-Scanner') || 
-                     rules.find(r => r.userAgent === '*');
-        
+        const rule = rules.find(r => r.userAgent === 'STRIX-Scanner') ||
+            rules.find(r => r.userAgent === '*');
+
         if (!rule) return true;
-        
+
         // Check disallowed first
         for (const disallowed of rule.disallowed) {
             if (path.startsWith(disallowed)) {
@@ -672,7 +676,7 @@ function isAllowedByRobots(url: string, rules: RobotsRule[]): boolean {
                 return false;
             }
         }
-        
+
         return true;
     } catch {
         return true;
@@ -691,11 +695,11 @@ export class SiteCrawler {
     private startTime: number = 0;
     private onProgress?: CrawlProgressCallback;
     private aborted: boolean = false;
-    
+
     constructor(config: Partial<CrawlerConfig> = {}) {
         this.config = { ...DEFAULT_CONFIG, ...config };
     }
-    
+
     /**
      * Start crawling from a URL
      */
@@ -706,56 +710,56 @@ export class SiteCrawler {
         this.queue = [];
         this.pages.clear();
         this.aborted = false;
-        
+
         const base = new URL(startUrl);
         const baseUrl = base.origin;
-        
+
         // Phase 1: Fetch robots.txt
         this.updateProgress('Fetching robots.txt', 0, 0, 0, startUrl);
         if (this.config.respectRobotsTxt) {
             await this.fetchRobotsTxt(baseUrl);
         }
-        
+
         // Phase 2: Fetch sitemap
         this.updateProgress('Parsing sitemap', 0, 0, 0, startUrl);
         const sitemapUrls = await this.fetchSitemap(baseUrl);
-        
+
         // Add sitemap URLs to queue
         for (const url of sitemapUrls) {
             if (isInScope(url, startUrl, this.config.scope) && !shouldExclude(url, this.config)) {
                 this.addToQueue(url, 0);
             }
         }
-        
+
         // Add start URL
         this.addToQueue(startUrl, 0);
-        
+
         // Phase 3: Crawl pages
         const rateDelay = 1000 / this.config.rateLimit;
-        
+
         while (this.queue.length > 0 && !this.aborted) {
             // Check limits
             if (this.pages.size >= this.config.maxPages) break;
             if (Date.now() - this.startTime > this.config.maxTime) break;
-            
+
             const { url, depth } = this.queue.shift()!;
-            
+
             if (this.visited.has(url)) continue;
             this.visited.add(url);
-            
+
             // Check robots.txt
             if (this.config.respectRobotsTxt && !isAllowedByRobots(url, this.robotsRules)) {
                 continue;
             }
-            
-            this.updateProgress('Crawling', this.queue.length + this.visited.size, this.pages.size, 
+
+            this.updateProgress('Crawling', this.queue.length + this.visited.size, this.pages.size,
                 this.countForms(), url);
-            
+
             // Crawl page
             const page = await this.crawlPage(url, depth);
             if (page) {
                 this.pages.set(url, page);
-                
+
                 // Add discovered links to queue
                 if (depth < this.config.maxDepth) {
                     for (const link of page.links) {
@@ -765,28 +769,28 @@ export class SiteCrawler {
                     }
                 }
             }
-            
+
             // Rate limiting
             await this.sleep(rateDelay);
         }
-        
+
         // Compile results
         return this.compileResults(startUrl);
     }
-    
+
     /**
      * Stop the crawler
      */
     abort(): void {
         this.aborted = true;
     }
-    
+
     /**
      * Crawl a single page
      */
     private async crawlPage(url: string, depth: number): Promise<CrawledPage | null> {
         const response = await crawlFetch(url, this.config);
-        
+
         if (!response.ok) {
             return {
                 url,
@@ -807,10 +811,10 @@ export class SiteCrawler {
                 error: response.error
             };
         }
-        
+
         const contentType = response.headers['content-type'] || '';
         const isHtml = contentType.includes('text/html') || contentType.includes('application/xhtml');
-        
+
         if (!isHtml) {
             return {
                 url,
@@ -830,13 +834,13 @@ export class SiteCrawler {
                 responseTime: response.responseTime
             };
         }
-        
+
         const html = response.body;
-        
+
         // Extract title
         const titleMatch = /<title>([^<]+)<\/title>/i.exec(html);
         const title = titleMatch ? titleMatch[1].trim() : '';
-        
+
         // Extract various elements
         const links = extractLinks(html, url);
         const forms = extractForms(html, url);
@@ -844,15 +848,15 @@ export class SiteCrawler {
         const comments = extractComments(html);
         const emails = extractEmails(html);
         const parameters = extractParameters(url);
-        
+
         // Extract inline script links
         for (const script of scripts) {
-            if (script.inline && script.content) {
-                const jsLinks = extractJsLinks(script.content, url);
+            if (script.inline && (script as any).content) {
+                const jsLinks = extractJsLinks((script as any).content, url);
                 links.push(...jsLinks);
             }
         }
-        
+
         // Add form parameters
         for (const form of forms) {
             for (const input of form.inputs) {
@@ -864,7 +868,7 @@ export class SiteCrawler {
                 });
             }
         }
-        
+
         // Build endpoint list
         const endpoints: EndpointInfo[] = [];
         for (const form of forms) {
@@ -881,7 +885,7 @@ export class SiteCrawler {
                 source: 'form'
             });
         }
-        
+
         return {
             url,
             depth,
@@ -900,7 +904,7 @@ export class SiteCrawler {
             responseTime: response.responseTime
         };
     }
-    
+
     /**
      * Fetch and parse robots.txt
      */
@@ -909,7 +913,7 @@ export class SiteCrawler {
             const response = await crawlFetch(`${baseUrl}/robots.txt`, this.config);
             if (response.ok) {
                 this.robotsRules = parseRobotsTxt(response.body);
-                
+
                 // Add sitemap URLs from robots.txt
                 for (const rule of this.robotsRules) {
                     for (const sitemap of rule.sitemaps) {
@@ -917,27 +921,27 @@ export class SiteCrawler {
                     }
                 }
             }
-        } catch {}
+        } catch { }
     }
-    
+
     /**
      * Fetch and parse sitemap
      */
     private async fetchSitemap(baseUrl: string): Promise<string[]> {
         const urls: string[] = [];
         const sitemapUrls = [`${baseUrl}/sitemap.xml`, `${baseUrl}/sitemap_index.xml`];
-        
+
         // Add sitemaps from robots.txt
         for (const rule of this.robotsRules) {
             sitemapUrls.push(...rule.sitemaps);
         }
-        
+
         for (const sitemapUrl of [...new Set(sitemapUrls)]) {
             try {
                 const response = await crawlFetch(sitemapUrl, this.config);
                 if (response.ok) {
                     const parsed = parseSitemap(response.body);
-                    
+
                     // Check if it's a sitemap index
                     for (const url of parsed) {
                         if (url.includes('sitemap') && url.endsWith('.xml')) {
@@ -951,12 +955,12 @@ export class SiteCrawler {
                         }
                     }
                 }
-            } catch {}
+            } catch { }
         }
-        
+
         return [...new Set(urls)];
     }
-    
+
     /**
      * Add URL to queue if not visited
      */
@@ -965,7 +969,7 @@ export class SiteCrawler {
             this.queue.push({ url, depth });
         }
     }
-    
+
     /**
      * Count total forms discovered
      */
@@ -976,7 +980,7 @@ export class SiteCrawler {
         }
         return count;
     }
-    
+
     /**
      * Count total parameters discovered
      */
@@ -989,7 +993,7 @@ export class SiteCrawler {
         }
         return seen.size;
     }
-    
+
     /**
      * Compile crawl results
      */
@@ -1001,7 +1005,7 @@ export class SiteCrawler {
         const allComments: string[] = [];
         const allEndpoints: EndpointInfo[] = [];
         const allParameters: ParameterInfo[] = [];
-        
+
         for (const page of this.pages.values()) {
             allLinks.push(...page.links);
             allForms.push(...page.forms);
@@ -1011,7 +1015,7 @@ export class SiteCrawler {
             allEndpoints.push(...page.endpoints);
             allParameters.push(...page.parameters);
         }
-        
+
         return {
             url: startUrl,
             links: [...new Set(allLinks)],
@@ -1032,7 +1036,7 @@ export class SiteCrawler {
             }
         };
     }
-    
+
     /**
      * Deduplicate parameters
      */
@@ -1046,21 +1050,21 @@ export class SiteCrawler {
         }
         return Array.from(seen.values());
     }
-    
+
     /**
      * Detect technologies from crawled pages
      */
     private detectTechnologies(): string[] {
         const techs = new Set<string>();
-        
+
         for (const page of this.pages.values()) {
             // From headers
             const server = page.headers['server'];
             if (server) techs.add(`Server: ${server}`);
-            
+
             const powered = page.headers['x-powered-by'];
             if (powered) techs.add(powered);
-            
+
             // From scripts
             for (const script of page.scripts) {
                 if (script.src) {
@@ -1072,10 +1076,10 @@ export class SiteCrawler {
                 }
             }
         }
-        
+
         return Array.from(techs);
     }
-    
+
     /**
      * Update progress callback
      */
@@ -1092,7 +1096,7 @@ export class SiteCrawler {
             });
         }
     }
-    
+
     /**
      * Sleep helper
      */

@@ -11,25 +11,33 @@ export * from './web3-detector';
 export * from './unified-scanner';
 
 // Site crawler
-export * from './crawler';
+export { SiteCrawler, quickCrawl, deepCrawl } from './crawler';
 
 // Evidence collection
 export * from './evidence';
 
 // Test modules
-export * from './tests';
+export { tests } from './tests';
 
 // Deep scanning (extended payloads)
-export * from './deep-scan';
+export {
+    XSS_PAYLOADS_EXTENDED,
+    SQLI_PAYLOADS_EXTENDED,
+    DIRECTORY_WORDLIST,
+    COMMON_PARAMETERS,
+    SQL_ERROR_PATTERNS,
+    detectSqlError,
+    detectXssReflection
+} from './deep-scan';
 
-// Advanced vulnerability tests (SSRF, Command Injection, LFI, XXE, SSTI, etc.)
-export * from './advanced-tests';
+// Advanced vulnerability tests
+export { detectSSRF, detectCommandInjection, detectPathTraversal, detectXXE, detectSSTI, detectOpenRedirect, detectCORSMisconfig } from './advanced-tests';
 
 // Compliance mapping
 export * from './compliance';
 
 // Report generation
-export * from './reports';
+export { generateReport, generateHtmlReport, generateJsonReport, generateCsvReport, generateStigCkl, generateExecutiveSummary, generatePdfReport, downloadPdfReport } from './reports';
 
 // Imports for default export
 import { UnifiedScanner, quickScan, fullScan } from './unified-scanner';
@@ -46,21 +54,21 @@ import advancedTests from './advanced-tests';
 export const scanner = {
     // Main scanner class
     Scanner: UnifiedScanner,
-    
+
     // Crawler class
     Crawler: SiteCrawler,
-    
+
     // Quick scan functions
     quick: quickScan,
     full: fullScan,
-    
+
     // Crawl functions
     crawl: {
         quick: quickCrawl,
         deep: deepCrawl,
         Crawler: SiteCrawler
     },
-    
+
     // Security tests
     tests: {
         injection: tests.injection,
@@ -71,7 +79,7 @@ export const scanner = {
         ssl: tests.ssl,
         fingerprint: tests.fingerprint
     },
-    
+
     // Compliance mapping
     compliance: {
         map: compliance.getComplianceMapping,
@@ -82,13 +90,13 @@ export const scanner = {
         owasp: compliance.OWASP_TOP_10_2021,
         stig: compliance.STIG_WEB_APP_CONTROLS
     },
-    
+
     // Evidence collection
     evidence: {
         Collector: EvidenceCollector,
         create: createEvidenceCollector
     },
-    
+
     // Report generation
     reports: {
         generate: reports.generateReport,
@@ -101,23 +109,23 @@ export const scanner = {
         pdf: reports.generatePdfReport,
         downloadPdf: reports.downloadPdfReport,
         pdfBlob: reports.generatePdfBlob,
-        
+
         // Blockchain Security Reports
         blockchain: reports.generateBlockchainReport,
         downloadBlockchain: reports.downloadBlockchainReport,
-        
+
         // Code Security Reports
         code: reports.generateCodeReport,
         downloadCode: reports.downloadCodeReport,
-        
+
         // Directory Security Reports
         directory: reports.generateDirectoryReport,
         downloadDirectory: reports.downloadDirectoryReport,
-        
+
         // Report utilities
         base: reports.base
     },
-    
+
     // Web3 detection
     web3: {
         detect: detectWeb3,
@@ -125,7 +133,7 @@ export const scanner = {
         extractSecrets,
         extractContracts
     },
-    
+
     // Deep scanning payloads and utilities
     payloads: {
         xss: deepScan.XSS_PAYLOADS_EXTENDED,
@@ -134,7 +142,7 @@ export const scanner = {
         parameters: deepScan.COMMON_PARAMETERS,
         sqlErrors: deepScan.SQL_ERROR_PATTERNS
     },
-    
+
     // Deep scan utilities
     deepScan: {
         extractLinks: deepScan.extractLinks,
@@ -143,7 +151,7 @@ export const scanner = {
         detectSqlError: deepScan.detectSqlError,
         detectXssReflection: deepScan.detectXssReflection
     },
-    
+
     // Advanced vulnerability tests
     advanced: {
         payloads: {
@@ -167,7 +175,7 @@ export const scanner = {
         },
         createVulnerability: advancedTests.createVulnerabilityFromTest
     },
-    
+
     // Reference data
     reference: {
         owasp: OWASP_TOP_10,

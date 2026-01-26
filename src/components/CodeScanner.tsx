@@ -50,6 +50,8 @@ import {
     type APIService,
 } from '../sast';
 
+
+
 // Severity colors
 const SEVERITY_COLORS: Record<SeverityLevel, string> = {
     critical: 'text-red-500',
@@ -95,48 +97,48 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
     const [isScanning, setIsScanning] = useState(false);
     const [progress, setProgress] = useState<ScanProgress | GitHubSearchProgress | null>(null);
     const [error, setError] = useState<string | null>(null);
-    
+
     // Local scan state
     const [localPath, setLocalPath] = useState('');
     const [localResult, setLocalResult] = useState<ScanResult | null>(null);
-    
+
     // Paste scan state
     const [pasteContent, setPasteContent] = useState('');
     const [pasteFilename, setPasteFilename] = useState('code.js');
     const [pasteFindings, setPasteFindings] = useState<SASTFinding[]>([]);
-    
+
     // GitHub scan state
     const [githubQuery, setGithubQuery] = useState('');
     const [githubToken, setGithubToken] = useState('');
     const [selectedDork, setSelectedDork] = useState<string>('');
     const [githubResult, setGithubResult] = useState<GitHubScanResult | null>(null);
     const [liveFindings, setLiveFindings] = useState<GitHubSecretFinding[]>([]);
-    
+
     // GitHub scan options
     const [activeReposOnly, setActiveReposOnly] = useState(true); // Filter to repos active in past year
     const [maxRepoAgeDays, setMaxRepoAgeDays] = useState(365); // Default 1 year
     const [directRepoScan, setDirectRepoScan] = useState(''); // Repo to scan directly (e.g., "owner/repo")
-    
+
     // UI state
     const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
     const [severityFilter, setSeverityFilter] = useState<SeverityLevel | 'all'>('all');
     const [hideGeneric, setHideGeneric] = useState(false); // Hide "Potential Secret" generic matches
     const [showErrors, setShowErrors] = useState(true);
     const scannerRef = useRef<SASTScanner | GitHubScanner | null>(null);
-    
+
     // Wallet balance checking state
     const [balanceChecks, setBalanceChecks] = useState<Record<string, WalletCheckResult | MnemonicCheckResult | 'loading' | 'error'>>({});
-    
+
     // Balance filter state - only show findings with funded wallets
     const [onlyShowWithBalance, setOnlyShowWithBalance] = useState(false);
     const [isFilteringByBalance, setIsFilteringByBalance] = useState(false);
     const [balanceFilterProgress, setBalanceFilterProgress] = useState<{ checked: number; total: number; funded: number } | null>(null);
     const [fundedFindingIds, setFundedFindingIds] = useState<Set<string>>(new Set());
     const [balanceInfoCache, setBalanceInfoCache] = useState<Record<string, { address: string; type: string; balances: string[] }>>({});
-    
+
     // API credential testing state
     const [apiTests, setApiTests] = useState<Record<string, APITestResult | 'loading' | 'error'>>({});
-    
+
     // Check if a finding is crypto-related and can have balance checked
     const isCryptoFinding = (finding: GitHubSecretFinding): boolean => {
         const cryptoTypes = [
@@ -147,27 +149,26 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
         const snippet = finding.match.snippet.toLowerCase();
         return cryptoTypes.some(t => secretType.includes(t) || snippet.includes(t));
     };
-    
+
     // Check if finding contains mnemonic/seed phrase
     const isMnemonicFinding = (finding: GitHubSecretFinding): boolean => {
         const mnemonicTypes = ['mnemonic', 'seed', 'phrase', 'recovery', 'bip39', 'bip-39'];
         const secretType = finding.secretType.toLowerCase();
         const snippet = finding.match.snippet.toLowerCase();
-        
+
         // Check secret type
         if (mnemonicTypes.some(t => secretType.includes(t))) return true;
-        
-        // Try to extract mnemonic from snippet
+
         const foundMnemonics = extractMnemonics(snippet);
         return foundMnemonics.length > 0;
     };
-    
+
     // Extract wallet address from finding
     const extractWalletFromFinding = (finding: GitHubSecretFinding): string | null => {
         const addresses = extractAddresses(finding.match.snippet);
         return addresses.length > 0 ? addresses[0] : null;
     };
-    
+
     // Check if a finding is an API key that can be tested
     const isAPIKeyFinding = (finding: GitHubSecretFinding): { canTest: boolean; service: APIService | null; key: string | null; secretKey?: string } => {
         const apiKeyTypes = [
@@ -177,10 +178,10 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
         ];
         const secretType = finding.secretType.toLowerCase();
         const snippet = finding.match.snippet;
-        
+
         // Check if it's an API key type
         const isAPIType = apiKeyTypes.some(t => secretType.includes(t));
-        
+
         // Map secret type to service first
         let service: APIService | null = null;
         if (secretType.includes('github')) service = 'github';
@@ -200,11 +201,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
         else if (secretType.includes('etherscan')) service = 'etherscan';
         else if (secretType.includes('infura')) service = 'infura';
         else if (secretType.includes('alchemy')) service = 'alchemy';
-        
+
         // Extract API key and secret from snippet based on service
         let extractedKey: string | null = null;
         let extractedSecret: string | undefined = undefined;
-        
+
         // Service-specific extraction patterns
         if (service === 'binance' || secretType.includes('binance')) {
             // Look for BINANCE_API_KEY=xxx and BINANCE_API_SECRET=xxx
@@ -245,7 +246,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 /[A-Z0-9]{34}/,                          // Etherscan
                 /[A-Za-z0-9_-]{32,}/,                    // Generic long alphanumeric
             ];
-            
+
             for (const pattern of keyPatterns) {
                 const match = snippet.match(pattern);
                 if (match) {
@@ -254,15 +255,15 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 }
             }
         }
-        
+
         // Try to detect service from key if not clear from type
         if (!service && extractedKey) {
             service = detectServiceFromKey(extractedKey);
         }
-        
+
         // canTest is true if we have a service OR if the finding looks API-related
         const canTest = isAPIType || service !== null;
-        
+
         return {
             canTest,
             service,
@@ -270,32 +271,32 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             secretKey: extractedSecret,
         };
     };
-    
+
     // Test API credentials for a finding
     const testFindingAPI = useCallback(async (finding: GitHubSecretFinding) => {
         const snippet = finding.match.snippet;
         let service: APIService | null = null;
         let key: string | null = null;
         let secretKey: string | undefined = undefined;
-        
+
         // Extract Binance credentials by label (most reliable)
         // Matches: BINANCE_API_KEY, BINANCE_KEY, BINANCE-API-KEY, etc.
         const binanceKeyMatch = snippet.match(/BINANCE[_-]?(?:API[_-]?)?KEY\s*[=:]\s*["']?([A-Za-z0-9]+)["']?/i);
         // Matches: BINANCE_API_SECRET, BINANCE_SECRET, BINANCE_SECRET_KEY, etc.
         const binanceSecretMatch = snippet.match(/BINANCE[_-]?(?:API[_-]?)?SECRET[_-]?(?:KEY)?\s*[=:]\s*["']?([A-Za-z0-9]+)["']?/i);
-        
+
         if (binanceKeyMatch || binanceSecretMatch || finding.secretType.toLowerCase().includes('binance')) {
             service = 'binance';
             key = binanceKeyMatch ? binanceKeyMatch[1] : null;
             secretKey = binanceSecretMatch ? binanceSecretMatch[1] : undefined;
-            
+
             // If no labeled key found, look for 64-char strings
             if (!key) {
                 const longKey = snippet.match(/[A-Za-z0-9]{64}/);
                 if (longKey) key = longKey[0];
             }
         }
-        
+
         // GitHub tokens
         if (!key) {
             const ghMatch = snippet.match(/gh[pous]_[A-Za-z0-9]{36}/);
@@ -304,7 +305,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 key = ghMatch[0];
             }
         }
-        
+
         // Stripe keys
         if (!key) {
             const stripeMatch = snippet.match(/[sr]k_(?:live|test)_[A-Za-z0-9]{24,}/);
@@ -313,7 +314,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 key = stripeMatch[0];
             }
         }
-        
+
         // Generic fallback from apiInfo
         if (!service || !key) {
             const apiInfo = isAPIKeyFinding(finding);
@@ -321,25 +322,25 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             key = apiInfo.key;
             secretKey = apiInfo.secretKey || secretKey;
         }
-        
+
         if (!service || !key) {
             alert('Could not extract API credentials from this finding.');
             return;
         }
-        
+
         console.log('Testing:', service, 'Key:', key?.substring(0, 15) + '...', 'Secret:', secretKey ? 'found' : 'not found');
-        
+
         setApiTests(prev => ({ ...prev, [finding.id]: 'loading' }));
-        
+
         try {
             const result = await testAPICredentials({
                 service,
                 apiKey: key,
                 secretKey,
             });
-            
+
             setApiTests(prev => ({ ...prev, [finding.id]: result }));
-            
+
             // Show result
             if (result.isActive) {
                 alert(`✓ ${service.toUpperCase()} API KEY IS ACTIVE!\n\n` +
@@ -360,27 +361,27 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             alert(`Error testing ${service.toUpperCase()}:\n\n${e.message}`);
         }
     }, []);
-    
+
     // Check balance for a finding (handles both private keys and mnemonics)
     const checkFindingBalance = useCallback(async (finding: GitHubSecretFinding) => {
         const isMnemonic = isMnemonicFinding(finding);
-        
+
         if (isMnemonic) {
             // Handle mnemonic phrase checking
             const foundMnemonics = extractMnemonics(finding.match.snippet);
-            
+
             // Prompt user for the wallet address derived from mnemonic
             const userAddress = prompt(
-                foundMnemonics.length > 0 
+                foundMnemonics.length > 0
                     ? `Found potential mnemonic:\n"${foundMnemonics[0].substring(0, 50)}..."\n\nEnter the wallet address derived from this mnemonic to check its balance:`
                     : 'Enter the wallet address derived from this seed phrase:',
                 '0x...'
             );
-            
+
             if (!userAddress || !userAddress.startsWith('0x') || userAddress.length !== 42) {
                 return;
             }
-            
+
             setBalanceChecks(prev => ({ ...prev, [finding.id]: 'loading' }));
             try {
                 const result = await checkMnemonicBalances(
@@ -393,7 +394,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             }
             return;
         }
-        
+
         // Handle regular private key / address checking
         const address = extractWalletFromFinding(finding);
         if (!address) {
@@ -414,7 +415,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             }
             return;
         }
-        
+
         setBalanceChecks(prev => ({ ...prev, [finding.id]: 'loading' }));
         try {
             const result = await checkAllBalances(address, true); // Include tokens
@@ -423,14 +424,14 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             setBalanceChecks(prev => ({ ...prev, [finding.id]: 'error' }));
         }
     }, []);
-    
+
     // Scan all findings for balances and filter to only show funded ones
     const scanFindingsForBalances = useCallback(async (findings: GitHubSecretFinding[]) => {
         setIsFilteringByBalance(true);
         setBalanceFilterProgress({ checked: 0, total: findings.length, funded: 0 });
         setFundedFindingIds(new Set());
         setBalanceInfoCache({});
-        
+
         try {
             const { fundedFindings, balanceInfo } = await filterFindingsWithBalance(
                 findings,
@@ -438,7 +439,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                     setBalanceFilterProgress({ checked, total, funded });
                 }
             );
-            
+
             setFundedFindingIds(new Set(fundedFindings.map(f => f.id)));
             setBalanceInfoCache(balanceInfo);
         } catch (e) {
@@ -448,11 +449,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             setBalanceFilterProgress(null);
         }
     }, []);
-    
+
     // Toggle balance filter - triggers scan if enabling
     const handleBalanceFilterToggle = useCallback(async (enabled: boolean) => {
         setOnlyShowWithBalance(enabled);
-        
+
         if (enabled) {
             const findings = liveFindings.length > 0 ? liveFindings : (githubResult?.findings || []);
             if (findings.length > 0 && fundedFindingIds.size === 0) {
@@ -474,29 +475,29 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
     // Handle local directory scan (Electron only)
     const handleLocalScan = useCallback(async () => {
         console.log('[CodeScanner] handleLocalScan called, path:', localPath);
-        
+
         if (!localPath) {
             alert('Please enter a directory path');
             return;
         }
-        
+
         // Check if IPC is available
-        const hasIPC = typeof window !== 'undefined' && 
-            'ipcRenderer' in window && 
+        const hasIPC = typeof window !== 'undefined' &&
+            'ipcRenderer' in window &&
             typeof (window as any).ipcRenderer?.invoke === 'function';
-        
+
         console.log('[CodeScanner] IPC available:', hasIPC);
-        
+
         if (!hasIPC) {
             setError('Local scanning requires Electron desktop app. IPC not available.');
             return;
         }
-        
+
         setIsScanning(true);
         setLocalResult(null);
         setProgress(null);
         setError(null);
-        
+
         try {
             console.log('[CodeScanner] Creating scanner for:', localPath);
             const scanner = new SASTScanner({
@@ -507,7 +508,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 },
             });
             scannerRef.current = scanner;
-            
+
             console.log('[CodeScanner] Starting scan...');
             const result = await scanner.scanDirectory(localPath);
             console.log('[CodeScanner] Scan complete:', result);
@@ -525,11 +526,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
     // Handle paste content scan
     const handlePasteScan = useCallback(() => {
         if (!pasteContent.trim()) return;
-        
+
         setIsScanning(true);
         setPasteFindings([]);
         setError(null);
-        
+
         try {
             const findings = scanContent(pasteContent, pasteFilename);
             setPasteFindings(findings);
@@ -545,7 +546,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
     const handleGitHubScan = useCallback(async () => {
         // Check if doing direct repo scan
         const isDirectRepoScan = directRepoScan.trim().length > 0;
-        
+
         if (!isDirectRepoScan) {
             const searchQuery = githubQuery || (selectedDork ? SECRET_DORKS[selectedDork as keyof typeof SECRET_DORKS]?.[0] : '');
             if (!searchQuery && !selectedDork) {
@@ -553,21 +554,21 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 return;
             }
         }
-        
+
         setIsScanning(true);
         setGithubResult(null);
         setLiveFindings([]); // Clear previous live findings
         setProgress(null);
         setError(null);
         setShowErrors(true); // Reset error visibility for new scan
-        
+
         // Check if we have a token for GitHub API
         if (!githubToken) {
             setError('GitHub token is required for code search. The GitHub Code Search API requires authentication.');
             setIsScanning(false);
             return;
         }
-        
+
         try {
             const scanner = new GitHubScanner({
                 token: githubToken,
@@ -587,9 +588,9 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 },
             });
             scannerRef.current = scanner;
-            
+
             let result: GitHubScanResult;
-            
+
             if (isDirectRepoScan) {
                 // Direct repo scan - scan a specific repository
                 result = await scanner.scanRepository({
@@ -601,9 +602,9 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 const searchQuery = githubQuery || (selectedDork ? SECRET_DORKS[selectedDork as keyof typeof SECRET_DORKS]?.[0] : '');
                 result = await scanner.searchForSecrets({ query: searchQuery });
             }
-            
+
             setGithubResult(result);
-            
+
             if (result.errors && result.errors.length > 0) {
                 setError(result.errors.map(e => e.message).join('\n'));
             }
@@ -663,11 +664,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
             }
             return;
         }
-        
+
         let content: string;
         let filename: string;
         let mimeType: string;
-        
+
         if (activeTab === 'github' && githubResult) {
             switch (format) {
                 case 'html':
@@ -707,7 +708,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
         } else {
             return;
         }
-        
+
         const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -719,48 +720,48 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
 
     // Filter findings by severity, type, and balance
     const filterFindings = useCallback((findings: SASTFinding[] | GitHubSecretFinding[]) => {
-        let filtered = findings;
-        
+        let filtered: (SASTFinding | GitHubSecretFinding)[] = findings;
+
         // Filter by severity
         if (severityFilter !== 'all') {
             filtered = filtered.filter(f => f.severity === severityFilter);
         }
-        
+
         // Filter out generic "Potential Secret" if hideGeneric is enabled
         if (hideGeneric) {
             filtered = filtered.filter(f => {
                 const secretType = 'secretType' in f ? f.secretType : '';
-                return secretType !== 'Potential Secret' && 
-                       secretType !== 'Base64 Encoded Secret' &&
-                       !secretType.includes('Potential');
+                return secretType !== 'Potential Secret' &&
+                    secretType !== 'Base64 Encoded Secret' &&
+                    !secretType.includes('Potential');
             });
         }
-        
+
         // Filter to only show findings with funded wallets
         if (onlyShowWithBalance && fundedFindingIds.size > 0) {
             filtered = filtered.filter(f => fundedFindingIds.has(f.id));
         }
-        
-        return filtered;
+
+        return filtered as any;
     }, [severityFilter, hideGeneric, onlyShowWithBalance, fundedFindingIds]);
 
     // Render SAST finding
     const renderSASTFinding = (finding: SASTFinding) => {
         const isExpanded = expandedFindings.has(finding.id);
-        
+
         return (
-            <div 
+            <div
                 key={finding.id}
                 className={`border rounded-lg overflow-hidden ${SEVERITY_BG[finding.severity]}`}
             >
-                <div 
+                <div
                     className="p-4 cursor-pointer flex items-start gap-3"
                     onClick={() => toggleFinding(finding.id)}
                 >
                     <div className={`mt-0.5 ${SEVERITY_COLORS[finding.severity]}`}>
                         {CATEGORY_ICONS[finding.category] || <AlertCircle className="w-4 h-4" />}
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                             <span className={`font-medium ${textPrimary}`}>{finding.title}</span>
@@ -771,29 +772,29 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 {finding.confidence} confidence
                             </span>
                         </div>
-                        
+
                         <div className={`text-sm font-mono ${textSecondary}`}>
                             {finding.location.file}:{finding.location.line}
                         </div>
                     </div>
-                    
+
                     {isExpanded ? (
                         <ChevronUp className={`w-5 h-5 ${textSecondary}`} />
                     ) : (
                         <ChevronDown className={`w-5 h-5 ${textSecondary}`} />
                     )}
                 </div>
-                
+
                 {isExpanded && (
                     <div className={`px-4 pb-4 space-y-3 border-t ${borderColor}`}>
                         <div className="pt-3">
                             <p className={`text-sm ${textSecondary}`}>{finding.description}</p>
                         </div>
-                        
+
                         <div className={`${darkMode ? 'bg-gray-900/50' : 'bg-gray-100'} rounded-lg p-3 font-mono text-sm overflow-x-auto`}>
                             <pre className={textSecondary} style={{ whiteSpace: 'pre-wrap' }}>{finding.location.snippet}</pre>
                         </div>
-                        
+
                         {finding.location.context && (
                             <div>
                                 <div className={`text-xs ${textMuted} mb-1`}>Context:</div>
@@ -804,7 +805,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </div>
                             </div>
                         )}
-                        
+
                         <div className="flex flex-wrap gap-2 text-xs">
                             {finding.cwe?.map(cwe => (
                                 <a
@@ -826,7 +827,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </span>
                             ))}
                         </div>
-                        
+
                         {finding.remediation && (
                             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3">
                                 <div className="flex items-center gap-2 text-emerald-400 font-medium text-sm mb-1">
@@ -836,7 +837,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 <p className={`text-sm ${textSecondary}`}>{finding.remediation}</p>
                             </div>
                         )}
-                        
+
                         <div className="flex gap-2">
                             <button
                                 onClick={(e) => {
@@ -859,20 +860,20 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
         const isExpanded = expandedFindings.has(finding.id);
         const isCrypto = isCryptoFinding(finding);
         const balanceCheck = balanceChecks[finding.id];
-        
+
         return (
-            <div 
+            <div
                 key={finding.id}
                 className={`border rounded-lg overflow-hidden ${SEVERITY_BG[finding.severity]}`}
             >
-                <div 
+                <div
                     className="p-4 cursor-pointer flex items-start gap-3"
                     onClick={() => toggleFinding(finding.id)}
                 >
                     <div className={`mt-0.5 ${SEVERITY_COLORS[finding.severity]}`}>
                         <Key className="w-4 h-4" />
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <span className={`font-medium ${textPrimary}`}>{finding.secretType}</span>
@@ -880,7 +881,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 {finding.severity}
                             </span>
                             {/* Balance indicator - from individual check */}
-                            {balanceCheck && balanceCheck !== 'loading' && balanceCheck !== 'error' && balanceCheck.isLive && (
+                            {balanceCheck && balanceCheck !== 'loading' && balanceCheck !== 'error' && (('isLive' in balanceCheck && balanceCheck.isLive) || ('hasValue' in balanceCheck && balanceCheck.hasValue)) && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-400 flex items-center gap-1">
                                     <DollarSign className="w-3 h-3" />
                                     HAS FUNDS
@@ -894,7 +895,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </span>
                             )}
                         </div>
-                        
+
                         <div className="flex items-center gap-2 flex-wrap">
                             <a
                                 href={finding.repository.url}
@@ -920,14 +921,14 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                             )}
                         </div>
                     </div>
-                    
+
                     {isExpanded ? (
                         <ChevronUp className={`w-5 h-5 ${textSecondary}`} />
                     ) : (
                         <ChevronDown className={`w-5 h-5 ${textSecondary}`} />
                     )}
                 </div>
-                
+
                 {isExpanded && (
                     <div className={`px-4 pb-4 space-y-3 border-t ${borderColor}`}>
                         <div className="pt-3">
@@ -943,11 +944,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 {finding.match.line && ` (line ${finding.match.line})`}
                             </div>
                         </div>
-                        
+
                         <div className={`${darkMode ? 'bg-gray-900/50' : 'bg-gray-100'} rounded-lg p-3 font-mono text-sm overflow-x-auto`}>
                             <pre className={textSecondary} style={{ whiteSpace: 'pre-wrap' }}>{finding.match.snippet}</pre>
                         </div>
-                        
+
                         <div className="flex gap-2 flex-wrap">
                             <a
                                 href={finding.file.url}
@@ -967,7 +968,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                             >
                                 <Copy className="w-3 h-3" /> Copy URL
                             </button>
-                            
+
                             {/* Balance Check Button - shown for crypto findings */}
                             {isCrypto && (
                                 <button
@@ -993,22 +994,22 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     )}
                                 </button>
                             )}
-                            
+
                             {/* API Test Button - shown for API key findings */}
                             {(() => {
                                 const apiInfo = isAPIKeyFinding(finding);
                                 const apiTest = apiTests[finding.id];
                                 const secretTypeLower = finding.secretType.toLowerCase();
-                                
+
                                 // Show button for API-related findings (broader check)
-                                const showButton = apiInfo.canTest || 
+                                const showButton = apiInfo.canTest ||
                                     secretTypeLower.includes('api') ||
                                     secretTypeLower.includes('key') ||
                                     secretTypeLower.includes('token') ||
                                     secretTypeLower.includes('secret');
-                                
+
                                 if (!showButton) return null;
-                                
+
                                 return (
                                     <button
                                         type="button"
@@ -1032,14 +1033,13 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 );
                             })()}
                         </div>
-                        
+
                         {/* Balance Check Results */}
                         {balanceCheck && balanceCheck !== 'loading' && balanceCheck !== 'error' && (
-                            <div className={`mt-3 p-3 rounded-lg ${
-                                ('isLive' in balanceCheck && balanceCheck.isLive) || ('hasValue' in balanceCheck && balanceCheck.hasValue)
-                                    ? 'bg-emerald-500/20 border border-emerald-500/30' 
-                                    : `${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`
-                            }`}>
+                            <div className={`mt-3 p-3 rounded-lg ${('isLive' in balanceCheck && balanceCheck.isLive) || ('hasValue' in balanceCheck && balanceCheck.hasValue)
+                                ? 'bg-emerald-500/20 border border-emerald-500/30'
+                                : `${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`
+                                }`}>
                                 {/* Mnemonic Check Result */}
                                 {'mnemonic' in balanceCheck ? (
                                     <>
@@ -1049,11 +1049,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 {balanceCheck.hasValue ? 'LIVE MNEMONIC - Has Funds!' : 'No Balance Found'}
                                             </span>
                                         </div>
-                                        
+
                                         <div className={`text-xs font-mono ${textSecondary} mb-2`}>
                                             Mnemonic: {balanceCheck.mnemonic.substring(0, 30)}... ({balanceCheck.wordCount} words)
                                         </div>
-                                        
+
                                         {balanceCheck.derivedAddresses.map((derived, idx) => (
                                             <div key={idx} className="mt-2">
                                                 <div className={`text-xs ${textMuted} mb-1`}>
@@ -1062,7 +1062,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 <div className={`text-xs font-mono ${textSecondary}`}>
                                                     {derived.address}
                                                 </div>
-                                                
+
                                                 {derived.balanceResult?.isLive && (
                                                     <div className="mt-1 space-y-1">
                                                         {derived.balanceResult.balances
@@ -1086,7 +1086,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 )}
                                             </div>
                                         ))}
-                                        
+
                                         {!balanceCheck.hasValue && (
                                             <div className={`text-xs ${textMuted} mt-2`}>
                                                 Checked {balanceCheck.totalChains} chains across {balanceCheck.derivedAddresses.length} address(es)
@@ -1102,11 +1102,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 {balanceCheck.isLive ? 'LIVE WALLET - Has Funds!' : 'No Balance Found'}
                                             </span>
                                         </div>
-                                        
+
                                         <div className={`text-xs font-mono ${textSecondary} mb-2`}>
                                             Address: {balanceCheck.address}
                                         </div>
-                                        
+
                                         {balanceCheck.isLive && (
                                             <div className="space-y-1">
                                                 {balanceCheck.balances
@@ -1128,7 +1128,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                     ))}
                                             </div>
                                         )}
-                                        
+
                                         {!balanceCheck.isLive && (
                                             <div className={`text-xs ${textMuted}`}>
                                                 Checked {balanceCheck.totalChains} chains: {balanceCheck.balances.map(b => b.chainName).join(', ')}
@@ -1138,18 +1138,18 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 )}
                             </div>
                         )}
-                        
+
                         {balanceCheck === 'error' && (
                             <div className="mt-3 p-3 rounded-lg bg-red-500/20 border border-red-500/30">
                                 <span className="text-sm text-red-400">Failed to check balance. Try entering address manually.</span>
                             </div>
                         )}
-                        
+
                         {/* API Test Results */}
                         {(() => {
                             const apiTest = apiTests[finding.id];
                             if (!apiTest || apiTest === 'loading') return null;
-                            
+
                             if (apiTest === 'error') {
                                 return (
                                     <div className="mt-3 p-3 rounded-lg bg-red-500/20 border border-red-500/30">
@@ -1157,13 +1157,12 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     </div>
                                 );
                             }
-                            
+
                             return (
-                                <div className={`mt-3 p-3 rounded-lg ${
-                                    apiTest.isActive
-                                        ? 'bg-red-500/20 border border-red-500/30' 
-                                        : `${darkMode ? 'bg-gray-800' : 'bg-gray-100'} border ${borderColor}`
-                                }`}>
+                                <div className={`mt-3 p-3 rounded-lg ${apiTest.isActive
+                                    ? 'bg-red-500/20 border border-red-500/30'
+                                    : `${darkMode ? 'bg-gray-800' : 'bg-gray-100'} border ${borderColor}`
+                                    }`}>
                                     <div className="flex items-center gap-2 mb-2">
                                         {apiTest.isActive ? (
                                             <>
@@ -1181,13 +1180,13 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             </>
                                         )}
                                     </div>
-                                    
+
                                     {apiTest.error && (
                                         <div className={`text-xs ${textSecondary} mb-2`}>
                                             Error: {apiTest.error}
                                         </div>
                                     )}
-                                    
+
                                     {apiTest.isActive && apiTest.accountInfo && (
                                         <div className="space-y-1">
                                             {Object.entries(apiTest.accountInfo).map(([key, value]) => (
@@ -1200,7 +1199,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             ))}
                                         </div>
                                     )}
-                                    
+
                                     {apiTest.isActive && apiTest.permissions && apiTest.permissions.length > 0 && (
                                         <div className="mt-2">
                                             <span className={`text-xs ${textMuted}`}>Permissions: </span>
@@ -1209,7 +1208,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             </span>
                                         </div>
                                     )}
-                                    
+
                                     {apiTest.isActive && apiTest.balance && (
                                         <div className="mt-2">
                                             <span className={`text-xs ${textMuted}`}>Balance: </span>
@@ -1218,7 +1217,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             </span>
                                         </div>
                                     )}
-                                    
+
                                     {apiTest.rateLimit && (
                                         <div className="mt-2">
                                             <span className={`text-xs ${textMuted}`}>
@@ -1239,7 +1238,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
     const renderSummary = (result: ScanResult | null, githubResult: GitHubScanResult | null) => {
         const summary = result?.summary || githubResult?.summary;
         if (!summary) return null;
-        
+
         return (
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
                 <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 text-center">
@@ -1284,33 +1283,30 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                 <div className="flex gap-1 p-1">
                     <button
                         onClick={() => { setActiveTab('paste'); setError(null); }}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            activeTab === 'paste'
-                                ? 'bg-cyan-500/20 text-cyan-500'
-                                : `${textSecondary} hover:${textPrimary}`
-                        }`}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'paste'
+                            ? 'bg-cyan-500/20 text-cyan-500'
+                            : `${textSecondary} hover:${textPrimary}`
+                            }`}
                     >
                         <Code className="w-4 h-4 inline-block mr-2" />
                         Paste Code
                     </button>
                     <button
                         onClick={() => { setActiveTab('local'); setError(null); }}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            activeTab === 'local'
-                                ? 'bg-cyan-500/20 text-cyan-500'
-                                : `${textSecondary} hover:${textPrimary}`
-                        }`}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'local'
+                            ? 'bg-cyan-500/20 text-cyan-500'
+                            : `${textSecondary} hover:${textPrimary}`
+                            }`}
                     >
                         <FolderOpen className="w-4 h-4 inline-block mr-2" />
                         Local Directory
                     </button>
                     <button
                         onClick={() => { setActiveTab('github'); setError(null); }}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            activeTab === 'github'
-                                ? 'bg-cyan-500/20 text-cyan-500'
-                                : `${textSecondary} hover:${textPrimary}`
-                        }`}
+                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'github'
+                            ? 'bg-cyan-500/20 text-cyan-500'
+                            : `${textSecondary} hover:${textPrimary}`
+                            }`}
                     >
                         <Github className="w-4 h-4 inline-block mr-2" />
                         GitHub Search
@@ -1336,7 +1332,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     </button>
                                 </div>
                                 <div className={`text-sm ${textSecondary} whitespace-pre-wrap max-h-32 overflow-y-auto`}>
-                                    {error.includes('rate limit') 
+                                    {error.includes('rate limit')
                                         ? 'Rate limit exceeded. Results shown are from queries that completed before the limit was hit. Try again in a few minutes.'
                                         : error}
                                 </div>
@@ -1360,19 +1356,19 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 (helps detect language-specific vulnerabilities)
                             </span>
                         </div>
-                        
+
                         <textarea
                             value={pasteContent}
                             onChange={(e) => setPasteContent(e.target.value)}
                             placeholder="Paste your code here to scan for vulnerabilities and secrets..."
                             className={`w-full h-64 px-4 py-3 ${bgInput} border ${borderColor} rounded-lg font-mono text-sm resize-none focus:outline-none focus:border-cyan-500`}
                         />
-                        
+
                         <div className="flex justify-between items-center">
                             <span className={`text-sm ${textSecondary}`}>
                                 {pasteContent.split('\n').length} lines
                             </span>
-                            
+
                             <button
                                 onClick={handlePasteScan}
                                 disabled={isScanning || !pasteContent.trim()}
@@ -1391,7 +1387,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 )}
                             </button>
                         </div>
-                        
+
                         {/* Paste Results */}
                         {pasteFindings.length > 0 && (
                             <div className="space-y-4 mt-6">
@@ -1401,13 +1397,13 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                         {pasteFindings.length} Finding{pasteFindings.length !== 1 ? 's' : ''}
                                     </h2>
                                 </div>
-                                
+
                                 <div className="space-y-3">
                                     {pasteFindings.map(finding => renderSASTFinding(finding))}
                                 </div>
                             </div>
                         )}
-                        
+
                         {pasteFindings.length === 0 && pasteContent.trim() && !isScanning && (
                             <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-lg p-6 text-center mt-6">
                                 <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
@@ -1433,7 +1429,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     className={`w-full px-4 py-2 ${bgInput} border ${borderColor} rounded-lg focus:outline-none focus:border-cyan-500`}
                                 />
                             </div>
-                            
+
                             <button
                                 onClick={async () => {
                                     try {
@@ -1451,7 +1447,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 <FolderOpen className="w-4 h-4" />
                                 Browse
                             </button>
-                            
+
                             {isScanning ? (
                                 <button
                                     onClick={handleAbort}
@@ -1471,12 +1467,12 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </button>
                             )}
                         </div>
-                        
+
                         <p className={`text-sm ${textSecondary} flex items-center gap-1`}>
                             <Info className="w-4 h-4" />
                             Select a directory to scan for secrets, API keys, and security vulnerabilities.
                         </p>
-                        
+
                         {progress && 'phase' in progress && (
                             <div className="mt-4">
                                 <div className="flex items-center justify-between text-sm mb-2">
@@ -1489,14 +1485,14 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     <span className="text-cyan-500">{progress.findingsCount} findings</span>
                                 </div>
                                 <div className={`h-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full overflow-hidden`}>
-                                    <div 
+                                    <div
                                         className="h-full bg-cyan-500 transition-all duration-300"
                                         style={{ width: `${progress.percentage}%` }}
                                     />
                                 </div>
                             </div>
                         )}
-                        
+
                         {/* Local Results */}
                         {localResult && (
                             <div className="space-y-4 mt-6">
@@ -1508,7 +1504,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 {localResult.filesScanned} files scanned • {localResult.linesScanned.toLocaleString()} lines • {(localResult.duration / 1000).toFixed(2)}s
                                             </p>
                                         </div>
-                                        
+
                                         <div className="flex items-center gap-2">
                                             <select
                                                 value={severityFilter}
@@ -1522,7 +1518,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 <option value="low">Low</option>
                                                 <option value="info">Info</option>
                                             </select>
-                                            
+
                                             <div className="flex gap-1">
                                                 <button
                                                     onClick={() => downloadReport('pdf')}
@@ -1548,27 +1544,26 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             </div>
                                         </div>
                                     </div>
-                                    
+
                                     {renderSummary(localResult, null)}
-                                    
+
                                     <div className="flex items-center gap-4 text-sm">
                                         <div className="flex items-center gap-2">
                                             <ShieldAlert className="w-4 h-4 text-red-400" />
                                             <span>Risk Score: </span>
-                                            <span className={`font-bold ${
-                                                localResult.summary.riskScore >= 75 ? 'text-red-500' :
+                                            <span className={`font-bold ${localResult.summary.riskScore >= 75 ? 'text-red-500' :
                                                 localResult.summary.riskScore >= 50 ? 'text-orange-500' :
-                                                localResult.summary.riskScore >= 25 ? 'text-yellow-500' :
-                                                'text-emerald-500'
-                                            }`}>
+                                                    localResult.summary.riskScore >= 25 ? 'text-yellow-500' :
+                                                        'text-emerald-500'
+                                                }`}>
                                                 {localResult.summary.riskScore}/100
                                             </span>
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div className="space-y-3">
-                                    {filterFindings(localResult.findings).map(finding => 
+                                    {filterFindings(localResult.findings).map(finding =>
                                         renderSASTFinding(finding as SASTFinding)
                                     )}
                                 </div>
@@ -1591,7 +1586,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     className={`w-full px-4 py-2 ${bgInput} border ${borderColor} rounded-lg focus:outline-none focus:border-cyan-500`}
                                 />
                             </div>
-                            
+
                             <div>
                                 <label className={`block text-sm ${textSecondary} mb-1`}>Or Select Preset</label>
                                 <select
@@ -1606,7 +1601,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </select>
                             </div>
                         </div>
-                        
+
                         <div className="mb-4">
                             <label className={`block text-sm ${textSecondary} mb-1`}>
                                 GitHub Token <span className="text-red-500">*</span> (required for code search)
@@ -1622,7 +1617,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 GitHub's Code Search API requires a personal access token. Create one at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-cyan-500 hover:underline">github.com/settings/tokens</a>
                             </p>
                         </div>
-                        
+
                         {/* Direct Repo Scan */}
                         <div className="mb-4">
                             <label className={`block text-sm ${textSecondary} mb-1`}>
@@ -1639,7 +1634,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 Enter a repo to scan directly instead of searching across all of GitHub
                             </p>
                         </div>
-                        
+
                         {/* Scan Options */}
                         <div className="mb-4 flex flex-wrap gap-4 items-center">
                             <label className={`flex items-center gap-2 text-sm ${textSecondary} cursor-pointer`}>
@@ -1651,7 +1646,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 />
                                 Active repos only
                             </label>
-                            
+
                             {activeReposOnly && (
                                 <div className="flex items-center gap-2">
                                     <span className={`text-sm ${textSecondary}`}>Last</span>
@@ -1668,20 +1663,20 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                     </select>
                                 </div>
                             )}
-                            
+
                             <span className={`text-xs ${textMuted}`}>
-                                {activeReposOnly 
-                                    ? `Skips repos not updated in ${maxRepoAgeDays} days` 
+                                {activeReposOnly
+                                    ? `Skips repos not updated in ${maxRepoAgeDays} days`
                                     : 'Shows all repos regardless of activity'}
                             </span>
                         </div>
-                        
+
                         <div className="flex justify-between items-center">
                             <p className="text-sm text-yellow-500 flex items-center gap-2">
                                 <AlertTriangle className="w-4 h-4" />
                                 Use responsibly. Don't abuse found credentials.
                             </p>
-                            
+
                             {isScanning ? (
                                 <button
                                     onClick={handleAbort}
@@ -1701,7 +1696,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </button>
                             )}
                         </div>
-                        
+
                         {progress && 'pagesSearched' in progress && (
                             <div className={`mt-4 text-sm ${textSecondary}`}>
                                 <div className="flex items-center gap-4">
@@ -1724,9 +1719,9 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                         Found {liveFindings.length} secrets (scanning...)
                                     </h2>
                                 </div>
-                                
+
                                 <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                                    {liveFindings.slice(0, 50).map(finding => 
+                                    {liveFindings.slice(0, 50).map(finding =>
                                         renderGitHubFinding(finding)
                                     )}
                                     {liveFindings.length > 50 && (
@@ -1737,7 +1732,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                 </div>
                             </div>
                         )}
-                        
+
                         {/* GitHub Results (Final) */}
                         {githubResult && !isScanning && (
                             <div className="space-y-4 mt-6">
@@ -1756,7 +1751,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 </span>
                                             </p>
                                         </div>
-                                        
+
                                         {/* Export Buttons */}
                                         <div className="flex gap-2">
                                             <button
@@ -1773,11 +1768,11 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             </button>
                                         </div>
                                     </div>
-                                    
+
                                     {/* Filters Row */}
                                     <div className={`flex items-center gap-4 py-3 px-3 rounded-lg ${darkMode ? 'bg-gray-900/50' : 'bg-gray-100'}`}>
                                         <span className={`text-xs font-medium uppercase tracking-wide ${textMuted}`}>Filters:</span>
-                                        
+
                                         <select
                                             value={severityFilter}
                                             onChange={(e) => setSeverityFilter(e.target.value as any)}
@@ -1788,9 +1783,9 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             <option value="high">High</option>
                                             <option value="medium">Medium</option>
                                         </select>
-                                        
+
                                         <div className={`h-4 w-px ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
-                                        
+
                                         <label className={`flex items-center gap-1.5 text-sm cursor-pointer hover:text-cyan-400 transition-colors ${hideGeneric ? 'text-cyan-400' : textSecondary}`}>
                                             <input
                                                 type="checkbox"
@@ -1800,9 +1795,9 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             />
                                             Hide Generic
                                         </label>
-                                        
+
                                         <div className={`h-4 w-px ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
-                                        
+
                                         <label className={`flex items-center gap-1.5 text-sm cursor-pointer hover:text-emerald-400 transition-colors ${onlyShowWithBalance ? 'text-emerald-400' : textSecondary}`}>
                                             <input
                                                 type="checkbox"
@@ -1824,7 +1819,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             )}
                                         </label>
                                     </div>
-                                    
+
                                     {/* Balance Filter Progress Banner */}
                                     {isFilteringByBalance && balanceFilterProgress && (
                                         <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-lg">
@@ -1838,7 +1833,7 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                         Found {balanceFilterProgress.funded} with funds so far
                                                     </p>
                                                     <div className="mt-1 h-1 bg-emerald-900 rounded-full overflow-hidden">
-                                                        <div 
+                                                        <div
                                                             className="h-full bg-emerald-500 transition-all duration-300"
                                                             style={{ width: `${(balanceFilterProgress.checked / balanceFilterProgress.total) * 100}%` }}
                                                         />
@@ -1847,14 +1842,14 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     {renderSummary(null, githubResult)}
-                                    
+
                                     {/* Filter chips - clickable to filter */}
                                     {githubResult.summary.mostCommonSecrets.length > 0 && (
                                         <div className="flex flex-wrap gap-2 mt-4">
                                             {githubResult.summary.mostCommonSecrets.slice(0, 8).map(s => (
-                                                <button 
+                                                <button
                                                     key={s.type}
                                                     onClick={() => {
                                                         // If it's a generic type, toggle hide
@@ -1862,11 +1857,10 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                             setHideGeneric(!hideGeneric);
                                                         }
                                                     }}
-                                                    className={`px-2 py-1 ${bgInput} rounded text-sm hover:opacity-80 transition-opacity ${
-                                                        (s.type === 'Potential Secret' || s.type === 'Base64 Encoded Secret') && hideGeneric
-                                                            ? 'opacity-50 line-through'
-                                                            : ''
-                                                    }`}
+                                                    className={`px-2 py-1 ${bgInput} rounded text-sm hover:opacity-80 transition-opacity ${(s.type === 'Potential Secret' || s.type === 'Base64 Encoded Secret') && hideGeneric
+                                                        ? 'opacity-50 line-through'
+                                                        : ''
+                                                        }`}
                                                 >
                                                     {s.type}: {s.count}
                                                 </button>
@@ -1874,13 +1868,13 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 {/* Filtered count info */}
                                 {(() => {
                                     const allFindings = githubResult.findings.length > 0 ? githubResult.findings : liveFindings;
                                     const filteredFindings = filterFindings(allFindings);
                                     const hiddenCount = allFindings.length - filteredFindings.length;
-                                    
+
                                     return (
                                         <>
                                             {hiddenCount > 0 && (
@@ -1889,14 +1883,14 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
                                                 </p>
                                             )}
                                             <div className="space-y-3">
-                                                {filteredFindings.map(finding => 
+                                                {filteredFindings.map(finding =>
                                                     renderGitHubFinding(finding as GitHubSecretFinding)
                                                 )}
                                             </div>
                                         </>
                                     );
                                 })()}
-                                
+
                                 {githubResult.findings.length === 0 && liveFindings.length === 0 && (
                                     <div className="bg-emerald-500/20 border border-emerald-500/30 rounded-lg p-6 text-center">
                                         <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />

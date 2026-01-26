@@ -153,7 +153,6 @@ const KNOWN_SIGNATURES: Record<string, string> = {
     '0xc87b56dd': 'tokenURI(uint256)',
     '0xe8a3d485': 'contractURI()',
     '0x2a55205a': 'royaltyInfo(uint256,uint256)',
-    '0x150b7a02': 'onERC721Received(address,address,uint256,bytes)',
     '0xd5abeb01': 'maxSupply()',
     '0xa035b1fe': 'price()',
     '0x55f804b3': 'setBaseURI(string)',
@@ -176,16 +175,16 @@ const KNOWN_SIGNATURES: Record<string, string> = {
 // Parse bytecode into opcodes
 export function disassemble(bytecode: string): Array<{ offset: number; opcode: string; operand?: string }> {
     const result: Array<{ offset: number; opcode: string; operand?: string }> = [];
-    
+
     // Remove 0x prefix
     const code = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
-    
+
     let i = 0;
     while (i < code.length) {
         const offset = i / 2;
         const byte = parseInt(code.slice(i, i + 2), 16);
         const op = OPCODES[byte];
-        
+
         if (op) {
             if (op.push) {
                 // PUSH operation - read operand
@@ -202,7 +201,7 @@ export function disassemble(bytecode: string): Array<{ offset: number; opcode: s
             i += 2;
         }
     }
-    
+
     return result;
 }
 
@@ -210,15 +209,15 @@ export function disassemble(bytecode: string): Array<{ offset: number; opcode: s
 export function extractSelectors(bytecode: string): string[] {
     const selectors: Set<string> = new Set();
     const code = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
-    
+
     // Look for PUSH4 followed by EQ pattern (function dispatcher)
     const push4Pattern = /63([a-fA-F0-9]{8})/g;
     let match;
-    
+
     while ((match = push4Pattern.exec(code)) !== null) {
         selectors.add('0x' + match[1].toLowerCase());
     }
-    
+
     return Array.from(selectors);
 }
 
@@ -243,7 +242,7 @@ export function analyzeBytecode(bytecode: string): {
 } {
     const code = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
     const warnings: string[] = [];
-    
+
     // Check for dangerous opcodes
     const hasSelfdestruct = code.includes('ff');
     const hasDelegatecall = code.includes('f4');
@@ -254,7 +253,7 @@ export function analyzeBytecode(bytecode: string): {
     const hasStaticCall = code.includes('fa');
     const hasSstore = code.includes('55');
     const hasSload = code.includes('54');
-    
+
     if (hasSelfdestruct) {
         warnings.push('Contract contains SELFDESTRUCT - can be destroyed permanently');
     }
@@ -267,10 +266,10 @@ export function analyzeBytecode(bytecode: string): {
     if (hasCreate2) {
         warnings.push('Contract uses CREATE2 - can deploy contracts to predetermined addresses');
     }
-    
+
     // Determine danger level
     let dangerLevel: 'critical' | 'high' | 'medium' | 'low' = 'low';
-    
+
     if (hasSelfdestruct || hasCallcode) {
         dangerLevel = 'critical';
     } else if (hasDelegatecall || hasCreate2) {
@@ -278,7 +277,7 @@ export function analyzeBytecode(bytecode: string): {
     } else if (hasCreate || hasCall) {
         dangerLevel = 'medium';
     }
-    
+
     return {
         hasSelfdestruct,
         hasDelegatecall,
@@ -299,14 +298,14 @@ export function decompile(bytecode: string, address: string): DecompiledContract
     const selectors = extractSelectors(bytecode);
     const analysis = analyzeBytecode(bytecode);
     const disasm = disassemble(bytecode);
-    
+
     // Build function list
     const functions: DecompiledFunction[] = selectors.map(selector => {
         const signature = identifySelector(selector);
         let name: string | undefined;
         let inputs: { type: string; name?: string }[] = [];
         let outputs: { type: string; name?: string }[] = [];
-        
+
         if (signature) {
             // Parse signature
             const match = signature.match(/^(\w+)\(([^)]*)\)(?:\s*returns\s*\(([^)]*)\))?$/);
@@ -329,11 +328,11 @@ export function decompile(bytecode: string, address: string): DecompiledContract
                 }
             }
         }
-        
+
         // Determine visibility and mutability from signature patterns
         let visibility: 'public' | 'external' | 'internal' | 'private' = 'external';
         let stateMutability: 'pure' | 'view' | 'nonpayable' | 'payable' = 'nonpayable';
-        
+
         if (name) {
             // Common view functions
             if (['balanceOf', 'totalSupply', 'allowance', 'owner', 'name', 'symbol', 'decimals', 'paused', 'getVotes'].includes(name)) {
@@ -344,7 +343,7 @@ export function decompile(bytecode: string, address: string): DecompiledContract
                 stateMutability = 'payable';
             }
         }
-        
+
         // Generate pseudocode
         let pseudocode = '';
         if (signature) {
@@ -357,7 +356,7 @@ export function decompile(bytecode: string, address: string): DecompiledContract
         } else {
             pseudocode = `function func_${selector.slice(2)}() external {\n    // Unknown function\n}`;
         }
-        
+
         return {
             selector,
             name,
@@ -369,11 +368,11 @@ export function decompile(bytecode: string, address: string): DecompiledContract
             pseudocode
         };
     });
-    
+
     // Extract storage slots (simplified)
     const storage: StorageSlot[] = [];
     let slotIndex = 0;
-    
+
     // Look for SLOAD/SSTORE with constant slot values
     for (let i = 0; i < disasm.length - 1; i++) {
         if (disasm[i].opcode.startsWith('PUSH') && disasm[i].operand) {
@@ -391,10 +390,10 @@ export function decompile(bytecode: string, address: string): DecompiledContract
             }
         }
     }
-    
+
     // Sort storage by slot
     storage.sort((a, b) => a.slot - b.slot);
-    
+
     // Extract events (LOG operations)
     const events: string[] = [];
     for (let i = 0; i < disasm.length; i++) {
@@ -408,17 +407,17 @@ export function decompile(bytecode: string, address: string): DecompiledContract
             }
         }
     }
-    
+
     // Generate full pseudocode
     let pseudocode = `// DECOMPILED CONTRACT\n`;
     pseudocode += `// Address: ${address}\n`;
     pseudocode += `// Bytecode size: ${(bytecode.length - 2) / 2} bytes\n`;
     pseudocode += `// Functions: ${functions.length}\n`;
     pseudocode += `// Storage slots used: ${storage.length}\n\n`;
-    
+
     pseudocode += `pragma solidity ^0.8.0;\n\n`;
     pseudocode += `contract Decompiled_${address.slice(2, 10)} {\n\n`;
-    
+
     // Storage variables
     if (storage.length > 0) {
         pseudocode += `    // Storage layout (${storage.length} slots)\n`;
@@ -427,7 +426,7 @@ export function decompile(bytecode: string, address: string): DecompiledContract
         }
         pseudocode += '\n';
     }
-    
+
     // Analysis warnings
     if (analysis.warnings.length > 0) {
         pseudocode += '    // ⚠️ WARNINGS:\n';
@@ -436,18 +435,18 @@ export function decompile(bytecode: string, address: string): DecompiledContract
         }
         pseudocode += '\n';
     }
-    
+
     // Functions
     for (const func of functions) {
         pseudocode += `    ${func.pseudocode}\n\n`;
     }
-    
+
     pseudocode += `}\n`;
-    
+
     // Calculate confidence based on how many functions we identified
     const identifiedCount = functions.filter(f => f.name).length;
     const confidence = functions.length > 0 ? (identifiedCount / functions.length) : 0;
-    
+
     return {
         address,
         functions,
@@ -467,17 +466,17 @@ export function compareBytecodes(bytecode1: string, bytecode2: string): {
 } {
     const selectors1 = extractSelectors(bytecode1);
     const selectors2 = extractSelectors(bytecode2);
-    
+
     const set1 = new Set(selectors1);
     const set2 = new Set(selectors2);
-    
+
     const matchingSelectors = selectors1.filter(s => set2.has(s));
     const uniqueTo1 = selectors1.filter(s => !set2.has(s));
     const uniqueTo2 = selectors2.filter(s => !set1.has(s));
-    
+
     const totalUnique = new Set([...selectors1, ...selectors2]).size;
     const similarity = totalUnique > 0 ? matchingSelectors.length / totalUnique : 0;
-    
+
     return {
         similarity,
         matchingSelectors,

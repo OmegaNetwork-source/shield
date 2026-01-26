@@ -803,7 +803,7 @@ export function createVulnerabilityFromTest(
 
     // Generate reproduction command
     let reproCommand = '';
-    const method = result.method || 'GET';
+    const method = (result as any).method || 'GET';
     const payloadEncoded = encodeURIComponent(result.payload || '');
 
     if (method === 'GET') {

@@ -1,4 +1,6 @@
+
 import React, { useCallback, useState, useRef, useEffect } from 'react';
+export { generateReport, generateHtmlReport, generateJsonReport, generateCsvReport, generateStigCkl, generateExecutiveSummary, generatePdfReport, downloadPdfReport } from '../scanner/reports';
 import ReactFlow, {
     Node,
     Edge,
@@ -22,16 +24,16 @@ import ReactFlow, {
     EdgeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { 
-    Server, 
-    Shield, 
-    Router, 
-    Network, 
-    Cloud, 
-    Database, 
-    Save, 
-    Download, 
-    Trash2, 
+import {
+    Server,
+    Shield,
+    Router,
+    Network,
+    Cloud,
+    Database,
+    Save,
+    Download,
+    Trash2,
     FileText,
     X,
     Square,
@@ -102,9 +104,9 @@ function EditableNode({ data, id, type, children, selected, onDelete }: { data: 
     };
 
     const handleResize = (_event: any, { width, height }: { width: number; height: number }) => {
-        setNodes((nds) => 
-            nds.map((node) => 
-                node.id === id 
+        setNodes((nds) =>
+            nds.map((node) =>
+                node.id === id
                     ? { ...node, width, height, data: { ...node.data, width, height } }
                     : node
             )
@@ -122,8 +124,8 @@ function EditableNode({ data, id, type, children, selected, onDelete }: { data: 
 
     return (
         <div className="relative group" style={containerStyle}>
-            <NodeResizer 
-                color="#3b82f6" 
+            <NodeResizer
+                color="#3b82f6"
                 isVisible={selected}
                 minWidth={100}
                 minHeight={60}
@@ -169,7 +171,7 @@ function EditableNode({ data, id, type, children, selected, onDelete }: { data: 
                         }}
                     />
                 ) : (
-                    <div 
+                    <div
                         className="px-1.5 py-0.5 bg-white/90 rounded shadow-sm cursor-text pointer-events-auto"
                         onClick={(e) => {
                             e.stopPropagation();
@@ -360,7 +362,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
     };
 
     const textStyle = {
-        fontSize: `${fontSize}px`,
+        fontSize: `${fontSize} px`,
         fontWeight: isBold ? 'bold' : 'normal',
         fontStyle: isItalic ? 'italic' : 'normal',
         textAlign: textAlign as 'left' | 'center' | 'right',
@@ -369,9 +371,9 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
     const { setNodes } = useReactFlow();
 
     const handleResize = (_event: any, { width, height }: { width: number; height: number }) => {
-        setNodes((nds) => 
-            nds.map((node) => 
-                node.id === id 
+        setNodes((nds) =>
+            nds.map((node) =>
+                node.id === id
                     ? { ...node, width, height, data: { ...node.data, width, height } }
                     : node
             )
@@ -382,8 +384,8 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
 
     return (
         <div className="relative group" style={{ width: data.width || 150, height: data.height || 80 }}>
-            <NodeResizer 
-                color="#3b82f6" 
+            <NodeResizer
+                color="#3b82f6"
                 isVisible={selected}
                 minWidth={150}
                 minHeight={80}
@@ -406,7 +408,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                 {isEditing ? (
                     <div className="w-full h-full">
                         {/* Formatting Toolbar */}
-                        <div 
+                        <div
                             className="formatting-toolbar mb-2 flex items-center gap-1 p-1 bg-white rounded border border-gray-300 flex-wrap"
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -449,7 +451,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                                     e.preventDefault();
                                     toggleBold();
                                 }}
-                                className={`p-1 rounded ${isBold ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+                                className={`p - 1 rounded ${isBold ? 'bg-blue-100' : 'hover:bg-gray-100'} `}
                                 title="Bold"
                                 type="button"
                             >
@@ -461,7 +463,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                                     e.preventDefault();
                                     toggleItalic();
                                 }}
-                                className={`p-1 rounded ${isItalic ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+                                className={`p - 1 rounded ${isItalic ? 'bg-blue-100' : 'hover:bg-gray-100'} `}
                                 title="Italic"
                                 type="button"
                             >
@@ -474,7 +476,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                                     e.preventDefault();
                                     applyTextAlign('left');
                                 }}
-                                className={`p-1 rounded ${textAlign === 'left' ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+                                className={`p - 1 rounded ${textAlign === 'left' ? 'bg-blue-100' : 'hover:bg-gray-100'} `}
                                 title="Align left"
                                 type="button"
                             >
@@ -486,7 +488,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                                     e.preventDefault();
                                     applyTextAlign('center');
                                 }}
-                                className={`p-1 rounded ${textAlign === 'center' ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+                                className={`p - 1 rounded ${textAlign === 'center' ? 'bg-blue-100' : 'hover:bg-gray-100'} `}
                                 title="Align center"
                                 type="button"
                             >
@@ -498,7 +500,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                                     e.preventDefault();
                                     applyTextAlign('right');
                                 }}
-                                className={`p-1 rounded ${textAlign === 'right' ? 'bg-blue-100' : 'hover:bg-gray-100'}`}
+                                className={`p - 1 rounded ${textAlign === 'right' ? 'bg-blue-100' : 'hover:bg-gray-100'} `}
                                 title="Align right"
                                 type="button"
                             >
@@ -539,7 +541,7 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                         />
                     </div>
                 ) : (
-                    <div 
+                    <div
                         ref={contentRef}
                         className="w-full h-full cursor-text text-gray-700 whitespace-pre-wrap select-text"
                         style={textStyle}
@@ -752,9 +754,9 @@ function BoundaryNode({ data, id, selected }: { data: any; id: string; selected?
 
     const handleResize = (_event: any, { width, height }: { width: number; height: number }) => {
         setDimensions({ width, height });
-        setNodes((nds) => 
-            nds.map((node) => 
-                node.id === id 
+        setNodes((nds) =>
+            nds.map((node) =>
+                node.id === id
                     ? { ...node, width, height, data: { ...node.data, width, height } }
                     : node
             )
@@ -765,8 +767,8 @@ function BoundaryNode({ data, id, selected }: { data: any; id: string; selected?
 
     return (
         <div className="relative group" style={{ width: dimensions.width, height: dimensions.height }}>
-            <NodeResizer 
-                color="#3b82f6" 
+            <NodeResizer
+                color="#3b82f6"
                 isVisible={selected}
                 minWidth={200}
                 minHeight={150}
@@ -804,7 +806,7 @@ function BoundaryNode({ data, id, selected }: { data: any; id: string; selected?
                         onClick={(e) => e.stopPropagation()}
                     />
                 ) : (
-                    <div 
+                    <div
                         className="absolute top-2 left-2 px-2 py-1 text-sm font-semibold text-gray-700 bg-white/90 rounded cursor-pointer hover:bg-white"
                         onClick={(e) => {
                             e.stopPropagation();
@@ -825,7 +827,7 @@ function IconBoxNode({ data, id, selected }: { data: any; id: string; selected?:
     const handleDelete = () => {
         deleteElements({ nodes: [{ id }] });
     };
-    
+
     const deviceTypes = data.deviceTypes || [];
     const deviceTypeCounts = data.deviceTypeCounts || {};
     const deviceMap: Record<string, { icon: any; label: string; color: string }> = {
@@ -866,8 +868,8 @@ function IconBoxNode({ data, id, selected }: { data: any; id: string; selected?:
 
     return (
         <div className="relative group" style={containerStyle}>
-            <NodeResizer 
-                color="#3b82f6" 
+            <NodeResizer
+                color="#3b82f6"
                 isVisible={selected}
                 minWidth={200}
                 minHeight={100}
@@ -897,7 +899,7 @@ function IconBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                         return (
                             <div key={type} className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
-                                    <Icon size={16} className={`text-${device.color}-600`} />
+                                    <Icon size={16} className={`text - ${device.color} -600`} />
                                     <span className="text-xs text-gray-700">{device.label}</span>
                                 </div>
                                 <span className="text-xs font-semibold text-gray-500">({count})</span>
@@ -1000,7 +1002,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
                 const selectedIds = nodes.filter(n => n.selected).map(n => n.id);
                 if (selectedIds.length === 0) return;
-                
+
                 setNodes((nds) => nds.filter(n => !selectedIds.includes(n.id)));
                 setEdges((eds) => eds.filter(e => !selectedIds.includes(e.source) && !selectedIds.includes(e.target)));
             }
@@ -1037,17 +1039,17 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
 
     const handleLineStyleChoice = (isDashed: boolean) => {
         if (!pendingConnection) return;
-        
-        const edgeStyle = isDashed 
+
+        const edgeStyle = isDashed
             ? { strokeWidth: 2, strokeDasharray: '5,5' }
             : { strokeWidth: 2, strokeDasharray: '0' }; // Explicitly set to 0 for solid line
-        
-        setEdges((eds) => addEdge({ 
-            ...pendingConnection, 
+
+        setEdges((eds) => addEdge({
+            ...pendingConnection,
             animated: false, // Disable animation - lines should not move
-            style: edgeStyle 
+            style: edgeStyle
         }, eds));
-        
+
         setShowLineStyleModal(false);
         setPendingConnection(null);
     };
@@ -1105,7 +1107,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                     <div
                         style={{
                             position: 'absolute',
-                            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+                            transform: `translate(-50 %, -50 %) translate(${labelX}px, ${labelY}px)`,
                             pointerEvents: 'all',
                             fontSize: '12px',
                             fontWeight: 500,
@@ -1127,11 +1129,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                         cancelEdgeLabelEdit();
                                     }
                                 }}
-                                className={`px-1.5 py-0.5 text-xs border border-blue-500 outline-none text-center ${
-                                    darkMode 
-                                        ? 'bg-gray-800 text-white border-blue-400' 
-                                        : 'bg-white text-gray-900 border-blue-500'
-                                }`}
+                                className={`px - 1.5 py - 0.5 text - xs border border - blue - 500 outline - none text - center ${darkMode
+                                    ? 'bg-gray-800 text-white border-blue-400'
+                                    : 'bg-white text-gray-900 border-blue-500'
+                                    } `}
                                 onClick={(e) => e.stopPropagation()}
                                 autoFocus
                                 style={{ minWidth: '50px', borderRadius: '2px' }}
@@ -1141,8 +1142,8 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                 className="text-xs text-center font-medium select-none"
                                 style={{
                                     color: darkMode ? '#ffffff' : '#1f2937',
-                                    textShadow: darkMode 
-                                        ? '0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7)' 
+                                    textShadow: darkMode
+                                        ? '0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7)'
                                         : '0 1px 2px rgba(255,255,255,1), 0 0 4px rgba(255,255,255,0.8)',
                                     padding: '1px 4px',
                                 }}
@@ -1181,7 +1182,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             setNodeCounter(prev => ({ ...prev, [type]: count }));
 
             const newNode: Node = {
-                id: `${type}-${Date.now()}`,
+                id: `${type} -${Date.now()} `,
                 type,
                 position,
                 data: { label: 'text' }, // Start with "text" as default label
@@ -1204,7 +1205,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
 
     const toggleFullscreen = () => {
         if (!networkDiagramContainer.current) return;
-        
+
         if (!isFullscreen) {
             // Enter fullscreen - only the network diagram component
             const element = networkDiagramContainer.current;
@@ -1277,7 +1278,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
         }
 
         const selectedNodes = nodes.filter(n => selectedNodesForAlign.has(n.id));
-        
+
         if (alignDirection === 'horizontal') {
             // Align horizontally (same Y position) - use the first selected node's Y as reference
             const referenceY = selectedNodes[0].position.y;
@@ -1318,7 +1319,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
 
     const saveDiagram = () => {
         const diagramData = {
-            id: selectedDiagram || `diagram-${Date.now()}`,
+            id: selectedDiagram || `diagram - ${Date.now()} `,
             name: diagramName,
             nodes,
             edges,
@@ -1376,54 +1377,54 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             const zip = new JSZip();
 
             // Create [Content_Types].xml
-            const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-    <Default Extension="xml" ContentType="application/xml"/>
-    <Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml"/>
-    <Override PartName="/visio/pages/_rels/pages.xml.rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-    <Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml"/>
-    <Override PartName="/visio/document.xml" ContentType="application/vnd.ms-visio.main+xml"/>
-    <Override PartName="/visio/_rels/document.xml.rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-    <Override PartName="/visio/windows.xml" ContentType="application/vnd.ms-visio.windows+xml"/>
-    <Override PartName="/visio/pages/_rels/pages.xml.rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-</Types>`;
+            const contentTypes = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+        <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+        <Default Extension="xml" ContentType="application/xml" />
+        <Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml" />
+        <Override PartName="/visio/pages/_rels/pages.xml.rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+        <Override PartName="/visio/pages/pages.xml" ContentType="application/vnd.ms-visio.pages+xml" />
+        <Override PartName="/visio/document.xml" ContentType="application/vnd.ms-visio.main+xml" />
+        <Override PartName="/visio/_rels/document.xml.rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+        <Override PartName="/visio/windows.xml" ContentType="application/vnd.ms-visio.windows+xml" />
+        <Override PartName="/visio/pages/_rels/pages.xml.rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+    </Types>`;
             zip.file('[Content_Types].xml', contentTypes);
 
             // Create _rels/.rels
-            const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/document" Target="visio/document.xml"/>
-    <Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="visio/pages/pages.xml"/>
-</Relationships>`;
+            const rels = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/document" Target="visio/document.xml" />
+        <Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="visio/pages/pages.xml" />
+    </Relationships>`;
             zip.folder('_rels')!.file('.rels', rels);
 
             // Create visio/document.xml
-            const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<VisioDocument xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
-    <DocumentSettings/>
-    <Colors/>
-    <FaceNames/>
-    <StyleSheets/>
-    <DocumentSheet/>
-    <Pages/>
-    <Windows/>
-</VisioDocument>`;
+            const documentXml = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <VisioDocument xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xml:space="preserve">
+        <DocumentSettings />
+        <Colors />
+        <FaceNames />
+        <StyleSheets />
+        <DocumentSheet />
+        <Pages />
+        <Windows />
+    </VisioDocument>`;
             zip.folder('visio')!.file('document.xml', documentXml);
 
             // Create visio/_rels/document.xml.rels
-            const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="pages/pages.xml"/>
-    <Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/windows" Target="windows.xml"/>
-</Relationships>`;
+            const docRels = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="pages/pages.xml" />
+        <Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/windows" Target="windows.xml" />
+    </Relationships>`;
             zip.folder('visio')!.folder('_rels')!.file('document.xml.rels', docRels);
 
             // Create visio/windows.xml
-            const windows = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Windows xmlns="http://schemas.microsoft.com/office/visio/2012/main">
-    <Window ID="0" WindowType="Drawing" WindowState="1073741824"/>
-</Windows>`;
+            const windows = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <Windows xmlns="http://schemas.microsoft.com/office/visio/2012/main">
+        <Window ID="0" WindowType="Drawing" WindowState="1073741824" />
+    </Windows>`;
             zip.folder('visio')!.file('windows.xml', windows);
 
             // Create visio/pages/pages.xml with actual diagram content
@@ -1437,7 +1438,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                 const y = node.position.y;
                 const width = 100;
                 const height = 60;
-                
+
                 // Map node types to Visio shapes
                 let shapeType = 'Rectangle';
                 if (node.type === 'server') shapeType = 'Server';
@@ -1455,11 +1456,11 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                 else if (node.type === 'printer') shapeType = 'Printer';
                 else if (node.type === 'personalbox') shapeType = 'Personal Box';
                 else if (node.type === 'dashedboundary') shapeType = 'Dashed Boundary';
-                
-                const label = node.data?.label || `${node.type} ${index + 1}`;
-                
+
+                const label = node.data?.label || `${node.type} ${index + 1} `;
+
                 shapesXml += `
-    <Shape ID="${index + 2}" Type="Shape" Master="0">
+    < Shape ID = "${index + 2}" Type = "Shape" Master = "0" >
         <Cell N="PinX" V="${x}"/>
         <Cell N="PinY" V="${y}"/>
         <Cell N="Width" V="${width}"/>
@@ -1467,7 +1468,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
         <Cell N="LocPinX" V="${width / 2}"/>
         <Cell N="LocPinY" V="${height / 2}"/>
         <Text>${label}</Text>
-    </Shape>`;
+    </Shape > `;
             });
 
             // Convert edges to Visio connectors
@@ -1482,30 +1483,30 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                 const y2 = targetNode.position.y;
 
                 connectorsXml += `
-    <Shape ID="${nodes.length + index + 2}" Type="Shape" Master="1">
+    < Shape ID = "${nodes.length + index + 2}" Type = "Shape" Master = "1" >
         <Cell N="BeginX" V="${x1}"/>
         <Cell N="BeginY" V="${y1}"/>
         <Cell N="EndX" V="${x2}"/>
         <Cell N="EndY" V="${y2}"/>
-    </Shape>`;
+    </Shape > `;
             });
 
-            const pages = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Pages xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-    <Page ID="${pageId}" NameU="${diagramName}" IsCustomNameU="1">
-        <PageSheet>
-            <Cell N="PageWidth" V="11"/>
-            <Cell N="PageHeight" V="8.5"/>
-        </PageSheet>
-        <Shapes>${shapesXml}${connectorsXml}
-        </Shapes>
-    </Page>
-</Pages>`;
+            const pages = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <Pages xmlns="http://schemas.microsoft.com/office/visio/2012/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <Page ID="${pageId}" NameU="${diagramName}" IsCustomNameU="1">
+            <PageSheet>
+                <Cell N="PageWidth" V="11" />
+                <Cell N="PageHeight" V="8.5" />
+            </PageSheet>
+            <Shapes>${shapesXml}${connectorsXml}
+            </Shapes>
+        </Page>
+    </Pages>`;
             zip.folder('visio')!.folder('pages')!.file('pages.xml', pages);
 
             // Create visio/pages/_rels/pages.xml.rels
-            const pagesRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
+            const pagesRels = `<? xml version = "1.0" encoding = "UTF-8" standalone = "yes" ?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships" />`;
             zip.folder('visio')!.folder('pages')!.folder('_rels')!.file('pages.xml.rels', pagesRels);
 
             // Generate and download the .vsdx file
@@ -1520,7 +1521,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             alert(`Successfully exported to Visio format!`);
         } catch (error: any) {
             console.error('Visio export error:', error);
-            alert(`Error exporting to Visio: ${error.message}`);
+            alert(`Error exporting to Visio: ${error.message} `);
         }
     };
 
@@ -1665,35 +1666,35 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
     const loadTemplate = (templateKey: keyof typeof templates) => {
         const template = templates[templateKey];
         if (!template) return;
-        
+
         if (nodes.length > 0 || edges.length > 0) {
             if (!window.confirm('This will replace your current diagram. Continue?')) {
                 return;
             }
         }
-        
+
         // Generate unique IDs for nodes and edges to avoid conflicts
         const nodeIdMap: Record<string, string> = {};
         const newNodes = template.nodes.map(node => {
-            const newId = `${node.id}-${Date.now()}`;
+            const newId = `${node.id} -${Date.now()} `;
             nodeIdMap[node.id] = newId;
             return {
                 ...node,
                 id: newId,
             };
         });
-        
+
         const newEdges = template.edges.map(edge => {
             const newSource = nodeIdMap[edge.source] || edge.source;
             const newTarget = nodeIdMap[edge.target] || edge.target;
             return {
                 ...edge,
-                id: `${edge.id}-${Date.now()}`,
+                id: `${edge.id} -${Date.now()} `,
                 source: newSource,
                 target: newTarget,
             };
         });
-        
+
         setNodes(newNodes);
         setEdges(newEdges);
         setDiagramName(template.name);
@@ -1704,9 +1705,9 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
         // Find all device types and count them (excluding textbox, boundary, dashedboundary, iconbox)
         const deviceTypeCounts: Record<string, number> = {};
         nodes.forEach(node => {
-            if (node.type && 
-                node.type !== 'textbox' && 
-                node.type !== 'boundary' && 
+            if (node.type &&
+                node.type !== 'textbox' &&
+                node.type !== 'boundary' &&
                 node.type !== 'dashedboundary' &&
                 node.type !== 'iconbox') {
                 deviceTypeCounts[node.type] = (deviceTypeCounts[node.type] || 0) + 1;
@@ -1746,10 +1747,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
         const iconBoxY = maxY + padding;
 
         const iconBoxNode: Node = {
-            id: `iconbox-${Date.now()}`,
+            id: `iconbox - ${Date.now()} `,
             type: 'iconbox',
             position: { x: iconBoxX, y: iconBoxY },
-            data: { 
+            data: {
                 label: 'Legend',
                 deviceTypes: deviceTypes,
                 deviceTypeCounts: deviceTypeCounts,
@@ -1785,9 +1786,9 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
         // Count devices by type (excluding non-hardware nodes)
         const deviceCounts: Record<string, number> = {};
         nodes.forEach(node => {
-            if (node.type && 
-                node.type !== 'textbox' && 
-                node.type !== 'boundary' && 
+            if (node.type &&
+                node.type !== 'textbox' &&
+                node.type !== 'boundary' &&
                 node.type !== 'dashedboundary' &&
                 node.type !== 'iconbox' &&
                 deviceMap[node.type]) {
@@ -1825,22 +1826,22 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
     };
 
     const updateHardwareListField = (deviceType: string, field: string, value: string) => {
-        setHardwareList(prev => prev.map(item => 
-            item.deviceType === deviceType 
+        setHardwareList(prev => prev.map(item =>
+            item.deviceType === deviceType
                 ? { ...item, [field]: value }
                 : item
         ));
     };
 
     const updateHardwareListCustomField = (deviceType: string, columnId: string, value: string) => {
-        setHardwareList(prev => prev.map(item => 
-            item.deviceType === deviceType 
-                ? { 
-                    ...item, 
-                    customFields: { 
-                        ...item.customFields, 
-                        [columnId]: value 
-                    } 
+        setHardwareList(prev => prev.map(item =>
+            item.deviceType === deviceType
+                ? {
+                    ...item,
+                    customFields: {
+                        ...item.customFields,
+                        [columnId]: value
+                    }
                 }
                 : item
         ));
@@ -1848,9 +1849,9 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
 
     const addCustomColumn = () => {
         if (newColumnName && newColumnName.trim()) {
-            const newColumn = { 
-                id: `custom-${Date.now()}`, 
-                name: newColumnName.trim() 
+            const newColumn = {
+                id: `custom - ${Date.now()} `,
+                name: newColumnName.trim()
             };
             setCustomColumns(prev => [...prev, newColumn]);
             // Initialize custom field for all hardware items
@@ -1886,13 +1887,13 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
 
     const exportHardwareListToCSV = () => {
         const headers = [
-            'Device Type', 
-            'Quantity', 
-            'Device Name', 
-            'Component Type', 
-            'Manufacturer', 
-            'MAC Address', 
-            'IP Address', 
+            'Device Type',
+            'Quantity',
+            'Device Name',
+            'Component Type',
+            'Manufacturer',
+            'MAC Address',
+            'IP Address',
             'Point of Contact',
             ...customColumns.map(col => col.name)
         ];
@@ -1927,13 +1928,13 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
 
     const copyHardwareList = () => {
         const headers = [
-            'Device Type', 
-            'Quantity', 
-            'Device Name', 
-            'Component Type', 
-            'Manufacturer', 
-            'MAC Address', 
-            'IP Address', 
+            'Device Type',
+            'Quantity',
+            'Device Name',
+            'Component Type',
+            'Manufacturer',
+            'MAC Address',
+            'IP Address',
             'Point of Contact',
             ...customColumns.map(col => col.name)
         ];
@@ -2035,7 +2036,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             label: string;
             color: string;
             quantity: number;
-            devices: Array<{ software: string[]; manualInfo: string; deviceName: string }>;
+            devices: Array<{ software: Array<{ name: string; vendor: string; version: string }>; manualInfo: string; deviceName: string }>;
         }> = {};
 
         nodes.forEach(node => {
@@ -2056,11 +2057,11 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                     // Handle both old format (string[]) and new format (Array<{name, vendor, version}>)
                     const softwareData = node.data?.software || [];
                     const normalizedSoftware = Array.isArray(softwareData) && softwareData.length > 0
-                        ? (typeof softwareData[0] === 'string' 
+                        ? (typeof softwareData[0] === 'string'
                             ? softwareData.map((s: string) => ({ name: s, vendor: '', version: '' }))
                             : softwareData)
                         : [];
-                    
+
                     deviceSoftwareMap[node.type].devices.push({
                         software: normalizedSoftware,
                         manualInfo: node.data?.manualSoftwareInfo || '',
@@ -2075,7 +2076,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             // Collect all unique software items with their vendor/version
             const allSoftware: Array<{ name: string; vendor: string; version: string }> = [];
             const softwareMap = new Map<string, { name: string; vendor: string; version: string }>();
-            
+
             deviceData.devices.forEach(device => {
                 device.software.forEach((sw: { name: string; vendor: string; version: string }) => {
                     if (!softwareMap.has(sw.name)) {
@@ -2083,7 +2084,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                     }
                 });
             });
-            
+
             return {
                 deviceType: deviceData.deviceType,
                 icon: deviceData.icon,
@@ -2108,7 +2109,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
     const exportSoftwareListToCSV = () => {
         const headers = ['Device Type', 'Quantity', 'Device Name', 'Software', 'Vendor', 'Version', 'Manual Info'];
         const rows: string[][] = [];
-        
+
         softwareList.forEach(item => {
             if (item.software.length === 0) {
                 // If no software, add one row with empty software fields
@@ -2157,7 +2158,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
     const copySoftwareList = () => {
         const headers = ['Device Type', 'Quantity', 'Device Name', 'Software', 'Vendor', 'Version', 'Manual Info'];
         const rows: string[][] = [];
-        
+
         softwareList.forEach(item => {
             if (item.software.length === 0) {
                 rows.push([
@@ -2233,11 +2234,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     key={device.type}
                                     draggable
                                     onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
-                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
-                                        darkMode 
-                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
-                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${darkMode
+                                        ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500'
+                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                        }`}
                                     title={device.label}
                                 >
                                     <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
@@ -2266,11 +2266,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     key={device.type}
                                     draggable
                                     onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
-                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
-                                        darkMode 
-                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
-                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${darkMode
+                                        ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500'
+                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                        }`}
                                     title={device.label}
                                 >
                                     <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
@@ -2299,11 +2298,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     key={device.type}
                                     draggable
                                     onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
-                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
-                                        darkMode 
-                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
-                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${darkMode
+                                        ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500'
+                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                        }`}
                                     title={device.label}
                                 >
                                     <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
@@ -2331,11 +2329,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     key={device.type}
                                     draggable
                                     onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
-                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
-                                        darkMode 
-                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
-                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
-                                    }`}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${darkMode
+                                        ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500'
+                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                        }`}
                                     title={device.label}
                                 >
                                     <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
@@ -2354,11 +2351,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                         {Object.entries(templates).map(([key, template]) => (
                             <div
                                 key={key}
-                                className={`px-2 py-1.5 rounded-md border cursor-pointer transition-all ${
-                                    darkMode 
-                                        ? 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500' 
-                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                                }`}
+                                className={`px-2 py-1.5 rounded-md border cursor-pointer transition-all ${darkMode
+                                    ? 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
+                                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                    }`}
                                 onClick={() => loadTemplate(key as keyof typeof templates)}
                                 title={template.description}
                             >
@@ -2376,11 +2372,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                         {savedDiagrams.map((diagram) => (
                             <div
                                 key={diagram.id}
-                                className={`px-2 py-1.5 rounded-md border cursor-pointer transition-all group ${
-                                    selectedDiagram === diagram.id
-                                        ? darkMode ? 'bg-indigo-900/30 border-indigo-600' : 'bg-indigo-50 border-indigo-500'
-                                        : darkMode ? 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500' : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                                }`}
+                                className={`px-2 py-1.5 rounded-md border cursor-pointer transition-all group ${selectedDiagram === diagram.id
+                                    ? darkMode ? 'bg-indigo-900/30 border-indigo-600' : 'bg-indigo-50 border-indigo-500'
+                                    : darkMode ? 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500' : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                    }`}
                                 onClick={() => loadDiagram(diagram.id)}
                                 title={diagram.name}
                             >
@@ -2414,81 +2409,80 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             {/* Main Canvas Area (wider) */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Toolbar - Clean Two Row Layout */}
-                        <div className={`border-b flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                            {/* Row 1: Diagram Name */}
-                            <div className={`px-4 py-2.5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                                <div className="flex items-center gap-3">
-                                    <label className={`text-sm font-semibold whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                        Diagram Name:
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={diagramName}
-                                        onChange={(e) => setDiagramName(e.target.value)}
-                                        className={`px-3 py-1.5 border rounded-lg text-sm font-medium flex-1 max-w-md ${
-                                            darkMode 
-                                                ? 'bg-gray-700 border-gray-600 text-white' 
-                                                : 'bg-white border-gray-300 text-gray-900'
-                                        }`}
-                                        placeholder="Enter diagram name"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Row 2: Action Buttons - Uniform Size */}
-                            <div className="px-4 py-3">
-                                <div className="flex items-center gap-3 flex-wrap">
-                                    <button
-                                        onClick={() => setShowSaveAsModal(true)}
-                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                    >
-                                        <Save size={16} /> Save As
-                                    </button>
-                                    <button
-                                        onClick={startAlign}
-                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                        title="Align selected nodes"
-                                    >
-                                        <AlignLeft size={16} /> Align
-                                    </button>
-                                    <button
-                                        onClick={createIconBox}
-                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                        title="Create legend box with all device types"
-                                    >
-                                        <List size={16} /> Icon
-                                    </button>
-                                    <button
-                                        onClick={createHardwareList}
-                                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                        title="Generate hardware list from diagram"
-                                    >
-                                        <HardDrive size={16} /> Hardware List
-                                    </button>
-                                    <button
-                                        onClick={createSoftwareList}
-                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                        title="Generate software list from diagram"
-                                    >
-                                        <Code size={16} /> Software List
-                                    </button>
-                                    <button
-                                        onClick={clearDiagram}
-                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                    >
-                                        <Trash2 size={16} /> Clear
-                                    </button>
-                                    <button
-                                        onClick={toggleFullscreen}
-                                        className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
-                                        title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                                    >
-                                        {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                                        <span>{isFullscreen ? 'Exit' : 'Fullscreen'}</span>
-                                    </button>
-                                </div>
-                            </div>
+                <div className={`border-b flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                    {/* Row 1: Diagram Name */}
+                    <div className={`px-4 py-2.5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <div className="flex items-center gap-3">
+                            <label className={`text-sm font-semibold whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Diagram Name:
+                            </label>
+                            <input
+                                type="text"
+                                value={diagramName}
+                                onChange={(e) => setDiagramName(e.target.value)}
+                                className={`px-3 py-1.5 border rounded-lg text-sm font-medium flex-1 max-w-md ${darkMode
+                                    ? 'bg-gray-700 border-gray-600 text-white'
+                                    : 'bg-white border-gray-300 text-gray-900'
+                                    }`}
+                                placeholder="Enter diagram name"
+                            />
                         </div>
+                    </div>
+
+                    {/* Row 2: Action Buttons - Uniform Size */}
+                    <div className="px-4 py-3">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <button
+                                onClick={() => setShowSaveAsModal(true)}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                            >
+                                <Save size={16} /> Save As
+                            </button>
+                            <button
+                                onClick={startAlign}
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                title="Align selected nodes"
+                            >
+                                <AlignLeft size={16} /> Align
+                            </button>
+                            <button
+                                onClick={createIconBox}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                title="Create legend box with all device types"
+                            >
+                                <List size={16} /> Icon
+                            </button>
+                            <button
+                                onClick={createHardwareList}
+                                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                title="Generate hardware list from diagram"
+                            >
+                                <HardDrive size={16} /> Hardware List
+                            </button>
+                            <button
+                                onClick={createSoftwareList}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                title="Generate software list from diagram"
+                            >
+                                <Code size={16} /> Software List
+                            </button>
+                            <button
+                                onClick={clearDiagram}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                            >
+                                <Trash2 size={16} /> Clear
+                            </button>
+                            <button
+                                onClick={toggleFullscreen}
+                                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                            >
+                                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                                <span>{isFullscreen ? 'Exit' : 'Fullscreen'}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
                 {/* React Flow Canvas */}
                 <div ref={reactFlowWrapper} className="flex-1 min-h-0" style={{ background: darkMode ? '#1f2937' : '#f9fafb' }}>
@@ -2510,14 +2504,14 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                         }}
                         fitView
                         connectionLineStyle={{ strokeWidth: 2 }}
-                        defaultEdgeOptions={{ 
+                        defaultEdgeOptions={{
                             animated: false, // Disable animation by default
                             style: { strokeWidth: 2 },
                             type: 'smoothstep',
                         }}
                     >
                         <Controls />
-                        <MiniMap 
+                        <MiniMap
                             nodeColor={(node) => {
                                 if (node.type === 'firewall') return '#ef4444';
                                 if (node.type === 'server') return '#3b82f6';
@@ -2568,11 +2562,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     type="text"
                                     value={diagramName}
                                     onChange={(e) => setDiagramName(e.target.value)}
-                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                        darkMode 
-                                            ? 'bg-gray-700 border-gray-600 text-white' 
-                                            : 'border-gray-300'
-                                    }`}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                        ? 'bg-gray-700 border-gray-600 text-white'
+                                        : 'border-gray-300'
+                                        }`}
                                     placeholder="Enter diagram name"
                                 />
                             </div>
@@ -2613,11 +2606,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                 <div className="space-y-2">
                                     <button
                                         onClick={() => handleSaveAs('local')}
-                                        className={`w-full px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                                            darkMode
-                                                ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                        }`}
+                                        className={`w-full px-4 py-3 rounded-lg border-2 transition-all text-left ${darkMode
+                                            ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-3">
                                             <Save size={20} className="text-blue-600" />
@@ -2629,11 +2621,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     </button>
                                     <button
                                         onClick={() => handleSaveAs('png')}
-                                        className={`w-full px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                                            darkMode
-                                                ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                        }`}
+                                        className={`w-full px-4 py-3 rounded-lg border-2 transition-all text-left ${darkMode
+                                            ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-3">
                                             <Download size={20} className="text-green-600" />
@@ -2645,11 +2636,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     </button>
                                     <button
                                         onClick={() => handleSaveAs('visio')}
-                                        className={`w-full px-4 py-3 rounded-lg border-2 transition-all text-left ${
-                                            darkMode
-                                                ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                        }`}
+                                        className={`w-full px-4 py-3 rounded-lg border-2 transition-all text-left ${darkMode
+                                            ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            }`}
                                     >
                                         <div className="flex items-center gap-3">
                                             <FileText size={20} className="text-indigo-600" />
@@ -2701,24 +2691,22 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                             <div
                                                 key={node.id}
                                                 onClick={() => toggleNodeSelection(node.id)}
-                                                className={`p-3 rounded-lg cursor-pointer transition-all border-2 ${
-                                                    isSelected
-                                                        ? darkMode 
-                                                            ? 'bg-blue-900 border-blue-600' 
-                                                            : 'bg-blue-50 border-blue-500'
-                                                        : darkMode
-                                                            ? 'bg-gray-700 border-gray-600 hover:bg-gray-600'
-                                                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                                                }`}
+                                                className={`p-3 rounded-lg cursor-pointer transition-all border-2 ${isSelected
+                                                    ? darkMode
+                                                        ? 'bg-blue-900 border-blue-600'
+                                                        : 'bg-blue-50 border-blue-500'
+                                                    : darkMode
+                                                        ? 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                                                        : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                    }`}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                                        isSelected
-                                                            ? 'bg-blue-600 border-blue-600'
-                                                            : darkMode
-                                                                ? 'border-gray-500'
-                                                                : 'border-gray-300'
-                                                    }`}>
+                                                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isSelected
+                                                        ? 'bg-blue-600 border-blue-600'
+                                                        : darkMode
+                                                            ? 'border-gray-500'
+                                                            : 'border-gray-300'
+                                                        }`}>
                                                         {isSelected && <Check size={14} className="text-white" />}
                                                     </div>
                                                     <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -2742,13 +2730,12 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     <div className="flex gap-3">
                                         <button
                                             onClick={() => setAlignDirection('horizontal')}
-                                            className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
-                                                alignDirection === 'horizontal'
-                                                    ? 'bg-blue-600 border-blue-600 text-white'
-                                                    : darkMode
-                                                        ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                            }`}
+                                            className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${alignDirection === 'horizontal'
+                                                ? 'bg-blue-600 border-blue-600 text-white'
+                                                : darkMode
+                                                    ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                }`}
                                         >
                                             <div className="flex flex-col items-center gap-1">
                                                 <AlignLeft size={20} />
@@ -2758,13 +2745,12 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                         </button>
                                         <button
                                             onClick={() => setAlignDirection('vertical')}
-                                            className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
-                                                alignDirection === 'vertical'
-                                                    ? 'bg-blue-600 border-blue-600 text-white'
-                                                    : darkMode
-                                                        ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                            }`}
+                                            className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${alignDirection === 'vertical'
+                                                ? 'bg-blue-600 border-blue-600 text-white'
+                                                : darkMode
+                                                    ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                }`}
                                         >
                                             <div className="flex flex-col items-center gap-1">
                                                 <div className="rotate-90">
@@ -2792,11 +2778,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                 <button
                                     onClick={executeAlign}
                                     disabled={selectedNodesForAlign.size < 2 || !alignDirection}
-                                    className={`px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg ${
-                                        selectedNodesForAlign.size < 2 || !alignDirection
-                                            ? 'opacity-50 cursor-not-allowed'
-                                            : 'hover:bg-purple-700'
-                                    }`}
+                                    className={`px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg ${selectedNodesForAlign.size < 2 || !alignDirection
+                                        ? 'opacity-50 cursor-not-allowed'
+                                        : 'hover:bg-purple-700'
+                                        }`}
                                 >
                                     Align
                                 </button>
@@ -2824,11 +2809,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                 <div className="flex gap-3">
                                     <button
                                         onClick={() => handleLineStyleChoice(false)}
-                                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
-                                            darkMode
-                                                ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                        }`}
+                                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${darkMode
+                                            ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            }`}
                                     >
                                         <div className="flex flex-col items-center gap-2">
                                             <div className="w-full h-1 bg-gray-700 rounded"></div>
@@ -2837,11 +2821,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     </button>
                                     <button
                                         onClick={() => handleLineStyleChoice(true)}
-                                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
-                                            darkMode
-                                                ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
-                                                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                                        }`}
+                                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${darkMode
+                                            ? 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                                            : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            }`}
                                     >
                                         <div className="flex flex-col items-center gap-2">
                                             <div className="w-full h-1 bg-gray-700 rounded" style={{ backgroundImage: 'repeating-linear-gradient(to right, #374151 0, #374151 4px, transparent 4px, transparent 8px)' }}></div>
@@ -2872,28 +2855,26 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={exportHardwareListToCSV}
-                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${
-                                        darkMode 
-                                            ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                                            : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                    }`}
+                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${darkMode
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        }`}
                                     title="Export to CSV"
                                 >
                                     <FileSpreadsheet size={16} /> Export CSV
                                 </button>
                                 <button
                                     onClick={copyHardwareList}
-                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${
-                                        darkMode 
-                                            ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600' 
-                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
-                                    }`}
+                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${darkMode
+                                        ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                                        }`}
                                     title="Copy to clipboard"
                                 >
                                     <Copy size={16} /> Copy
                                 </button>
-                                <button 
-                                    onClick={() => setShowHardwareListModal(false)} 
+                                <button
+                                    onClick={() => setShowHardwareListModal(false)}
                                     className={`${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
                                 >
                                     <X size={20} />
@@ -2911,19 +2892,17 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                             onKeyDown={handleAddColumnKeyDown}
                                             placeholder="Enter column name"
                                             autoFocus
-                                            className={`px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none ${
-                                                darkMode 
-                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                    : 'border-gray-300 bg-white text-gray-900'
-                                            }`}
+                                            className={`px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none ${darkMode
+                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                : 'border-gray-300 bg-white text-gray-900'
+                                                }`}
                                         />
                                         <button
                                             onClick={addCustomColumn}
-                                            className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${
-                                                darkMode 
-                                                    ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                                    : 'bg-green-600 hover:bg-green-700 text-white'
-                                            }`}
+                                            className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${darkMode
+                                                ? 'bg-green-600 hover:bg-green-700 text-white'
+                                                : 'bg-green-600 hover:bg-green-700 text-white'
+                                                }`}
                                             title="Add column"
                                         >
                                             <Plus size={16} /> Add
@@ -2933,11 +2912,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                 setShowAddColumnInput(false);
                                                 setNewColumnName('');
                                             }}
-                                            className={`px-3 py-1.5 text-sm font-medium rounded-lg ${
-                                                darkMode 
-                                                    ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600' 
-                                                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
-                                            }`}
+                                            className={`px-3 py-1.5 text-sm font-medium rounded-lg ${darkMode
+                                                ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
+                                                : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                                                }`}
                                             title="Cancel"
                                         >
                                             Cancel
@@ -2946,11 +2924,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                 ) : (
                                     <button
                                         onClick={() => setShowAddColumnInput(true)}
-                                        className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${
-                                            darkMode 
-                                                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                                : 'bg-green-600 hover:bg-green-700 text-white'
-                                        }`}
+                                        className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 ${darkMode
+                                            ? 'bg-green-600 hover:bg-green-700 text-white'
+                                            : 'bg-green-600 hover:bg-green-700 text-white'
+                                            }`}
                                         title="Add custom column"
                                     >
                                         <Plus size={16} /> Add Column
@@ -3006,8 +2983,8 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                             };
                                             const iconColorClass = colorClasses[item.color] || 'text-gray-600';
                                             return (
-                                                <tr 
-                                                    key={item.deviceType} 
+                                                <tr
+                                                    key={item.deviceType}
                                                     className={`border-b ${darkMode ? 'border-gray-700 hover:bg-gray-700/50' : 'border-gray-200 hover:bg-gray-50'}`}
                                                 >
                                                     <td className="px-4 py-3">
@@ -3025,11 +3002,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                             value={item.deviceName}
                                                             onChange={(e) => updateHardwareListField(item.deviceType, 'deviceName', e.target.value)}
                                                             placeholder="Device Name"
-                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                darkMode 
-                                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                    : 'border-gray-300 bg-white'
-                                                            }`}
+                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'border-gray-300 bg-white'
+                                                                }`}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -3038,11 +3014,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                             value={item.componentType}
                                                             onChange={(e) => updateHardwareListField(item.deviceType, 'componentType', e.target.value)}
                                                             placeholder="Component Type"
-                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                darkMode 
-                                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                    : 'border-gray-300 bg-white'
-                                                            }`}
+                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'border-gray-300 bg-white'
+                                                                }`}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -3051,11 +3026,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                             value={item.manufacturer}
                                                             onChange={(e) => updateHardwareListField(item.deviceType, 'manufacturer', e.target.value)}
                                                             placeholder="Manufacturer"
-                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                darkMode 
-                                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                    : 'border-gray-300 bg-white'
-                                                            }`}
+                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'border-gray-300 bg-white'
+                                                                }`}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -3064,11 +3038,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                             value={item.macAddress}
                                                             onChange={(e) => updateHardwareListField(item.deviceType, 'macAddress', e.target.value)}
                                                             placeholder="00:00:00:00:00:00"
-                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                darkMode 
-                                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                    : 'border-gray-300 bg-white'
-                                                            }`}
+                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'border-gray-300 bg-white'
+                                                                }`}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -3077,11 +3050,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                             value={item.ipAddress}
                                                             onChange={(e) => updateHardwareListField(item.deviceType, 'ipAddress', e.target.value)}
                                                             placeholder="192.168.1.1"
-                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                darkMode 
-                                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                    : 'border-gray-300 bg-white'
-                                                            }`}
+                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'border-gray-300 bg-white'
+                                                                }`}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -3090,11 +3062,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                             value={item.pointOfContact}
                                                             onChange={(e) => updateHardwareListField(item.deviceType, 'pointOfContact', e.target.value)}
                                                             placeholder="Name, Email, Phone"
-                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                darkMode 
-                                                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                    : 'border-gray-300 bg-white'
-                                                            }`}
+                                                            className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                ? 'bg-gray-700 border-gray-600 text-white'
+                                                                : 'border-gray-300 bg-white'
+                                                                }`}
                                                         />
                                                     </td>
                                                     {customColumns.map(col => (
@@ -3104,11 +3075,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                                 value={item.customFields[col.id] || ''}
                                                                 onChange={(e) => updateHardwareListCustomField(item.deviceType, col.id, e.target.value)}
                                                                 placeholder={col.name}
-                                                                className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${
-                                                                    darkMode 
-                                                                        ? 'bg-gray-700 border-gray-600 text-white' 
-                                                                        : 'border-gray-300 bg-white'
-                                                                }`}
+                                                                className={`w-full px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none ${darkMode
+                                                                    ? 'bg-gray-700 border-gray-600 text-white'
+                                                                    : 'border-gray-300 bg-white'
+                                                                    }`}
                                                             />
                                                         </td>
                                                     ))}
@@ -3131,7 +3101,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             {/* Software Selection Modal */}
             {showSoftwareModal && pendingNodeForSoftware && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCancelSoftware}>
-                    <div 
+                    <div
                         className={`rounded-xl shadow-2xl max-w-2xl w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -3139,8 +3109,8 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                             <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Select Software - {pendingNodeForSoftware.type === 'desktop' ? 'Desktop' : pendingNodeForSoftware.type === 'laptop' ? 'Laptop' : 'Server'}
                             </h3>
-                            <button 
-                                onClick={handleCancelSoftware} 
+                            <button
+                                onClick={handleCancelSoftware}
                                 className={`p-1 rounded hover:bg-gray-600/50 transition-colors ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 <X size={20} />
@@ -3161,15 +3131,14 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                         return (
                                             <div
                                                 key={option}
-                                                className={`p-3 rounded-lg transition-all ${
-                                                    darkMode
-                                                        ? isSelected
-                                                            ? 'bg-indigo-900/30 border-2 border-indigo-600 shadow-md'
-                                                            : 'bg-gray-700/50 border-2 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
-                                                        : isSelected
-                                                            ? 'bg-indigo-50 border-2 border-indigo-500 shadow-sm'
-                                                            : 'bg-gray-50 border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                                                }`}
+                                                className={`p-3 rounded-lg transition-all ${darkMode
+                                                    ? isSelected
+                                                        ? 'bg-indigo-900/30 border-2 border-indigo-600 shadow-md'
+                                                        : 'bg-gray-700/50 border-2 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
+                                                    : isSelected
+                                                        ? 'bg-indigo-50 border-2 border-indigo-500 shadow-sm'
+                                                        : 'bg-gray-50 border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                                    }`}
                                             >
                                                 <label className="flex items-center gap-3 cursor-pointer">
                                                     <input
@@ -3193,11 +3162,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                                 value={softwareItem?.vendor || ''}
                                                                 onChange={(e) => updateSoftwareVendor(option, e.target.value)}
                                                                 placeholder="e.g., Microsoft"
-                                                                className={`w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${
-                                                                    darkMode 
-                                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                                        : 'border-gray-300 bg-white placeholder-gray-400'
-                                                                }`}
+                                                                className={`w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${darkMode
+                                                                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                                                                    : 'border-gray-300 bg-white placeholder-gray-400'
+                                                                    }`}
                                                             />
                                                         </div>
                                                         <div>
@@ -3209,11 +3177,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                                 value={softwareItem?.version || ''}
                                                                 onChange={(e) => updateSoftwareVersion(option, e.target.value)}
                                                                 placeholder="e.g., 11.0"
-                                                                className={`w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${
-                                                                    darkMode 
-                                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                                                        : 'border-gray-300 bg-white placeholder-gray-400'
-                                                                }`}
+                                                                className={`w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${darkMode
+                                                                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                                                                    : 'border-gray-300 bg-white placeholder-gray-400'
+                                                                    }`}
                                                             />
                                                         </div>
                                                     </div>
@@ -3232,21 +3199,19 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                     onChange={(e) => setManualSoftwareInfo(e.target.value)}
                                     placeholder="Enter additional software information..."
                                     rows={3}
-                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none ${
-                                        darkMode 
-                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                                            : 'border-gray-300 bg-white placeholder-gray-400'
-                                    }`}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none ${darkMode
+                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                                        : 'border-gray-300 bg-white placeholder-gray-400'
+                                        }`}
                                 />
                             </div>
                             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <button
                                     onClick={handleCancelSoftware}
-                                    className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                                        darkMode 
-                                            ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                                    }`}
+                                    className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-colors ${darkMode
+                                        ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                        }`}
                                 >
                                     Cancel
                                 </button>
@@ -3265,7 +3230,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             {/* Software List Modal */}
             {showSoftwareListModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowSoftwareListModal(false)}>
-                    <div 
+                    <div
                         className={`rounded-xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`}
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -3274,28 +3239,26 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={exportSoftwareListToCSV}
-                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${
-                                        darkMode 
-                                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
-                                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                    }`}
+                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${darkMode
+                                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                        }`}
                                     title="Export to CSV"
                                 >
                                     <FileSpreadsheet size={16} /> Export CSV
                                 </button>
                                 <button
                                     onClick={copySoftwareList}
-                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${
-                                        darkMode 
-                                            ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600' 
-                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
-                                    }`}
+                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${darkMode
+                                        ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                                        }`}
                                     title="Copy to clipboard"
                                 >
                                     <Copy size={16} /> Copy
                                 </button>
-                                <button 
-                                    onClick={() => setShowSoftwareListModal(false)} 
+                                <button
+                                    onClick={() => setShowSoftwareListModal(false)}
                                     className={`p-1 rounded hover:bg-gray-600/50 transition-colors ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
                                 >
                                     <X size={20} />
@@ -3326,8 +3289,8 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                             };
                                             const iconColorClass = colorClasses[item.color] || 'text-gray-600';
                                             return (
-                                                <tr 
-                                                    key={item.deviceType} 
+                                                <tr
+                                                    key={item.deviceType}
                                                     className={`border-b transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700/30' : 'border-gray-200 hover:bg-gray-50'}`}
                                                 >
                                                     <td className="px-4 py-3">
@@ -3348,11 +3311,10 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                                                 item.software.map((software, idx) => (
                                                                     <span
                                                                         key={idx}
-                                                                        className={`px-2.5 py-1 rounded-md text-xs font-medium ${
-                                                                            darkMode
-                                                                                ? 'bg-indigo-900/40 text-indigo-200 border border-indigo-700'
-                                                                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                                                        }`}
+                                                                        className={`px-2.5 py-1 rounded-md text-xs font-medium ${darkMode
+                                                                            ? 'bg-indigo-900/40 text-indigo-200 border border-indigo-700'
+                                                                            : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                                            }`}
                                                                     >
                                                                         {software.name}
                                                                     </span>

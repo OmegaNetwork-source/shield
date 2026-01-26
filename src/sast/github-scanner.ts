@@ -12,7 +12,8 @@ import {
     ScanError,
 } from './types';
 
-import { ALL_SECRET_PATTERNS, SecretPattern } from './rules/secrets';
+import { ALL_SECRET_PATTERNS } from './rules/secrets';
+import { SecretPattern } from './types';
 
 // GitHub API base URL
 const GITHUB_API = 'https://api.github.com';
@@ -23,22 +24,22 @@ export const SECRET_SEARCH_QUERIES = [
     'AKIA',
     'AKID',
     'aws_secret_access_key',
-    
+
     // Crypto/Blockchain - high value targets
     '0x extension:env privateKey',
     'mnemonic extension:env',
     'infura.io/v3/',
     'alchemy.com/v2/',
-    
+
     // API Keys
     'sk_live_',
     'ghp_',
     'xoxb-',
-    
+
     // Private Keys
     '"-----BEGIN RSA PRIVATE KEY-----"',
     '"-----BEGIN PRIVATE KEY-----"',
-    
+
     // Database
     'mongodb+srv://',
     'postgres://',
@@ -237,7 +238,7 @@ export class GitHubScanner {
         this.token = token;
         this.rateLimit = 30;
     }
-    
+
     setMaxRepoAge(days: number | undefined): void {
         this.maxRepoAgeDays = days;
     }
@@ -245,7 +246,7 @@ export class GitHubScanner {
     abort(): void {
         this.aborted = true;
     }
-    
+
     /**
      * Check if a repo was active within the allowed time window
      */
@@ -253,7 +254,7 @@ export class GitHubScanner {
         if (!this.maxRepoAgeDays) {
             return { active: true }; // No filter, all repos are "active"
         }
-        
+
         // Check cache first
         if (this.repoMetadataCache.has(repoFullName)) {
             const cached = this.repoMetadataCache.get(repoFullName)!;
@@ -262,13 +263,13 @@ export class GitHubScanner {
             cutoffDate.setDate(cutoffDate.getDate() - this.maxRepoAgeDays);
             return { active: pushedDate >= cutoffDate, metadata: cached };
         }
-        
+
         try {
             const response = await this.fetchGitHub(`/repos/${repoFullName}`);
             if (!response.ok) {
                 return { active: true }; // On error, don't filter out
             }
-            
+
             const repoData = await response.json();
             const metadata = {
                 updatedAt: repoData.updated_at,
@@ -276,14 +277,14 @@ export class GitHubScanner {
                 stars: repoData.stargazers_count,
                 forks: repoData.forks_count,
             };
-            
+
             // Cache the result
             this.repoMetadataCache.set(repoFullName, metadata);
-            
+
             const pushedDate = new Date(repoData.pushed_at);
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - this.maxRepoAgeDays);
-            
+
             return { active: pushedDate >= cutoffDate, metadata };
         } catch {
             return { active: true }; // On error, don't filter out
@@ -308,7 +309,7 @@ export class GitHubScanner {
 
         for (let i = 0; i < queries.length && !this.aborted; i++) {
             const query = queries[i];
-            
+
             try {
                 // Search multiple pages per query
                 for (let page = 1; page <= 3 && !this.aborted; page++) {
@@ -330,7 +331,7 @@ export class GitHubScanner {
                     // Analyze each result for secrets - emit findings in real-time
                     for (const result of searchResults.items) {
                         if (this.aborted) break;
-                        
+
                         // Check repo activity if filter is enabled
                         const repoFullName = result.repository?.full_name;
                         if (this.maxRepoAgeDays && repoFullName) {
@@ -343,9 +344,9 @@ export class GitHubScanner {
                                 this.repoMetadataCache.set(repoFullName, metadata);
                             }
                         }
-                        
+
                         const secretFindings = this.analyzeSearchResult(result);
-                        
+
                         for (const finding of secretFindings) {
                             this.allFindings.push(finding);
                             // Emit finding immediately
@@ -415,7 +416,7 @@ export class GitHubScanner {
 
         for (let i = 0; i < dorks.length && !this.aborted; i++) {
             const dork = dorks[i];
-            
+
             try {
                 // Search with pagination
                 for (let page = 1; page <= 2 && !this.aborted; page++) {
@@ -432,7 +433,7 @@ export class GitHubScanner {
 
                     for (const result of searchResults.items) {
                         if (this.aborted) break;
-                        
+
                         // Check repo activity if filter is enabled
                         const repoFullName = result.repository?.full_name;
                         if (this.maxRepoAgeDays && repoFullName) {
@@ -444,9 +445,9 @@ export class GitHubScanner {
                                 this.repoMetadataCache.set(repoFullName, metadata);
                             }
                         }
-                        
+
                         const secretFindings = this.analyzeSearchResult(result);
-                        
+
                         for (const finding of secretFindings) {
                             this.allFindings.push(finding);
                             if (this.onFinding) {
@@ -501,7 +502,7 @@ export class GitHubScanner {
 
             for (const result of searchResults.items || []) {
                 if (this.aborted) break;
-                
+
                 // Check repo activity if filter is enabled
                 const repoFullName = result.repository?.full_name;
                 if (this.maxRepoAgeDays && repoFullName) {
@@ -513,9 +514,9 @@ export class GitHubScanner {
                         this.repoMetadataCache.set(repoFullName, metadata);
                     }
                 }
-                
+
                 const secretFindings = this.analyzeSearchResult(result);
-                
+
                 for (const finding of secretFindings) {
                     this.allFindings.push(finding);
                     if (this.onFinding) {
@@ -565,14 +566,14 @@ export class GitHubScanner {
         }
 
         const response = await this.fetchGitHub(`/search/code?${params}`);
-        
+
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
             throw new Error(error.message || `GitHub API error: ${response.status}`);
         }
 
         const data = await response.json();
-        
+
         const repos = new Set(data.items?.map((i: any) => i.repository?.full_name) || []);
 
         return {
@@ -588,7 +589,7 @@ export class GitHubScanner {
     private analyzeSearchResult(result: any): GitHubSecretFinding[] {
         const findings: GitHubSecretFinding[] = [];
         const textMatches = result.text_matches || [];
-        
+
         // Also check the result name and path for secrets
         const textsToCheck = [
             ...textMatches.map((m: any) => m.fragment || ''),
@@ -601,12 +602,12 @@ export class GitHubScanner {
             // Check against all secret patterns
             for (const pattern of this.secretPatterns) {
                 pattern.pattern.lastIndex = 0;
-                
+
                 let match: RegExpExecArray | null;
                 while ((match = pattern.pattern.exec(text)) !== null) {
                     // Skip if it looks like an example/placeholder
                     const matchText = match[0].toLowerCase();
-                    if (matchText.includes('example') || 
+                    if (matchText.includes('example') ||
                         matchText.includes('placeholder') ||
                         matchText.includes('your_') ||
                         matchText.includes('your-') ||
@@ -630,7 +631,7 @@ export class GitHubScanner {
                     // Get cached repo metadata if available
                     const repoName = result.repository?.full_name || 'unknown';
                     const cachedMeta = this.repoMetadataCache.get(repoName);
-                    
+
                     findings.push({
                         id: `gh_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
                         secretType: pattern.name,
@@ -677,7 +678,7 @@ export class GitHubScanner {
             const firstMatch = textMatches[0];
             const repoName = result.repository?.full_name || 'unknown';
             const cachedMeta = this.repoMetadataCache.get(repoName);
-            
+
             findings.push({
                 id: `gh_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
                 secretType: 'Potential Secret',
@@ -733,7 +734,7 @@ export class GitHubScanner {
     private async throttle(): Promise<void> {
         const minInterval = (60 * 1000) / this.rateLimit;
         const elapsed = Date.now() - this.lastRequestTime;
-        
+
         if (elapsed < minInterval) {
             await this.delay(minInterval - elapsed);
         }
@@ -802,7 +803,7 @@ export class GitHubScanner {
             currentQuery: query,
         });
     }
-    
+
     /**
      * Scan a specific repository for secrets
      * This searches within a single repo rather than across all of GitHub
@@ -813,9 +814,9 @@ export class GitHubScanner {
         const startTime = new Date();
         const errors: ScanError[] = [];
         let totalPages = 0;
-        
+
         const scanId = `github_repo_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-        
+
         // Secret-focused search queries to run within this repo
         const repoSearchQueries = [
             // High-value targets
@@ -841,9 +842,9 @@ export class GitHubScanner {
             'sk_live',
             'sk_test',
         ];
-        
+
         this.reportProgress(0, 0, 0, `Scanning ${options.repoFullName}...`);
-        
+
         // Get repo metadata first
         try {
             const repoResponse = await this.fetchGitHub(`/repos/${options.repoFullName}`);
@@ -859,10 +860,10 @@ export class GitHubScanner {
         } catch (e) {
             // Non-fatal - continue without metadata
         }
-        
+
         for (let i = 0; i < repoSearchQueries.length && !this.aborted; i++) {
             const query = repoSearchQueries[i];
-            
+
             try {
                 // Search within this specific repo
                 for (let page = 1; page <= 5 && !this.aborted; page++) {
@@ -871,14 +872,14 @@ export class GitHubScanner {
                         page,
                         sort: 'indexed',
                     });
-                    
+
                     if (!searchResults.items || searchResults.items.length === 0) break;
-                    
+
                     totalPages++;
-                    
+
                     for (const result of searchResults.items) {
                         if (this.aborted) break;
-                        
+
                         // Check path filters if specified
                         if (options.excludePaths && options.excludePaths.length > 0) {
                             const path = result.path || '';
@@ -888,7 +889,7 @@ export class GitHubScanner {
                             });
                             if (shouldExclude) continue;
                         }
-                        
+
                         if (options.includePaths && options.includePaths.length > 0) {
                             const path = result.path || '';
                             const shouldInclude = options.includePaths.some(pattern => {
@@ -897,9 +898,9 @@ export class GitHubScanner {
                             });
                             if (!shouldInclude) continue;
                         }
-                        
+
                         const secretFindings = this.analyzeSearchResult(result);
-                        
+
                         for (const finding of secretFindings) {
                             this.allFindings.push(finding);
                             if (this.onFinding) {
@@ -907,9 +908,9 @@ export class GitHubScanner {
                             }
                         }
                     }
-                    
+
                     this.reportProgress(this.allFindings.length, totalPages, this.allFindings.length, `${options.repoFullName}: ${query}`);
-                    
+
                     if (searchResults.items.length < 100) break;
                 }
             } catch (err: any) {
@@ -919,14 +920,14 @@ export class GitHubScanner {
                     errors.push({ message: `Query "${query}" in ${options.repoFullName}: ${err.message}` });
                 }
             }
-            
+
             // Small delay between queries
             await this.delay(300);
         }
-        
+
         const endTime = new Date();
         const dedupedFindings = this.deduplicateFindings(this.allFindings);
-        
+
         return {
             scanId,
             queries: [`repo:${options.repoFullName}`],
