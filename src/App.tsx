@@ -102,7 +102,7 @@ function App() {
     const [masterCopySource, setMasterCopySource] = useState<typeof uploadedChecklists[0] | null>(null);
     const [masterCopyTarget, setMasterCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
     const [masterCopyBatchFiles, setMasterCopyBatchFiles] = useState<typeof uploadedChecklists>([]);
-    const [masterCopyTab, setMasterCopyTab] = useState<'notreviewed' | 'open' | 'reviewed' | 'newids' | 'droppedids'>('notreviewed');
+    const [masterCopyTab, setMasterCopyTab] = useState<'all' | 'notreviewed' | 'open' | 'reviewed' | 'newids' | 'droppedids'>('notreviewed');
     const [masterCopySelectedIds, setMasterCopySelectedIds] = useState<Set<string>>(new Set());
     const [masterCopySearch, setMasterCopySearch] = useState('');
     const [masterCopyReplace, setMasterCopyReplace] = useState('');
@@ -584,7 +584,14 @@ function App() {
             .filter(f => !newMap.has(f.vulnId))
             .map(f => ({ vulnId: f.vulnId, finding: f }));
 
-        return { notReviewed, openFindings, newIds, droppedIds, totalOld, totalNew };
+        // All Findings (mapped with old)
+        const allFindings = masterCopyTarget.findings.map(f => ({
+            vulnId: f.vulnId,
+            newFinding: f,
+            oldFinding: oldMap.get(f.vulnId)
+        }));
+
+        return { notReviewed, openFindings, newIds, droppedIds, totalOld, totalNew, allFindings };
     }, [masterCopySource, masterCopyTarget]);
 
     // Sorted Data for Master Copy
@@ -605,6 +612,9 @@ function App() {
                     // Look up old just in case we want to show it, though irrelevant for sorting logic usually
                     oldFinding: masterCopySource?.findings.find(of => of.vulnId === f.vulnId)
                 }));
+
+        } else if (masterCopyTab === 'all') {
+            findings = masterCopyData.allFindings;
         }
 
         if (!masterCopySort.key) return findings;
@@ -7074,6 +7084,7 @@ function App() {
                                                     {/* Tabs */}
                                                     <div className="flex flex-wrap gap-2 mb-4">
                                                         {[
+                                                            { id: 'all', label: 'All Findings', count: masterCopyData.allFindings.length },
                                                             { id: 'notreviewed', label: 'Not Reviewed', count: masterCopyData.notReviewed.length },
                                                             { id: 'open', label: 'Open Findings', count: masterCopyData.openFindings.length },
                                                             { id: 'reviewed', label: 'Reviewed', count: masterCopyTarget.findings.filter(f => !['notreviewed', 'not_reviewed'].includes((f.status || '').toLowerCase().replace(/[\s_]/g, ''))).length },
@@ -7218,9 +7229,16 @@ function App() {
                                                             const finding = row.newFinding || row.finding; // Base finding
                                                             const old = row.oldFinding;
                                                             const isSelected = masterCopySelectedIds.has(row.vulnId);
+                                                            const statusChanged = old && (old.status || '').toLowerCase().replace(/[\s_]/g, '') !== (finding.status || '').toLowerCase().replace(/[\s_]/g, '');
 
                                                             return (
-                                                                <div key={row.vulnId} className={`p-4 rounded-xl border ${isSelected ? 'border-indigo-400 bg-indigo-50' : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}`}>
+                                                                <div key={row.vulnId} className={`p-4 rounded-xl border ${isSelected ? 'border-indigo-400 bg-indigo-50' : statusChanged ? 'border-amber-400 bg-amber-50/30' : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')} ${statusChanged ? 'ring-1 ring-amber-400/50' : ''}`}>
+                                                                    {statusChanged && (
+                                                                        <div className="flex items-center gap-1 text-[10px] font-bold text-amber-600 mb-2 bg-amber-100 w-fit px-2 py-0.5 rounded-full">
+                                                                            <RefreshCw size={10} />
+                                                                            STATUS CHANGED
+                                                                        </div>
+                                                                    )}
                                                                     {/* Header Info */}
                                                                     <div className="flex justify-between items-start mb-3">
                                                                         <div className="flex items-center gap-3">
@@ -7289,70 +7307,98 @@ function App() {
                                                                         </div>
                                                                     </div>
 
-                                                                    {/* Comparison View (If Old exists) */}
-                                                                    {old && (
-                                                                        <div className="mb-3 p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-100 text-xs">
-                                                                            <div className="grid grid-cols-2 gap-4">
-                                                                                <div>
-                                                                                    <div className="font-semibold text-gray-500 mb-1">Source (Old)</div>
-                                                                                    <div className="font-mono text-gray-700">{old.status}</div>
-                                                                                    <div className="text-gray-600 mt-1 line-clamp-2">{old.findingDetails || old.comments}</div>
+                                                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                                                                        {/* Source / Old Side */}
+                                                                        <div className={`p-4 rounded-xl border ${old ? 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700' : 'border-dashed border-gray-200'}`}>
+                                                                            <div className="flex items-center justify-between mb-3">
+                                                                                <div className="text-xs font-bold uppercase text-gray-400 flex items-center gap-2">
+                                                                                    <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                                                                    Source (Old)
                                                                                 </div>
-                                                                                <div className="flex flex-col justify-center gap-2">
-                                                                                    <button
-                                                                                        onClick={() => {
-                                                                                            setMasterCopyTarget((prev: any) => {
-                                                                                                if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
-                                                                                            });
-                                                                                        }}
-                                                                                        className="text-xs text-blue-600 hover:text-blue-800 text-left"
-                                                                                    >
-                                                                                        ← Copy Status
-                                                                                    </button>
-                                                                                    <button
-                                                                                        onClick={() => {
-                                                                                            setMasterCopyTarget((prev: any) => {
-                                                                                                if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
-                                                                                            });
-                                                                                        }}
-                                                                                        className="text-xs text-blue-600 hover:text-blue-800 text-left"
-                                                                                    >
-                                                                                        ← Copy Details
-                                                                                    </button>
+                                                                                {old && <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${(old.status || '').toLowerCase().includes('open') ? 'bg-red-100 text-red-600' :
+                                                                                    (old.status || '').toLowerCase().includes('notafinding') ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
+                                                                                    }`}>{old.status}</span>}
+                                                                            </div>
+
+                                                                            {old ? (
+                                                                                <div className="space-y-3">
+                                                                                    <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 p-3 rounded-lg border border-gray-100 dark:border-gray-800 h-32 overflow-y-auto shadow-sm">
+                                                                                        {old.findingDetails || old.comments || <span className="italic opacity-50">No details provided</span>}
+                                                                                    </div>
+
+                                                                                    <div className="flex gap-2">
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                setMasterCopyTarget((prev: any) => {
+                                                                                                    if (!prev) return null;
+                                                                                                    return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
+                                                                                                });
+                                                                                            }}
+                                                                                            className="flex-1 py-1.5 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 text-[10px] font-medium text-gray-600 dark:text-gray-300 rounded shadow-sm transition-all text-center"
+                                                                                        >
+                                                                                            Copy Status
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                setMasterCopyTarget((prev: any) => {
+                                                                                                    if (!prev) return null;
+                                                                                                    return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
+                                                                                                });
+                                                                                            }}
+                                                                                            className="flex-1 py-1.5 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 text-[10px] font-medium text-gray-600 dark:text-gray-300 rounded shadow-sm transition-all text-center"
+                                                                                        >
+                                                                                            Copy Details
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="h-32 flex items-center justify-center text-xs text-gray-400 italic">
+                                                                                    No history available
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {/* Target / New Side */}
+                                                                        <div className="p-4 rounded-xl border bg-white dark:bg-gray-900 border-indigo-100 dark:border-indigo-900/30 shadow-sm relative overflow-hidden group">
+                                                                            <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-indigo-500/10 to-transparent -mr-8 -mt-8 rounded-full pointer-events-none transition-transform group-hover:scale-150 duration-500" />
+
+                                                                            <div className="flex items-center justify-between mb-3">
+                                                                                <div className="text-xs font-bold uppercase text-indigo-500 flex items-center gap-2">
+                                                                                    <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                                                                                    Master Copy (New)
                                                                                 </div>
                                                                             </div>
-                                                                        </div>
-                                                                    )}
 
-                                                                    {/* Editable Details */}
-                                                                    <div className="space-y-2">
-                                                                        <div>
-                                                                            <label className="text-[10px] uppercase font-semibold text-gray-400">Finding Details</label>
-                                                                            <textarea
-                                                                                className="w-full text-xs p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-20 focus:ring-1 ring-indigo-500 outline-none"
-                                                                                value={finding.findingDetails || ''}
-                                                                                onChange={(e) => {
-                                                                                    setMasterCopyTarget((prev: any) => {
-                                                                                        if (!prev) return null;
-                                                                                        return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
-                                                                                    });
-                                                                                }}
-                                                                            />
-                                                                        </div>
-                                                                        <div>
-                                                                            <label className="text-[10px] uppercase font-semibold text-gray-400">Comments</label>
-                                                                            <textarea
-                                                                                className="w-full text-xs p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-12 focus:ring-1 ring-indigo-500 outline-none"
-                                                                                value={finding.comments || ''}
-                                                                                onChange={(e) => {
-                                                                                    setMasterCopyTarget((prev: any) => {
-                                                                                        if (!prev) return null;
-                                                                                        return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
-                                                                                    });
-                                                                                }}
-                                                                            />
+                                                                            <div className="space-y-3">
+                                                                                <div>
+                                                                                    <label className="text-[10px] font-medium text-gray-400 mb-1 block">DETAILS</label>
+                                                                                    <textarea
+                                                                                        className="w-full text-xs p-3 rounded-lg border bg-gray-50 dark:bg-gray-950 border-gray-200 dark:border-gray-700 h-20 focus:ring-2 ring-indigo-500/50 outline-none transition-all resize-none"
+                                                                                        value={finding.findingDetails || ''}
+                                                                                        placeholder="Enter technical details..."
+                                                                                        onChange={(e) => {
+                                                                                            setMasterCopyTarget((prev: any) => {
+                                                                                                if (!prev) return null;
+                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
+                                                                                            });
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <label className="text-[10px] font-medium text-gray-400 mb-1 block">COMMENTS</label>
+                                                                                    <textarea
+                                                                                        className="w-full text-xs p-3 rounded-lg border bg-gray-50 dark:bg-gray-950 border-gray-200 dark:border-gray-700 h-12 focus:ring-2 ring-indigo-500/50 outline-none transition-all resize-none"
+                                                                                        value={finding.comments || ''}
+                                                                                        placeholder="Add comments..."
+                                                                                        onChange={(e) => {
+                                                                                            setMasterCopyTarget((prev: any) => {
+                                                                                                if (!prev) return null;
+                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
+                                                                                            });
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 </div>
