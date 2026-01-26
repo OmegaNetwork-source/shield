@@ -142,7 +142,7 @@ export interface SslAnalysisResult {
 export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
     const parsedUrl = new URL(url);
     const isHttps = parsedUrl.protocol === 'https:';
-    
+
     const result: SslAnalysisResult = {
         url,
         port: parseInt(parsedUrl.port) || (isHttps ? 443 : 80),
@@ -161,7 +161,7 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
         grade: 'A',
         score: 100
     };
-    
+
     if (!isHttps) {
         result.vulnerabilities.push({
             id: 'ssl-no-https',
@@ -174,7 +174,7 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
             recommendation: 'Enable HTTPS with a valid certificate',
             cwe: 'CWE-319',
             owasp: 'A02:2021',
-            nist: ['SC-8', 'SC-12']
+            nistControl: 'SC-8, SC-12'
         });
         result.nistCompliant = false;
         result.nistIssues.push('No TLS encryption');
@@ -182,11 +182,11 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
         result.score = 0;
         return result;
     }
-    
+
     // Fetch the URL to get headers
     try {
         let headers: Record<string, string> = {};
-        
+
         if (isElectron) {
             // @ts-ignore
             const response = await window.ipcRenderer.invoke('web-scan-fetch', {
@@ -199,7 +199,7 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
             const response = await fetch(url, { method: 'HEAD' });
             response.headers.forEach((v, k) => headers[k.toLowerCase()] = v);
         }
-        
+
         // Analyze HSTS
         const hsts = headers['strict-transport-security'];
         if (hsts) {
@@ -207,7 +207,7 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
             const maxAgeMatch = hsts.match(/max-age=(\d+)/i);
             if (maxAgeMatch) {
                 result.hstsMaxAge = parseInt(maxAgeMatch[1]);
-                
+
                 // Check HSTS max-age (should be at least 1 year = 31536000)
                 if (result.hstsMaxAge < 31536000) {
                     result.vulnerabilities.push({
@@ -238,18 +238,18 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
                 recommendation: 'Enable HSTS with: Strict-Transport-Security: max-age=31536000; includeSubDomains; preload',
                 cwe: 'CWE-319',
                 owasp: 'A02:2021',
-                nist: ['SC-8']
+                nistControl: 'SC-8'
             });
             result.nistIssues.push('Missing HSTS header');
             result.score -= 15;
         }
-        
+
         // Check for Certificate Transparency
         const expectCt = headers['expect-ct'];
         if (expectCt) {
             result.hasCertTransparency = true;
         }
-        
+
         // Check for deprecated HPKP (should NOT be present)
         const hpkp = headers['public-key-pins'];
         if (hpkp) {
@@ -266,7 +266,7 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
                 cwe: 'CWE-295'
             });
         }
-        
+
     } catch (error) {
         result.vulnerabilities.push({
             id: 'ssl-connection-failed',
@@ -282,11 +282,11 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
         result.score = 0;
         return result;
     }
-    
+
     // Calculate final grade
     result.grade = calculateGrade(result.score);
     result.nistCompliant = result.nistIssues.length === 0;
-    
+
     return result;
 }
 
@@ -296,7 +296,7 @@ export async function analyzeSsl(url: string): Promise<SslAnalysisResult> {
 export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[] {
     const vulnerabilities: UnifiedVulnerability[] = [];
     const now = new Date();
-    
+
     // Check expiration
     if (cert.validTo < now) {
         vulnerabilities.push({
@@ -309,7 +309,7 @@ export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[]
             recommendation: 'Renew the SSL certificate immediately',
             cwe: 'CWE-295',
             owasp: 'A02:2021',
-            nist: ['SC-12', 'SC-17']
+            nistControl: 'SC-12, SC-17'
         });
     } else {
         // Check if expiring soon (30 days)
@@ -327,7 +327,7 @@ export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[]
             });
         }
     }
-    
+
     // Check if not yet valid
     if (cert.validFrom > now) {
         vulnerabilities.push({
@@ -341,7 +341,7 @@ export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[]
             cwe: 'CWE-295'
         });
     }
-    
+
     // Check if self-signed
     if (cert.selfSigned) {
         vulnerabilities.push({
@@ -354,10 +354,10 @@ export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[]
             recommendation: 'Use a certificate from a trusted Certificate Authority',
             cwe: 'CWE-295',
             owasp: 'A02:2021',
-            nist: ['SC-12']
+            nistControl: 'SC-12'
         });
     }
-    
+
     // Check key size
     if (cert.keySize) {
         const minSize = cert.keyType === 'ECDSA' ? 256 : 2048;
@@ -372,11 +372,11 @@ export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[]
                 recommendation: `Use ${cert.keyType} key with at least ${minSize} bits`,
                 cwe: 'CWE-326',
                 owasp: 'A02:2021',
-                nist: ['SC-12', 'SC-13']
+                nistControl: 'SC-12, SC-13'
             });
         }
     }
-    
+
     // Check signature algorithm
     if (cert.signatureAlgorithm) {
         const weakAlgos = ['md5', 'sha1', 'md2', 'md4'];
@@ -392,11 +392,11 @@ export function analyzeCertificate(cert: SslCertificate): UnifiedVulnerability[]
                 recommendation: 'Use SHA-256 or stronger signature algorithm',
                 cwe: 'CWE-328',
                 owasp: 'A02:2021',
-                nist: ['SC-12', 'SC-13']
+                nistControl: 'SC-12, SC-13'
             });
         }
     }
-    
+
     return vulnerabilities;
 }
 
@@ -417,20 +417,20 @@ export function isWeakCipher(cipher: string): { weak: boolean; severity?: string
  */
 export function checkNistCompliance(result: SslAnalysisResult): string[] {
     const issues: string[] = [];
-    
+
     // Check protocols
     for (const proto of result.supportedProtocols) {
         if (NIST_800_52_REQUIREMENTS.forbiddenProtocols.includes(proto)) {
             issues.push(`Forbidden protocol: ${proto}`);
         }
     }
-    
+
     // Check if minimum protocol is supported
-    if (!result.supportedProtocols.includes('TLSv1.2') && 
+    if (!result.supportedProtocols.includes('TLSv1.2') &&
         !result.supportedProtocols.includes('TLSv1.3')) {
         issues.push('Must support TLS 1.2 or higher');
     }
-    
+
     // Check ciphers
     for (const cipher of result.supportedCiphers) {
         for (const forbidden of NIST_800_52_REQUIREMENTS.forbiddenCiphers) {
@@ -439,12 +439,12 @@ export function checkNistCompliance(result: SslAnalysisResult): string[] {
             }
         }
     }
-    
+
     // Check HSTS
     if (!result.hasHsts) {
         issues.push('HSTS not enabled');
     }
-    
+
     return issues;
 }
 

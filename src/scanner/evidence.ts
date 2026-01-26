@@ -30,27 +30,27 @@ export interface Evidence {
     vulnerabilityId: string;
     type: 'request-response' | 'screenshot' | 'payload' | 'code-snippet' | 'configuration';
     timestamp: Date;
-    
+
     // Request/Response evidence
     request?: HttpRequest;
     response?: HttpResponse;
-    
+
     // Payload evidence
     payload?: string;
     payloadType?: string;
-    
+
     // Code evidence
     codeSnippet?: string;
     codeLocation?: string;
     lineNumbers?: { start: number; end: number };
-    
+
     // Screenshot (base64)
     screenshot?: string;
     screenshotFormat?: 'png' | 'jpeg';
-    
+
     // Reproduction steps
     reproductionSteps?: string[];
-    
+
     // Additional metadata
     description?: string;
     confidence: 'confirmed' | 'likely' | 'possible';
@@ -80,18 +80,18 @@ export class EvidenceCollector {
     private evidence: Evidence[] = [];
     private scanId: string;
     private maxBodySize: number = 50000; // 50KB max for response bodies
-    
+
     constructor(scanId?: string) {
         this.scanId = scanId || this.generateId();
     }
-    
+
     /**
      * Generate unique ID
      */
     private generateId(): string {
         return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
     }
-    
+
     /**
      * Record HTTP request/response as evidence
      */
@@ -118,7 +118,7 @@ export class EvidenceCollector {
         } = {}
     ): Evidence {
         const now = new Date();
-        
+
         // Truncate response body if too large
         let responseBody = response.body || '';
         let bodyTruncated = false;
@@ -126,7 +126,7 @@ export class EvidenceCollector {
             responseBody = responseBody.substring(0, this.maxBodySize) + '\n\n[... TRUNCATED ...]';
             bodyTruncated = true;
         }
-        
+
         const evidence: Evidence = {
             id: this.generateId(),
             vulnerabilityId,
@@ -154,11 +154,11 @@ export class EvidenceCollector {
             confidence: options.confidence || 'likely',
             falsePositiveRisk: options.falsePositiveRisk || 'medium'
         };
-        
+
         this.evidence.push(evidence);
         return evidence;
     }
-    
+
     /**
      * Record payload evidence
      */
@@ -183,11 +183,11 @@ export class EvidenceCollector {
             confidence: options.confidence || 'likely',
             falsePositiveRisk: 'medium'
         };
-        
+
         this.evidence.push(evidence);
         return evidence;
     }
-    
+
     /**
      * Record code snippet as evidence
      */
@@ -213,11 +213,11 @@ export class EvidenceCollector {
             confidence: options.confidence || 'likely',
             falsePositiveRisk: 'low'
         };
-        
+
         this.evidence.push(evidence);
         return evidence;
     }
-    
+
     /**
      * Record reproduction steps
      */
@@ -238,27 +238,27 @@ export class EvidenceCollector {
             confidence: 'confirmed',
             falsePositiveRisk: 'low'
         };
-        
+
         this.evidence.push(evidence);
         return evidence;
     }
-    
+
     /**
      * Add reproduction steps to a vulnerability
      */
     generateReproductionSteps(vuln: UnifiedVulnerability): string[] {
         const steps: string[] = [];
-        
+
         steps.push(`1. Navigate to: ${vuln.url}`);
-        
+
         if (vuln.location) {
             steps.push(`2. Locate the vulnerable parameter/location: ${vuln.location}`);
         }
-        
+
         if (vuln.evidence) {
             steps.push(`3. The following evidence was found:\n   ${vuln.evidence}`);
         }
-        
+
         // Add category-specific steps
         switch (vuln.category) {
             case 'injection':
@@ -272,33 +272,33 @@ export class EvidenceCollector {
             case 'crypto':
                 steps.push('4. Check SSL/TLS configuration using browser developer tools or ssllabs.com');
                 break;
-            case 'auth':
+            case 'authentication':
                 steps.push('4. Attempt to access the resource without authentication');
                 steps.push('5. Verify if authentication is properly enforced');
                 break;
             default:
                 steps.push('4. Follow the description to reproduce the vulnerability');
         }
-        
+
         steps.push(`\nRecommended Fix: ${vuln.recommendation || 'See vulnerability details'}`);
-        
+
         return steps;
     }
-    
+
     /**
      * Get all evidence for a vulnerability
      */
     getEvidenceForVulnerability(vulnerabilityId: string): Evidence[] {
         return this.evidence.filter(e => e.vulnerabilityId === vulnerabilityId);
     }
-    
+
     /**
      * Get all collected evidence
      */
     getAllEvidence(): Evidence[] {
         return [...this.evidence];
     }
-    
+
     /**
      * Generate evidence bundle for export
      */
@@ -307,7 +307,7 @@ export class EvidenceCollector {
         const confirmed = this.evidence.filter(e => e.confidence === 'confirmed').length;
         const likely = this.evidence.filter(e => e.confidence === 'likely').length;
         const possible = this.evidence.filter(e => e.confidence === 'possible').length;
-        
+
         return {
             scanId: this.scanId,
             targetUrl,
@@ -323,14 +323,14 @@ export class EvidenceCollector {
             }
         };
     }
-    
+
     /**
      * Export evidence as formatted text
      */
     exportAsText(vuln: UnifiedVulnerability): string {
         const evidence = this.getEvidenceForVulnerability(vuln.id);
         let output = '';
-        
+
         output += `================================================================================\n`;
         output += `VULNERABILITY EVIDENCE\n`;
         output += `================================================================================\n\n`;
@@ -342,12 +342,12 @@ export class EvidenceCollector {
         output += `OWASP: ${vuln.owasp || 'N/A'}\n`;
         output += `\n`;
         output += `Description:\n${vuln.description}\n\n`;
-        
+
         if (evidence.length > 0) {
             output += `--------------------------------------------------------------------------------\n`;
             output += `EVIDENCE (${evidence.length} items)\n`;
             output += `--------------------------------------------------------------------------------\n\n`;
-            
+
             for (const item of evidence) {
                 if (item.request && item.response) {
                     output += `--- HTTP Request ---\n`;
@@ -359,7 +359,7 @@ export class EvidenceCollector {
                         output += `\n${item.request.body}\n`;
                     }
                     output += `\n`;
-                    
+
                     output += `--- HTTP Response ---\n`;
                     output += `HTTP ${item.response.status} ${item.response.statusText}\n`;
                     for (const [key, value] of Object.entries(item.response.headers)) {
@@ -374,13 +374,13 @@ export class EvidenceCollector {
                     }
                     output += `\n\n`;
                 }
-                
+
                 if (item.payload) {
                     output += `--- Payload ---\n`;
                     output += `Type: ${item.payloadType || 'unknown'}\n`;
                     output += `${item.payload}\n\n`;
                 }
-                
+
                 if (item.codeSnippet) {
                     output += `--- Code Snippet ---\n`;
                     output += `Location: ${item.codeLocation}\n`;
@@ -391,29 +391,29 @@ export class EvidenceCollector {
                 }
             }
         }
-        
+
         output += `--------------------------------------------------------------------------------\n`;
         output += `REPRODUCTION STEPS\n`;
         output += `--------------------------------------------------------------------------------\n\n`;
         const steps = this.generateReproductionSteps(vuln);
         output += steps.join('\n') + '\n\n';
-        
+
         output += `--------------------------------------------------------------------------------\n`;
         output += `RECOMMENDATION\n`;
         output += `--------------------------------------------------------------------------------\n\n`;
         output += vuln.recommendation || 'See vulnerability details for remediation guidance.';
         output += '\n\n';
-        
+
         return output;
     }
-    
+
     /**
      * Sanitize headers to remove sensitive values
      */
     private sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
         const sanitized = { ...headers };
         const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key', 'x-auth-token'];
-        
+
         for (const header of sensitiveHeaders) {
             if (sanitized[header]) {
                 sanitized[header] = '[REDACTED]';
@@ -422,10 +422,10 @@ export class EvidenceCollector {
                 sanitized[header.toLowerCase()] = '[REDACTED]';
             }
         }
-        
+
         return sanitized;
     }
-    
+
     /**
      * Detect payload type
      */
@@ -438,7 +438,7 @@ export class EvidenceCollector {
         if (/<!ENTITY|SYSTEM.*file:/i.test(payload)) return 'XXE';
         return 'Unknown';
     }
-    
+
     /**
      * Clear all evidence
      */
