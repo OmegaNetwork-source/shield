@@ -3,6 +3,10 @@ import path from 'node:path'
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'
 import os from 'node:os'
+import https from 'node:https'
+import http from 'node:http'
+import crypto from 'node:crypto'
+import * as msgpack from 'msgpack-lite'
 
 process.env.DIST = path.join(__dirname, '../dist')
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public')
@@ -182,11 +186,11 @@ ipcMain.handle('run-command-visible', async (event, data: { command: string, rul
         const safeCommand = command.replace(/'/g, "''");
         const safeRuleId = ruleId.replace(/'/g, "''");
         const safeRuleTitle = ruleTitle.replace(/'/g, "''").substring(0, 100);
-        
+
         // Create a script file that will be executed visibly
         const tempDir = os.tmpdir();
         const scriptPath = path.join(tempDir, `stig-check-${Date.now()}.ps1`);
-        
+
         const scriptContent = `
             Clear-Host
             Write-Host ("=" * 80) -ForegroundColor Cyan
@@ -216,10 +220,10 @@ ipcMain.handle('run-command-visible', async (event, data: { command: string, rul
             Write-Host "Press any key to close..." -ForegroundColor Yellow
             $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
         `;
-        
+
         // Write script to file
         fs.writeFileSync(scriptPath, scriptContent, 'utf-8');
-        
+
         // Launch PowerShell in visible window
         const ps = spawn('powershell.exe', [
             '-NoProfile',
@@ -230,26 +234,26 @@ ipcMain.handle('run-command-visible', async (event, data: { command: string, rul
             shell: true,
             detached: true
         });
-        
+
         // Unref so parent doesn't wait
         ps.unref();
-        
+
         // Also execute the command in background to get output for the UI
         const execPs = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
             shell: true
         });
-        
+
         let stdout = '';
         let stderr = '';
-        
+
         execPs.stdout.on('data', (data) => {
             stdout += data.toString();
         });
-        
+
         execPs.stderr.on('data', (data) => {
             stderr += data.toString();
         });
-        
+
         execPs.on('close', (code) => {
             // Clean up script file
             try {
@@ -261,7 +265,7 @@ ipcMain.handle('run-command-visible', async (event, data: { command: string, rul
             } catch (e) {
                 // Ignore cleanup errors
             }
-            
+
             // Return the output for UI display
             if (code !== 0) {
                 const finalOutput = stdout.trim() ? stdout : (stderr || '');
@@ -273,7 +277,7 @@ ipcMain.handle('run-command-visible', async (event, data: { command: string, rul
                 resolve({ success: true, output: stdout });
             }
         });
-        
+
         execPs.on('error', (error) => {
             resolve({ success: false, output: error.message });
         });
@@ -634,6 +638,175 @@ ipcMain.handle('read-file-base64', async (_event, filePath: string) => {
     }
 })
 
+// ----------------------------------------------------------------------
+// Local Directory Scanner for SAST
+// ----------------------------------------------------------------------
+
+// Files to exclude from scanning
+const SCAN_EXCLUDE_PATTERNS = [
+    'node_modules', '.git', '.svn', '.hg', 'dist', 'build', 'coverage',
+    '__pycache__', '.pytest_cache', 'venv', 'env', '.env',
+    '.next', '.nuxt', '.output', 'vendor', 'packages',
+    '.idea', '.vscode', '.vs', 'bin', 'obj',
+];
+
+// Extensions to scan
+const SCAN_EXTENSIONS = [
+    '.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs',
+    '.py', '.rb', '.php', '.java', '.go', '.rs', '.c', '.cpp', '.h',
+    '.sol', '.vy', // Smart contracts
+    '.json', '.yaml', '.yml', '.toml', '.xml',
+    '.env', '.env.local', '.env.production', '.env.development',
+    '.sh', '.bash', '.zsh', '.ps1', '.bat', '.cmd',
+    '.sql', '.graphql', '.gql',
+    '.html', '.htm', '.vue', '.svelte',
+    '.config', '.conf', '.cfg', '.ini',
+    '.pem', '.key', '.crt', '.cer',
+];
+
+// Max file size to scan (1MB)
+const MAX_SCAN_FILE_SIZE = 1024 * 1024;
+
+interface ScanFileInfo {
+    path: string;
+    relativePath: string;
+    content: string;
+    size: number;
+    extension: string;
+}
+
+// Recursively get all files in a directory
+function getAllFiles(dirPath: string, basePath: string, files: ScanFileInfo[] = [], maxFiles = 5000): ScanFileInfo[] {
+    if (files.length >= maxFiles) return files;
+
+    try {
+        const items = fs.readdirSync(dirPath, { withFileTypes: true });
+
+        for (const item of items) {
+            if (files.length >= maxFiles) break;
+
+            const fullPath = path.join(dirPath, item.name);
+            const relativePath = path.relative(basePath, fullPath);
+
+            // Skip excluded directories
+            if (item.isDirectory()) {
+                if (SCAN_EXCLUDE_PATTERNS.some(p => item.name === p || item.name.startsWith('.'))) {
+                    continue;
+                }
+                getAllFiles(fullPath, basePath, files, maxFiles);
+            } else if (item.isFile()) {
+                const ext = path.extname(item.name).toLowerCase();
+                const nameWithoutExt = item.name.toLowerCase();
+
+                // Check if file should be scanned
+                const shouldScan = SCAN_EXTENSIONS.includes(ext) ||
+                    nameWithoutExt.includes('.env') ||
+                    nameWithoutExt === 'dockerfile' ||
+                    nameWithoutExt === 'makefile' ||
+                    nameWithoutExt.endsWith('rc');
+
+                if (shouldScan) {
+                    try {
+                        const stats = fs.statSync(fullPath);
+                        if (stats.size <= MAX_SCAN_FILE_SIZE) {
+                            const content = fs.readFileSync(fullPath, 'utf-8');
+                            files.push({
+                                path: fullPath,
+                                relativePath,
+                                content,
+                                size: stats.size,
+                                extension: ext
+                            });
+                        }
+                    } catch (e) {
+                        // Skip files that can't be read
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // Skip directories that can't be read
+    }
+
+    return files;
+}
+
+// Browse for directory dialog
+ipcMain.handle('browse-directory', async (): Promise<{
+    success: boolean;
+    path?: string;
+    canceled?: boolean;
+}> => {
+    try {
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory'],
+            title: 'Select Directory to Scan'
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return { success: true, canceled: true };
+        }
+
+        return { success: true, path: result.filePaths[0] };
+    } catch (e: any) {
+        return { success: false, path: undefined };
+    }
+})
+
+ipcMain.handle('sast-scan-directory', async (_event, targetPath: string): Promise<{
+    success: boolean;
+    files?: ScanFileInfo[];
+    error?: string;
+    totalFiles?: number;
+}> => {
+    console.log('[SAST] Scanning directory:', targetPath);
+
+    try {
+        if (!fs.existsSync(targetPath)) {
+            return { success: false, error: 'Directory not found' };
+        }
+
+        const stats = fs.statSync(targetPath);
+        if (!stats.isDirectory()) {
+            return { success: false, error: 'Path is not a directory' };
+        }
+
+        const files = getAllFiles(targetPath, targetPath, [], 5000);
+        console.log('[SAST] Found', files.length, 'files to scan');
+
+        return {
+            success: true,
+            files,
+            totalFiles: files.length
+        };
+    } catch (e: any) {
+        console.error('[SAST] Scan error:', e);
+        return { success: false, error: e.message };
+    }
+})
+
+ipcMain.handle('sast-read-file', async (_event, filePath: string): Promise<{
+    success: boolean;
+    content?: string;
+    error?: string;
+}> => {
+    try {
+        if (!fs.existsSync(filePath)) {
+            return { success: false, error: 'File not found' };
+        }
+
+        const stats = fs.statSync(filePath);
+        if (stats.size > MAX_SCAN_FILE_SIZE) {
+            return { success: false, error: 'File too large' };
+        }
+
+        const content = fs.readFileSync(filePath, 'utf-8');
+        return { success: true, content };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+})
+
 // 5a. Launch Admin PowerShell Window (positioned on left side, like Cursor terminal)
 // This window will poll for commands and execute them sequentially
 let powershellProcess: any = null;
@@ -654,11 +827,11 @@ ipcMain.handle('launch-admin-powershell', async () => {
             if (fs.existsSync(commandResultPath)) {
                 fs.unlinkSync(commandResultPath);
             }
-            
+
             // Create the persistent PowerShell script that polls for commands
             const queuePathEscaped = commandQueuePath.replace(/\\/g, '\\\\').replace(/'/g, "''");
             const resultPathEscaped = commandResultPath.replace(/\\/g, '\\\\').replace(/'/g, "''");
-            
+
             const persistentScript = `
                 Add-Type -AssemblyName System.Windows.Forms
                 Add-Type -AssemblyName System.Drawing
@@ -1132,35 +1305,35 @@ public class Win32 {
                     }
                 }
             `;
-            
+
             // Write persistent script to temp file
             const scriptPath = path.join(os.tmpdir(), 'stig-persistent-powershell.ps1');
             fs.writeFileSync(scriptPath, persistentScript, 'utf-8');
-            
+
             // Also log the paths for debugging
             console.log('Queue path:', commandQueuePath);
             console.log('Result path:', commandResultPath);
             console.log('Script path:', scriptPath);
-            
+
             // Launch PowerShell with admin privileges running the persistent script
             // Use proper escaping for the file path
             const scriptPathEscaped = scriptPath.replace(/\\/g, '/').replace(/'/g, "''");
             const launchScript = `Start-Process powershell.exe -Verb RunAs -ArgumentList '-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File','${scriptPathEscaped}'`;
-            
+
             const ps = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', launchScript]);
             let output = '';
             let error = '';
-            
+
             ps.stdout.on('data', (data) => output += data.toString());
             ps.stderr.on('data', (data) => error += data.toString());
-            
+
             ps.on('close', (code) => {
                 // Give PowerShell window time to appear
                 setTimeout(() => {
                     resolve({ success: true, message: 'PowerShell window launched. Please position it on the left side.' });
                 }, 2000);
             });
-            
+
             ps.on('error', (err) => {
                 resolve({ success: false, error: err.message });
             });
@@ -1178,7 +1351,7 @@ ipcMain.handle('execute-in-powershell', async (event, command: string) => {
         const script = `
             Start-Process powershell.exe -Verb RunAs -ArgumentList "-NoProfile", "-Command", "${safeCommand}; Read-Host 'Press Enter to close'" -Wait -NoNewWindow -PassThru
         `;
-        
+
         // Actually, better approach: Run command directly with elevation and capture output
         const execScript = `
             $ErrorActionPreference = 'Continue'
@@ -1188,28 +1361,28 @@ ipcMain.handle('execute-in-powershell', async (event, command: string) => {
                 Write-Output "ERROR: $_"
             }
         `;
-        
+
         const ps = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', execScript], {
             shell: true,
             // Request admin elevation (will show UAC prompt)
             windowsVerbatimArguments: false
         });
-        
+
         let stdout = '';
         let stderr = '';
-        
+
         ps.stdout.on('data', (data) => {
             stdout += data.toString();
         });
-        
+
         ps.stderr.on('data', (data) => {
             stderr += data.toString();
         });
-        
+
         ps.on('error', (error) => {
             resolve({ success: false, output: error.message, requiresAdmin: true });
         });
-        
+
         ps.on('close', (code) => {
             if (code !== 0) {
                 if (stderr.includes('Access is denied') || stderr.includes('Run as Administrator')) {
@@ -1236,19 +1409,19 @@ ipcMain.handle('execute-in-powershell', async (event, command: string) => {
 ipcMain.handle('execute-command-with-screenshot', async (event, data: { command: string, groupId: string, evidenceType?: 'powershell' | 'regedit' | 'both' }) => {
     return new Promise(async (resolve) => {
         const { command, groupId, evidenceType = 'powershell' } = data;
-        
+
         // Clear any previous result
         if (fs.existsSync(commandResultPath)) {
             fs.unlinkSync(commandResultPath);
         }
-        
+
         // Extract registry path if this is a registry command
         let registryPath: string | null = null;
         const registryMatch = command.match(/Get-ItemProperty\s+-Path\s+['"](HKLM:[^'"]+|HKCU:[^'"]+)['"]/i);
         if (registryMatch) {
             registryPath = registryMatch[1];
         }
-        
+
         // Write command to queue file
         const commandData = {
             groupId: groupId,
@@ -1256,13 +1429,13 @@ ipcMain.handle('execute-command-with-screenshot', async (event, data: { command:
             registryPath: registryPath,
             evidenceType: evidenceType
         };
-        
+
         try {
             const queueData = JSON.stringify(commandData);
             fs.writeFileSync(commandQueuePath, queueData, 'utf-8');
             console.log(`Wrote command to queue: ${commandQueuePath}`);
             console.log(`Command: ${command.substring(0, 100)}...`);
-            
+
             // Small delay to ensure file is written
             await new Promise(r => setTimeout(r, 100));
         } catch (e: any) {
@@ -1275,36 +1448,36 @@ ipcMain.handle('execute-command-with-screenshot', async (event, data: { command:
             });
             return;
         }
-        
+
         // Wait for result file to appear (the persistent PowerShell will write it)
         const maxWaitTime = 30000; // 30 seconds
         const checkInterval = 500; // Check every 500ms
         let elapsed = 0;
-        
+
         const checkIntervalId = setInterval(() => {
             if (fs.existsSync(commandResultPath)) {
                 clearInterval(checkIntervalId);
-                
+
                 // Wait a moment for file to be fully written
                 setTimeout(() => {
                     try {
                         let resultContent = fs.readFileSync(commandResultPath, 'utf-8').trim();
-                        
+
                         // Handle potential BOM or extra whitespace
                         if (resultContent.charCodeAt(0) === 0xFEFF) {
                             resultContent = resultContent.slice(1);
                         }
-                        
+
                         // Try parsing the JSON
                         const result = JSON.parse(resultContent);
-                        
+
                         // Clean up result file
                         try {
                             fs.unlinkSync(commandResultPath);
                         } catch (e) {
                             // Ignore cleanup errors
                         }
-                        
+
                         if (result.screenshot && result.screenshot.length > 100) {
                             resolve({
                                 success: result.success !== false,
@@ -1374,17 +1547,2234 @@ ipcMain.handle('save-file', async (event, { filename, content, type }) => {
 })
 
 // ----------------------------------------------------------------------
+// Native Pentest Framework
+// ----------------------------------------------------------------------
+
+import * as net from 'net';
+import * as dns from 'dns';
+import { promisify } from 'util';
+import * as tls from 'tls';
+
+const dnsReverse = promisify(dns.reverse);
+const dnsLookup = promisify(dns.lookup);
+
+// Port to service mapping
+const PORT_SERVICE_MAP: { [key: number]: string } = {
+    21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+    80: 'HTTP', 110: 'POP3', 111: 'RPC', 135: 'MSRPC',
+    139: 'NetBIOS', 143: 'IMAP', 443: 'HTTPS', 445: 'SMB',
+    465: 'SMTPS', 587: 'Submission', 993: 'IMAPS', 995: 'POP3S',
+    1433: 'MSSQL', 1521: 'Oracle', 3306: 'MySQL', 3389: 'RDP',
+    5432: 'PostgreSQL', 5900: 'VNC', 6379: 'Redis',
+    8080: 'HTTP-Proxy', 8443: 'HTTPS-Alt', 27017: 'MongoDB'
+};
+
+// Native port scanner
+ipcMain.handle('pentest-scan-port', async (_event, data: { host: string; port: number; timeout?: number }) => {
+    const { host, port, timeout = 2000 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        let banner = '';
+
+        socket.setTimeout(timeout);
+
+        socket.on('connect', () => {
+            // Try to grab banner
+            const bannerTimer = setTimeout(() => {
+                socket.destroy();
+                resolve({
+                    port,
+                    state: 'open',
+                    service: PORT_SERVICE_MAP[port] || 'Unknown',
+                    banner: banner.trim() || undefined
+                });
+            }, 1500);
+
+            // Send probe for HTTP
+            if ([80, 8080, 8000, 8008].includes(port)) {
+                socket.write('GET / HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n');
+            }
+
+            socket.on('data', (chunk) => {
+                banner += chunk.toString();
+                if (banner.length > 256) {
+                    clearTimeout(bannerTimer);
+                    socket.destroy();
+                    resolve({
+                        port,
+                        state: 'open',
+                        service: PORT_SERVICE_MAP[port] || 'Unknown',
+                        banner: banner.substring(0, 256).trim()
+                    });
+                }
+            });
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            resolve({ port, state: 'filtered' });
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            if (err.code === 'ECONNREFUSED') {
+                resolve({ port, state: 'closed' });
+            } else {
+                resolve({ port, state: 'filtered' });
+            }
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// Scan multiple ports
+ipcMain.handle('pentest-scan-ports', async (_event, data: {
+    host: string;
+    ports: number[];
+    timeout?: number;
+    concurrency?: number
+}) => {
+    const { host, ports, timeout = 2000, concurrency = 50 } = data;
+    const results: any[] = [];
+
+    // Process in batches
+    for (let i = 0; i < ports.length; i += concurrency) {
+        const batch = ports.slice(i, i + concurrency);
+        const batchResults = await Promise.all(
+            batch.map(port =>
+                new Promise((resolve) => {
+                    const socket = new net.Socket();
+                    socket.setTimeout(timeout);
+
+                    socket.on('connect', () => {
+                        socket.destroy();
+                        resolve({
+                            port,
+                            state: 'open',
+                            service: PORT_SERVICE_MAP[port] || 'Unknown'
+                        });
+                    });
+
+                    socket.on('timeout', () => {
+                        socket.destroy();
+                        resolve({ port, state: 'filtered' });
+                    });
+
+                    socket.on('error', (err: any) => {
+                        socket.destroy();
+                        resolve({
+                            port,
+                            state: err.code === 'ECONNREFUSED' ? 'closed' : 'filtered'
+                        });
+                    });
+
+                    socket.connect(port, host);
+                })
+            )
+        );
+        results.push(...batchResults);
+    }
+
+    return {
+        host,
+        ports: results.filter((r: any) => r.state === 'open'),
+        allResults: results
+    };
+});
+
+// SMB scanner
+ipcMain.handle('pentest-scan-smb', async (_event, data: { host: string; port?: number; timeout?: number }) => {
+    const { host, port = 445, timeout = 5000 } = data;
+
+    // SMB Negotiate Request
+    const SMB_NEGOTIATE = Buffer.from([
+        0x00, 0x00, 0x00, 0x85, 0xff, 0x53, 0x4d, 0x42, 0x72, 0x00, 0x00, 0x00, 0x00,
+        0x18, 0x53, 0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x62, 0x00,
+        0x02, 0x50, 0x43, 0x20, 0x4e, 0x45, 0x54, 0x57, 0x4f, 0x52, 0x4b, 0x20, 0x50,
+        0x52, 0x4f, 0x47, 0x52, 0x41, 0x4d, 0x20, 0x31, 0x2e, 0x30, 0x00, 0x02, 0x4c,
+        0x41, 0x4e, 0x4d, 0x41, 0x4e, 0x31, 0x2e, 0x30, 0x00, 0x02, 0x57, 0x69, 0x6e,
+        0x64, 0x6f, 0x77, 0x73, 0x20, 0x66, 0x6f, 0x72, 0x20, 0x57, 0x6f, 0x72, 0x6b,
+        0x67, 0x72, 0x6f, 0x75, 0x70, 0x73, 0x20, 0x33, 0x2e, 0x31, 0x61, 0x00, 0x02,
+        0x4c, 0x4d, 0x31, 0x2e, 0x32, 0x58, 0x30, 0x30, 0x32, 0x00, 0x02, 0x4c, 0x41,
+        0x4e, 0x4d, 0x41, 0x4e, 0x32, 0x2e, 0x31, 0x00, 0x02, 0x4e, 0x54, 0x20, 0x4c,
+        0x4d, 0x20, 0x30, 0x2e, 0x31, 0x32, 0x00
+    ]);
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = {
+            host,
+            port,
+            smb: null,
+            vulnerabilities: []
+        };
+
+        socket.setTimeout(timeout);
+
+        socket.on('connect', () => {
+            socket.write(SMB_NEGOTIATE);
+        });
+
+        socket.on('data', (data) => {
+            socket.destroy();
+
+            // Parse SMB response
+            if (data.length > 40) {
+                const magic = data.slice(4, 8).toString();
+
+                if (magic === '\\xffSMB' || data[4] === 0xff) {
+                    // SMBv1
+                    result.smb = {
+                        version: '1',
+                        dialect: 'NT LM 0.12',
+                        smbv1Enabled: true
+                    };
+                    result.vulnerabilities.push({
+                        id: 'SMB-001',
+                        name: 'SMBv1 Enabled',
+                        severity: 'high',
+                        description: 'SMBv1 is enabled. This protocol has known vulnerabilities.',
+                        host, port
+                    });
+                } else if (data[4] === 0xfe) {
+                    // SMBv2/3
+                    const dialect = data.length > 72 ? data.readUInt16LE(72) : 0;
+                    let version = '2.0';
+                    if (dialect >= 0x0311) version = '3.1.1';
+                    else if (dialect >= 0x0300) version = '3.0';
+                    else if (dialect >= 0x0210) version = '2.1';
+
+                    result.smb = {
+                        version,
+                        dialect: `SMB ${version}`,
+                        smbv1Enabled: false
+                    };
+                }
+            }
+
+            resolve(result);
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            resolve({ ...result, error: 'Connection timeout' });
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            resolve({ ...result, error: err.message });
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// SSH scanner
+ipcMain.handle('pentest-scan-ssh', async (_event, data: { host: string; port?: number; timeout?: number }) => {
+    const { host, port = 22, timeout = 5000 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = {
+            host,
+            port,
+            ssh: null,
+            vulnerabilities: []
+        };
+
+        let banner = '';
+
+        socket.setTimeout(timeout);
+
+        socket.on('data', (chunk) => {
+            banner += chunk.toString();
+
+            if (banner.includes('\\n') || banner.length > 200) {
+                socket.destroy();
+
+                // Parse SSH banner
+                const match = banner.match(/SSH-(\\d+\\.\\d+)-([^\\s\\r\\n]+)/);
+                if (match) {
+                    result.ssh = {
+                        protocol: match[1],
+                        software: match[2],
+                        banner: banner.trim()
+                    };
+
+                    // Check for vulnerable versions
+                    if (/OpenSSH[_-]([1-6]\\.|7\\.[0-1])/i.test(banner)) {
+                        result.vulnerabilities.push({
+                            id: 'SSH-001',
+                            name: 'Outdated OpenSSH Version',
+                            severity: 'high',
+                            description: 'OpenSSH version may have known vulnerabilities',
+                            host, port
+                        });
+                    }
+
+                    // Check for SSH v1
+                    if (match[1].startsWith('1.')) {
+                        result.vulnerabilities.push({
+                            id: 'SSH-002',
+                            name: 'SSH Protocol v1 Supported',
+                            severity: 'critical',
+                            description: 'SSH protocol version 1 is insecure',
+                            host, port
+                        });
+                    }
+                }
+
+                resolve(result);
+            }
+        });
+
+        socket.on('connect', () => {
+            // SSH server sends banner first
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            resolve({ ...result, error: 'Connection timeout' });
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            resolve({ ...result, error: err.message });
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// HTTP scanner
+ipcMain.handle('pentest-scan-http', async (_event, data: {
+    host: string;
+    port?: number;
+    ssl?: boolean;
+    timeout?: number
+}) => {
+    const { host, port = 80, ssl = false, timeout = 10000 } = data;
+    const protocol = ssl ? https : http;
+
+    return new Promise((resolve) => {
+        const result: any = {
+            host,
+            port,
+            http: null,
+            tls: null,
+            vulnerabilities: []
+        };
+
+        const options = {
+            hostname: host,
+            port,
+            path: '/',
+            method: 'GET',
+            timeout,
+            rejectUnauthorized: false,
+            headers: { 'User-Agent': 'STRIX-Scanner/1.0' }
+        };
+
+        const req = protocol.request(options, (res) => {
+            let body = '';
+
+            res.on('data', (chunk) => {
+                body += chunk;
+                if (body.length > 5000) res.destroy();
+            });
+
+            res.on('end', () => {
+                result.http = {
+                    statusCode: res.statusCode,
+                    server: res.headers.server,
+                    poweredBy: res.headers['x-powered-by'],
+                    headers: res.headers
+                };
+
+                // Check security headers
+                const missingHeaders = [];
+                if (!res.headers['strict-transport-security']) missingHeaders.push('HSTS');
+                if (!res.headers['x-content-type-options']) missingHeaders.push('X-Content-Type-Options');
+                if (!res.headers['x-frame-options']) missingHeaders.push('X-Frame-Options');
+
+                if (missingHeaders.length > 0) {
+                    result.vulnerabilities.push({
+                        id: 'HTTP-001',
+                        name: 'Missing Security Headers',
+                        severity: 'medium',
+                        description: `Missing: ${missingHeaders.join(', ')}`,
+                        host, port
+                    });
+                }
+
+                // Check server disclosure
+                if (res.headers.server) {
+                    result.vulnerabilities.push({
+                        id: 'HTTP-002',
+                        name: 'Server Version Disclosure',
+                        severity: 'low',
+                        description: `Server: ${res.headers.server}`,
+                        host, port
+                    });
+                }
+
+                resolve(result);
+            });
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ ...result, error: 'Request timeout' });
+        });
+
+        req.on('error', (err: any) => {
+            resolve({ ...result, error: err.message });
+        });
+
+        // Get TLS info for HTTPS
+        if (ssl) {
+            req.on('socket', (socket: any) => {
+                socket.on('secureConnect', () => {
+                    const cipher = socket.getCipher?.();
+                    const cert = socket.getPeerCertificate?.();
+                    const proto = socket.getProtocol?.();
+
+                    result.tls = {
+                        protocol: proto || 'unknown',
+                        cipher: cipher?.name || 'unknown',
+                        certValid: socket.authorized
+                    };
+
+                    if (cert) {
+                        result.tls.certSubject = cert.subject?.CN;
+                        result.tls.certExpiry = cert.valid_to;
+                    }
+
+                    // Check for weak TLS
+                    if (proto && /TLSv1$|TLSv1\\.0|SSLv/i.test(proto)) {
+                        result.vulnerabilities.push({
+                            id: 'TLS-001',
+                            name: 'Weak TLS Version',
+                            severity: 'high',
+                            description: `Protocol: ${proto}`,
+                            host, port
+                        });
+                    }
+                });
+            });
+        }
+
+        req.end();
+    });
+});
+
+// Get available modules
+ipcMain.handle('pentest-get-modules', async () => {
+    return [
+        {
+            name: 'port_scanner',
+            displayName: 'Port Scanner',
+            description: 'Fast TCP port scanner with service detection',
+            type: 'scanner'
+        },
+        {
+            name: 'smb_scanner',
+            displayName: 'SMB Scanner',
+            description: 'SMB version detection and vulnerability checks',
+            type: 'vuln_check'
+        },
+        {
+            name: 'ssh_scanner',
+            displayName: 'SSH Scanner',
+            description: 'SSH version and configuration analysis',
+            type: 'vuln_check'
+        },
+        {
+            name: 'http_scanner',
+            displayName: 'HTTP/HTTPS Scanner',
+            description: 'Web server security analysis and TLS checks',
+            type: 'vuln_check'
+        }
+    ];
+});
+
+// Run full assessment
+ipcMain.handle('pentest-full-assessment', async (_event, data: { host: string; ports?: number[] }) => {
+    const { host, ports = [21, 22, 23, 25, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1433, 3306, 3389, 5432, 5900, 8080] } = data;
+
+    const results: any = {
+        host,
+        startTime: new Date(),
+        openPorts: [],
+        services: [],
+        vulnerabilities: []
+    };
+
+    try {
+        // Step 1: Port scan
+        const portResults = await Promise.all(
+            ports.map(port =>
+                new Promise<any>((resolve) => {
+                    const socket = new net.Socket();
+                    socket.setTimeout(2000);
+
+                    socket.on('connect', () => {
+                        socket.destroy();
+                        resolve({ port, state: 'open', service: PORT_SERVICE_MAP[port] || 'Unknown' });
+                    });
+
+                    socket.on('timeout', () => { socket.destroy(); resolve(null); });
+                    socket.on('error', () => { socket.destroy(); resolve(null); });
+
+                    socket.connect(port, host);
+                })
+            )
+        );
+
+        results.openPorts = portResults.filter(r => r !== null);
+
+        // Step 2: Run specific scanners based on open ports
+        for (const portInfo of results.openPorts) {
+            if (portInfo.port === 445 || portInfo.port === 139) {
+                // SMB scan would go here (simplified)
+                results.services.push({ port: portInfo.port, service: 'SMB', detected: true });
+            }
+            if (portInfo.port === 22) {
+                results.services.push({ port: portInfo.port, service: 'SSH', detected: true });
+            }
+            if ([80, 443, 8080, 8443].includes(portInfo.port)) {
+                results.services.push({ port: portInfo.port, service: 'HTTP', detected: true });
+            }
+        }
+
+        results.endTime = new Date();
+        results.duration = results.endTime - results.startTime;
+
+    } catch (err: any) {
+        results.error = err.message;
+    }
+
+    return results;
+});
+
+// Nmap scanner integration
+ipcMain.handle('pentest-nmap-scan', async (_event, data: {
+    target: string;
+    command: string;
+    args: string[];
+}) => {
+    const { target, command, args } = data;
+
+    return new Promise((resolve) => {
+        const result: any = {
+            target,
+            command: `nmap ${args.join(' ')} ${target}`,
+            output: [],
+            hosts: [],
+            ports: [],
+            vulnerabilities: [],
+            startTime: new Date(),
+            success: false
+        };
+
+        try {
+            const { spawn } = require('child_process');
+            const nmap = spawn('nmap', [...args, target]);
+
+            let stdout = '';
+            let stderr = '';
+
+            nmap.stdout.on('data', (data: Buffer) => {
+                const text = data.toString();
+                stdout += text;
+                result.output.push(text);
+            });
+
+            nmap.stderr.on('data', (data: Buffer) => {
+                stderr += data.toString();
+            });
+
+            nmap.on('close', (code: number) => {
+                result.exitCode = code;
+                result.success = code === 0;
+                result.endTime = new Date();
+                result.duration = result.endTime - result.startTime;
+                result.rawOutput = stdout;
+                result.stderr = stderr;
+
+                // Parse nmap output
+                const lines = stdout.split('\n');
+                let currentHost = '';
+
+                for (const line of lines) {
+                    // Parse host
+                    const hostMatch = line.match(/Nmap scan report for ([^\s]+)/);
+                    if (hostMatch) {
+                        currentHost = hostMatch[1];
+                        result.hosts.push({ host: currentHost, ports: [] });
+                    }
+
+                    // Parse ports
+                    const portMatch = line.match(/^(\d+)\/(tcp|udp)\s+(\w+)\s+(.*)$/);
+                    if (portMatch && currentHost) {
+                        const [, port, protocol, state, service] = portMatch;
+                        const portInfo = {
+                            port: parseInt(port),
+                            protocol,
+                            state,
+                            service: service.trim(),
+                            host: currentHost
+                        };
+                        result.ports.push(portInfo);
+
+                        const hostEntry = result.hosts.find((h: any) => h.host === currentHost);
+                        if (hostEntry) {
+                            hostEntry.ports.push(portInfo);
+                        }
+                    }
+
+                    // Parse OS detection
+                    const osMatch = line.match(/OS details?: (.+)/);
+                    if (osMatch && currentHost) {
+                        const hostEntry = result.hosts.find((h: any) => h.host === currentHost);
+                        if (hostEntry) {
+                            hostEntry.os = osMatch[1];
+                        }
+                    }
+
+                    // Parse vulnerabilities from scripts
+                    if (line.includes('VULNERABLE') || line.includes('vulnerable')) {
+                        result.vulnerabilities.push({
+                            host: currentHost,
+                            finding: line.trim()
+                        });
+                    }
+
+                    // Parse CVEs
+                    const cveMatch = line.match(/(CVE-\d{4}-\d+)/g);
+                    if (cveMatch) {
+                        for (const cve of cveMatch) {
+                            result.vulnerabilities.push({
+                                host: currentHost,
+                                cve,
+                                finding: line.trim()
+                            });
+                        }
+                    }
+                }
+
+                resolve(result);
+            });
+
+            nmap.on('error', (err: any) => {
+                result.error = err.message;
+                if (err.code === 'ENOENT') {
+                    result.error = 'nmap not found. Please install nmap and ensure it is in your PATH.';
+                }
+                resolve(result);
+            });
+
+            // Timeout after 10 minutes
+            setTimeout(() => {
+                nmap.kill();
+                result.error = 'Scan timed out after 10 minutes';
+                resolve(result);
+            }, 600000);
+
+        } catch (err: any) {
+            result.error = err.message;
+            resolve(result);
+        }
+    });
+});
+
+// Check if nmap is installed
+ipcMain.handle('pentest-nmap-check', async () => {
+    return new Promise((resolve) => {
+        const { spawn } = require('child_process');
+        const nmap = spawn('nmap', ['--version']);
+
+        let version = '';
+
+        nmap.stdout.on('data', (data: Buffer) => {
+            version += data.toString();
+        });
+
+        nmap.on('close', (code: number) => {
+            if (code === 0) {
+                const match = version.match(/Nmap version ([\d.]+)/);
+                resolve({
+                    installed: true,
+                    version: match ? match[1] : 'unknown',
+                    output: version.trim()
+                });
+            } else {
+                resolve({ installed: false });
+            }
+        });
+
+        nmap.on('error', () => {
+            resolve({ installed: false });
+        });
+    });
+});
+
+// ----------------------------------------------------------------------
+// Native Exploit Modules
+// ----------------------------------------------------------------------
+
+// Common credentials for brute force
+const COMMON_CREDENTIALS = [
+    { user: 'admin', pass: 'admin' },
+    { user: 'admin', pass: 'password' },
+    { user: 'admin', pass: '123456' },
+    { user: 'root', pass: 'root' },
+    { user: 'root', pass: 'toor' },
+    { user: 'root', pass: 'password' },
+    { user: 'administrator', pass: 'administrator' },
+    { user: 'user', pass: 'user' },
+    { user: 'test', pass: 'test' },
+    { user: 'guest', pass: 'guest' },
+    { user: 'admin', pass: '' },
+    { user: 'root', pass: '' },
+    { user: 'sa', pass: '' },
+    { user: 'sa', pass: 'sa' },
+    { user: 'postgres', pass: 'postgres' },
+];
+
+// FTP Anonymous Login Check
+ipcMain.handle('exploit-ftp-anonymous', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 21 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'FTP Anonymous Login' };
+        let stage = 0;
+
+        socket.setTimeout(10000);
+
+        socket.on('data', (chunk) => {
+            const response = chunk.toString();
+
+            if (stage === 0 && response.includes('220')) {
+                stage = 1;
+                socket.write('USER anonymous\r\n');
+            } else if (stage === 1 && response.includes('331')) {
+                stage = 2;
+                socket.write('PASS anonymous@example.com\r\n');
+            } else if (stage === 2) {
+                if (response.includes('230')) {
+                    result.vulnerable = true;
+                    result.message = 'Anonymous FTP login successful!';
+                    result.evidence = response.trim();
+                    socket.write('QUIT\r\n');
+                } else {
+                    result.message = 'Anonymous login rejected';
+                }
+                socket.destroy();
+                resolve(result);
+            }
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// SSH Brute Force
+ipcMain.handle('exploit-ssh-bruteforce', async (_event, data: { host: string; port?: number; credentials?: any[] }) => {
+    const { host, port = 22, credentials = COMMON_CREDENTIALS } = data;
+    const result: any = {
+        vulnerable: false,
+        host,
+        port,
+        exploit: 'SSH Brute Force',
+        attempts: [],
+        validCredentials: []
+    };
+
+    // For SSH brute force, we'd need an SSH library
+    // This is a simplified version that just checks if SSH is open
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(5000);
+
+        socket.on('connect', () => {
+            result.message = 'SSH port is open. Manual brute force testing recommended.';
+            result.note = 'For actual SSH brute force, install and use hydra or medusa';
+            socket.destroy();
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            result.message = `SSH connection failed: ${err.message}`;
+            resolve(result);
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// SMB Null Session Check
+ipcMain.handle('exploit-smb-null-session', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 445 } = data;
+
+    // SMB null session attempt
+    const SMB_NEG_REQUEST = Buffer.from([
+        0x00, 0x00, 0x00, 0x85, 0xff, 0x53, 0x4d, 0x42, 0x72, 0x00, 0x00, 0x00, 0x00,
+        0x18, 0x53, 0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0xff, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x62, 0x00,
+        0x02, 0x50, 0x43, 0x20, 0x4e, 0x45, 0x54, 0x57, 0x4f, 0x52, 0x4b, 0x20, 0x50,
+        0x52, 0x4f, 0x47, 0x52, 0x41, 0x4d, 0x20, 0x31, 0x2e, 0x30, 0x00, 0x02, 0x4c,
+        0x41, 0x4e, 0x4d, 0x41, 0x4e, 0x31, 0x2e, 0x30, 0x00, 0x02, 0x57, 0x69, 0x6e,
+        0x64, 0x6f, 0x77, 0x73, 0x20, 0x66, 0x6f, 0x72, 0x20, 0x57, 0x6f, 0x72, 0x6b,
+        0x67, 0x72, 0x6f, 0x75, 0x70, 0x73, 0x20, 0x33, 0x2e, 0x31, 0x61, 0x00, 0x02,
+        0x4c, 0x4d, 0x31, 0x2e, 0x32, 0x58, 0x30, 0x30, 0x32, 0x00, 0x02, 0x4c, 0x41,
+        0x4e, 0x4d, 0x41, 0x4e, 0x32, 0x2e, 0x31, 0x00, 0x02, 0x4e, 0x54, 0x20, 0x4c,
+        0x4d, 0x20, 0x30, 0x2e, 0x31, 0x32, 0x00
+    ]);
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'SMB Null Session' };
+
+        socket.setTimeout(10000);
+
+        socket.on('connect', () => {
+            socket.write(SMB_NEG_REQUEST);
+        });
+
+        socket.on('data', (data) => {
+            // Check if SMB negotiation succeeded
+            if (data.length > 8 && (data[4] === 0xff || data[4] === 0xfe)) {
+                result.vulnerable = true;
+                result.message = 'SMB accepts connections - null session may be possible';
+                result.evidence = `SMB Response received (${data.length} bytes)`;
+                result.note = 'Use smbclient -N -L to enumerate shares';
+            }
+            socket.destroy();
+            resolve(result);
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// HTTP Directory Listing Check
+ipcMain.handle('exploit-http-dirlist', async (_event, data: { host: string; port?: number; ssl?: boolean }) => {
+    const { host, port = 80, ssl = false } = data;
+    const protocol = ssl ? https : http;
+
+    return new Promise((resolve) => {
+        const result: any = { vulnerable: false, host, port, exploit: 'Directory Listing' };
+        const directories = ['/', '/admin/', '/backup/', '/images/', '/uploads/', '/files/', '/data/'];
+        const found: string[] = [];
+        let checked = 0;
+
+        const checkDir = (dir: string) => {
+            const req = protocol.request({
+                hostname: host,
+                port,
+                path: dir,
+                method: 'GET',
+                timeout: 5000,
+                rejectUnauthorized: false
+            }, (res) => {
+                let body = '';
+                res.on('data', (chunk) => { body += chunk; });
+                res.on('end', () => {
+                    if (body.includes('Index of') || body.includes('Directory listing') ||
+                        body.includes('<title>Index of') || body.includes('Parent Directory')) {
+                        found.push(dir);
+                    }
+                    checked++;
+                    if (checked === directories.length) {
+                        result.vulnerable = found.length > 0;
+                        result.directories = found;
+                        result.message = found.length > 0
+                            ? `Found ${found.length} directories with listing enabled`
+                            : 'No directory listing found';
+                        resolve(result);
+                    }
+                });
+            });
+            req.on('error', () => {
+                checked++;
+                if (checked === directories.length) {
+                    result.vulnerable = found.length > 0;
+                    result.directories = found;
+                    result.message = found.length > 0
+                        ? `Found ${found.length} directories with listing enabled`
+                        : 'No directory listing found';
+                    resolve(result);
+                }
+            });
+            req.on('timeout', () => { req.destroy(); });
+            req.end();
+        };
+
+        directories.forEach(checkDir);
+    });
+});
+
+// HTTP Shellshock Check (CVE-2014-6271)
+ipcMain.handle('exploit-http-shellshock', async (_event, data: { host: string; port?: number; ssl?: boolean; path?: string }) => {
+    const { host, port = 80, ssl = false, path = '/cgi-bin/status' } = data;
+    const protocol = ssl ? https : http;
+
+    return new Promise((resolve) => {
+        const result: any = { vulnerable: false, host, port, exploit: 'Shellshock (CVE-2014-6271)' };
+
+        // Shellshock payload - safe test that just echoes
+        const payload = '() { :; }; echo; echo vulnerable';
+
+        const paths = [path, '/cgi-bin/test.cgi', '/cgi-bin/status', '/cgi-bin/admin.cgi', '/cgi-bin/test.sh'];
+        let checked = 0;
+
+        const checkPath = (cgiPath: string) => {
+            const req = protocol.request({
+                hostname: host,
+                port,
+                path: cgiPath,
+                method: 'GET',
+                timeout: 5000,
+                rejectUnauthorized: false,
+                headers: {
+                    'User-Agent': payload,
+                    'Cookie': payload,
+                    'Referer': payload
+                }
+            }, (res) => {
+                let body = '';
+                res.on('data', (chunk) => { body += chunk; });
+                res.on('end', () => {
+                    if (body.includes('vulnerable')) {
+                        result.vulnerable = true;
+                        result.path = cgiPath;
+                        result.message = `Shellshock vulnerable at ${cgiPath}`;
+                        result.evidence = body.substring(0, 200);
+                    }
+                    checked++;
+                    if (checked === paths.length && !result.vulnerable) {
+                        result.message = 'No Shellshock vulnerability detected';
+                    }
+                    if (checked === paths.length || result.vulnerable) {
+                        resolve(result);
+                    }
+                });
+            });
+            req.on('error', () => {
+                checked++;
+                if (checked === paths.length) {
+                    result.message = result.vulnerable ? result.message : 'Check failed or not vulnerable';
+                    resolve(result);
+                }
+            });
+            req.on('timeout', () => { req.destroy(); });
+            req.end();
+        };
+
+        paths.forEach(checkPath);
+    });
+});
+
+// Redis No Auth Check
+ipcMain.handle('exploit-redis-noauth', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 6379 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'Redis No Authentication' };
+
+        socket.setTimeout(5000);
+
+        socket.on('connect', () => {
+            socket.write('INFO\r\n');
+        });
+
+        socket.on('data', (data) => {
+            const response = data.toString();
+            if (response.includes('redis_version') || response.includes('# Server')) {
+                result.vulnerable = true;
+                result.message = 'Redis server has no authentication!';
+                // Extract version
+                const versionMatch = response.match(/redis_version:([^\r\n]+)/);
+                if (versionMatch) {
+                    result.version = versionMatch[1];
+                }
+                result.evidence = response.substring(0, 500);
+            } else if (response.includes('NOAUTH') || response.includes('Authentication required')) {
+                result.message = 'Redis requires authentication';
+            }
+            socket.destroy();
+            resolve(result);
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// MongoDB No Auth Check
+ipcMain.handle('exploit-mongodb-noauth', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 27017 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'MongoDB No Authentication' };
+
+        // MongoDB wire protocol - simple isMaster command
+        const query = Buffer.from([
+            0x3f, 0x00, 0x00, 0x00, // Message length
+            0x00, 0x00, 0x00, 0x00, // Request ID
+            0x00, 0x00, 0x00, 0x00, // Response to
+            0xd4, 0x07, 0x00, 0x00, // OpCode (OP_QUERY)
+            0x00, 0x00, 0x00, 0x00, // Flags
+            0x61, 0x64, 0x6d, 0x69, 0x6e, 0x2e, 0x24, 0x63, 0x6d, 0x64, 0x00, // "admin.$cmd"
+            0x00, 0x00, 0x00, 0x00, // Number to skip
+            0x01, 0x00, 0x00, 0x00, // Number to return
+            // BSON document: { isMaster: 1 }
+            0x15, 0x00, 0x00, 0x00,
+            0x10, 0x69, 0x73, 0x4d, 0x61, 0x73, 0x74, 0x65, 0x72, 0x00,
+            0x01, 0x00, 0x00, 0x00,
+            0x00
+        ]);
+
+        socket.setTimeout(5000);
+
+        socket.on('connect', () => {
+            socket.write(query);
+        });
+
+        socket.on('data', (data) => {
+            // Check if we got a valid response
+            if (data.length > 36) {
+                result.vulnerable = true;
+                result.message = 'MongoDB server has no authentication!';
+                result.evidence = `Response received (${data.length} bytes)`;
+            }
+            socket.destroy();
+            resolve(result);
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// VNC No Auth Check
+ipcMain.handle('exploit-vnc-noauth', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 5900 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'VNC No Authentication' };
+        let stage = 0;
+
+        socket.setTimeout(5000);
+
+        socket.on('data', (data) => {
+            const response = data.toString();
+
+            if (stage === 0) {
+                // Protocol version
+                if (response.includes('RFB')) {
+                    stage = 1;
+                    result.version = response.trim();
+                    // Send our version
+                    socket.write('RFB 003.008\n');
+                }
+            } else if (stage === 1) {
+                // Security types
+                const secTypes = data;
+                if (secTypes.length > 0) {
+                    const numTypes = secTypes[0];
+                    if (numTypes > 0) {
+                        // Check if type 1 (None) is in the list
+                        for (let i = 1; i <= numTypes && i < secTypes.length; i++) {
+                            if (secTypes[i] === 1) {
+                                result.vulnerable = true;
+                                result.message = 'VNC server accepts connections without authentication!';
+                                result.evidence = `Security type 1 (None) available`;
+                                break;
+                            }
+                        }
+                        if (!result.vulnerable) {
+                            result.message = 'VNC requires authentication';
+                        }
+                    }
+                }
+                socket.destroy();
+                resolve(result);
+            }
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// MySQL No Password Check
+ipcMain.handle('exploit-mysql-nopass', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 3306 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'MySQL No Password' };
+
+        socket.setTimeout(5000);
+
+        socket.on('data', (data) => {
+            // Check MySQL greeting packet
+            if (data.length > 5) {
+                const protocolVersion = data[4];
+                if (protocolVersion === 10 || protocolVersion === 9) {
+                    result.message = 'MySQL server detected. Use mysql client to test authentication.';
+                    // Try to extract version
+                    let versionEnd = 5;
+                    while (versionEnd < data.length && data[versionEnd] !== 0) {
+                        versionEnd++;
+                    }
+                    if (versionEnd > 5) {
+                        result.version = data.slice(5, versionEnd).toString();
+                    }
+                }
+            }
+            socket.destroy();
+            resolve(result);
+        });
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = 'Connection timeout';
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// Telnet Banner Grab and Default Creds Check
+ipcMain.handle('exploit-telnet-banner', async (_event, data: { host: string; port?: number }) => {
+    const { host, port = 23 } = data;
+
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const result: any = { vulnerable: false, host, port, exploit: 'Telnet Service' };
+        let banner = '';
+
+        socket.setTimeout(5000);
+
+        socket.on('data', (data) => {
+            banner += data.toString();
+
+            // Check for common default credential hints
+            if (banner.includes('login:') || banner.includes('Username:')) {
+                result.message = 'Telnet login prompt detected. Test for default credentials.';
+                result.banner = banner.substring(0, 500);
+                result.note = 'Common defaults: admin/admin, root/root, user/user';
+                socket.destroy();
+                resolve(result);
+            }
+        });
+
+        // Give time for banner
+        setTimeout(() => {
+            if (banner) {
+                result.message = 'Telnet service detected';
+                result.banner = banner.substring(0, 500);
+            }
+            socket.destroy();
+            resolve(result);
+        }, 3000);
+
+        socket.on('timeout', () => {
+            socket.destroy();
+            result.message = banner ? 'Telnet detected' : 'Connection timeout';
+            result.banner = banner;
+            resolve(result);
+        });
+
+        socket.on('error', (err: any) => {
+            socket.destroy();
+            result.message = err.message;
+            resolve(result);
+        });
+
+        socket.connect(port, host);
+    });
+});
+
+// Get available exploits for a port
+ipcMain.handle('exploit-get-for-port', async (_event, data: { port: number }) => {
+    const { port } = data;
+
+    const exploits: any[] = [];
+
+    // FTP exploits
+    if (port === 21) {
+        exploits.push(
+            { id: 'ftp-anonymous', name: 'FTP Anonymous Login', handler: 'exploit-ftp-anonymous', severity: 'medium' },
+        );
+    }
+
+    // SSH exploits
+    if (port === 22) {
+        exploits.push(
+            { id: 'ssh-bruteforce', name: 'SSH Brute Force', handler: 'exploit-ssh-bruteforce', severity: 'high' },
+        );
+    }
+
+    // Telnet
+    if (port === 23) {
+        exploits.push(
+            { id: 'telnet-banner', name: 'Telnet Banner/Default Creds', handler: 'exploit-telnet-banner', severity: 'high' },
+        );
+    }
+
+    // HTTP exploits
+    if ([80, 8080, 8000, 8008].includes(port)) {
+        exploits.push(
+            { id: 'http-dirlist', name: 'Directory Listing', handler: 'exploit-http-dirlist', severity: 'low' },
+            { id: 'http-shellshock', name: 'Shellshock (CVE-2014-6271)', handler: 'exploit-http-shellshock', severity: 'critical' },
+        );
+    }
+
+    // SMB exploits
+    if ([139, 445].includes(port)) {
+        exploits.push(
+            { id: 'smb-null-session', name: 'SMB Null Session', handler: 'exploit-smb-null-session', severity: 'medium' },
+        );
+    }
+
+    // MySQL
+    if (port === 3306) {
+        exploits.push(
+            { id: 'mysql-nopass', name: 'MySQL No Password', handler: 'exploit-mysql-nopass', severity: 'critical' },
+        );
+    }
+
+    // RDP
+    if (port === 3389) {
+        exploits.push(
+            { id: 'rdp-check', name: 'RDP Security Check', handler: 'exploit-rdp-check', severity: 'medium' },
+        );
+    }
+
+    // VNC
+    if ([5900, 5901, 5902].includes(port)) {
+        exploits.push(
+            { id: 'vnc-noauth', name: 'VNC No Authentication', handler: 'exploit-vnc-noauth', severity: 'critical' },
+        );
+    }
+
+    // Redis
+    if (port === 6379) {
+        exploits.push(
+            { id: 'redis-noauth', name: 'Redis No Authentication', handler: 'exploit-redis-noauth', severity: 'critical' },
+        );
+    }
+
+    // MongoDB
+    if (port === 27017) {
+        exploits.push(
+            { id: 'mongodb-noauth', name: 'MongoDB No Authentication', handler: 'exploit-mongodb-noauth', severity: 'critical' },
+        );
+    }
+
+    return exploits;
+});
+
+// ----------------------------------------------------------------------
+// Metasploit RPC Integration
+// ----------------------------------------------------------------------
+
+// Store for Metasploit connection state
+let msfToken: string | null = null;
+let msfHost: string = '127.0.0.1';
+let msfPort: number = 55553;
+let msfSSL: boolean = true;
+
+// Helper function to recursively convert Buffer keys to strings in decoded msgpack
+function convertBufferKeys(obj: any): any {
+    if (obj === null || obj === undefined) {
+        return obj;
+    }
+
+    if (obj instanceof Map) {
+        const result: any = {};
+        obj.forEach((value: any, key: any) => {
+            const keyStr = key instanceof Uint8Array || Buffer.isBuffer(key)
+                ? Buffer.from(key).toString('utf-8')
+                : String(key);
+            result[keyStr] = convertBufferKeys(value);
+        });
+        return result;
+    }
+
+    if (Array.isArray(obj)) {
+        return obj.map(item => convertBufferKeys(item));
+    }
+
+    if (obj instanceof Uint8Array || Buffer.isBuffer(obj)) {
+        return Buffer.from(obj).toString('utf-8');
+    }
+
+    if (typeof obj === 'object') {
+        const result: any = {};
+        for (const key of Object.keys(obj)) {
+            result[key] = convertBufferKeys(obj[key]);
+        }
+        return result;
+    }
+
+    return obj;
+}
+
+// Helper function to make Metasploit RPC calls
+async function msfRpcCall(method: string, params: any[] = []): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const data = msgpack.encode([method, ...params]);
+
+        const options = {
+            hostname: msfHost,
+            port: msfPort,
+            path: '/api/',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'binary/message-pack',
+                'Content-Length': data.length
+            },
+            rejectUnauthorized: false // Metasploit uses self-signed certs
+        };
+
+        const protocol = msfSSL ? https : http;
+
+        const req = protocol.request(options, (res) => {
+            const chunks: Buffer[] = [];
+
+            res.on('data', (chunk) => {
+                chunks.push(chunk);
+            });
+
+            res.on('end', () => {
+                try {
+                    const responseData = Buffer.concat(chunks);
+                    // msgpack-lite handles binary keys natively
+                    const rawResult = msgpack.decode(responseData);
+                    const result = convertBufferKeys(rawResult);
+
+                    if (result && result.error) {
+                        reject(new Error(result.error_message || result.error));
+                    } else {
+                        resolve(result);
+                    }
+                } catch (e: any) {
+                    reject(new Error(`Failed to decode response: ${e.message}`));
+                }
+            });
+        });
+
+        req.on('error', (e: any) => {
+            reject(new Error(`Connection failed: ${e.message}`));
+        });
+
+        req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new Error('Request timeout'));
+        });
+
+        req.write(Buffer.from(data));
+        req.end();
+    });
+}
+
+// MSF Connect - Authenticate and get token
+ipcMain.handle('msf-connect', async (_event, data: { host: string; port: string; password: string; ssl?: boolean }) => {
+    try {
+        msfHost = data.host || '127.0.0.1';
+        msfPort = parseInt(data.port) || 55553;
+        msfSSL = data.ssl !== false;
+
+        // Authenticate with Metasploit RPC
+        const result = await msfRpcCall('auth.login', ['msf', data.password]);
+
+        if (result && result.token) {
+            msfToken = result.token;
+
+            // Get version info
+            let version = 'Unknown';
+            try {
+                const versionInfo = await msfRpcCall('core.version', [msfToken]);
+                version = versionInfo?.version || 'Unknown';
+            } catch (e) {
+                // Ignore version fetch errors
+            }
+
+            return {
+                success: true,
+                token: msfToken,
+                version: version,
+                message: `Connected to Metasploit Framework ${version}`
+            };
+        } else {
+            return { success: false, error: 'Authentication failed - no token received' };
+        }
+    } catch (e: any) {
+        msfToken = null;
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Disconnect
+ipcMain.handle('msf-disconnect', async () => {
+    if (msfToken) {
+        try {
+            await msfRpcCall('auth.logout', [msfToken]);
+        } catch (e) {
+            // Ignore logout errors
+        }
+    }
+    msfToken = null;
+    return { success: true };
+});
+
+// MSF Generic RPC Call
+ipcMain.handle('msf-call', async (_event, data: { method: string; params?: any[] }) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        // Prepend token to params for authenticated calls
+        const params = data.params || [];
+        const result = await msfRpcCall(data.method, [msfToken, ...params]);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Module Search
+ipcMain.handle('msf-module-search', async (_event, query: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('module.search', [msfToken, query]);
+        return { success: true, modules: result || [] };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Module Info
+ipcMain.handle('msf-module-info', async (_event, data: { type: string; name: string }) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('module.info', [msfToken, data.type, data.name]);
+        return { success: true, info: result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Module Options
+ipcMain.handle('msf-module-options', async (_event, data: { type: string; name: string }) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('module.options', [msfToken, data.type, data.name]);
+        return { success: true, options: result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Execute Module
+ipcMain.handle('msf-module-execute', async (_event, data: { type: string; name: string; options: Record<string, any> }) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('module.execute', [msfToken, data.type, data.name, data.options]);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Get Sessions
+ipcMain.handle('msf-sessions', async () => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('session.list', [msfToken]);
+        return { success: true, sessions: result || {} };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Session Interact (read/write to shell)
+ipcMain.handle('msf-session-read', async (_event, sessionId: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('session.shell_read', [msfToken, sessionId]);
+        return { success: true, data: result?.data || '' };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('msf-session-write', async (_event, data: { sessionId: string; command: string }) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('session.shell_write', [msfToken, data.sessionId, data.command + '\n']);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Console - Create, Read, Write, Destroy
+ipcMain.handle('msf-console-create', async () => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('console.create', [msfToken]);
+        return { success: true, consoleId: result?.id };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('msf-console-read', async (_event, consoleId: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('console.read', [msfToken, consoleId]);
+        return { success: true, data: result?.data || '', prompt: result?.prompt, busy: result?.busy };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('msf-console-write', async (_event, data: { consoleId: string; command: string }) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('console.write', [msfToken, data.consoleId, data.command + '\n']);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('msf-console-destroy', async (_event, consoleId: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('console.destroy', [msfToken, consoleId]);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF DB Hosts - Get discovered hosts from database
+ipcMain.handle('msf-db-hosts', async () => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('db.hosts', [msfToken, {}]);
+        return { success: true, hosts: result?.hosts || [] };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF DB Services - Get discovered services
+ipcMain.handle('msf-db-services', async (_event, host?: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const opts: any = {};
+        if (host) opts.hosts = host;
+        const result = await msfRpcCall('db.services', [msfToken, opts]);
+        return { success: true, services: result?.services || [] };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF DB Vulns - Get discovered vulnerabilities
+ipcMain.handle('msf-db-vulns', async (_event, host?: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const opts: any = {};
+        if (host) opts.hosts = host;
+        const result = await msfRpcCall('db.vulns', [msfToken, opts]);
+        return { success: true, vulns: result?.vulns || [] };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Jobs - List running jobs (scans, exploits, etc.)
+ipcMain.handle('msf-jobs', async () => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('job.list', [msfToken]);
+        return { success: true, jobs: result || {} };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Job Info
+ipcMain.handle('msf-job-info', async (_event, jobId: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('job.info', [msfToken, jobId]);
+        return { success: true, info: result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// MSF Job Stop
+ipcMain.handle('msf-job-stop', async (_event, jobId: string) => {
+    if (!msfToken) {
+        return { success: false, error: 'Not connected to Metasploit' };
+    }
+
+    try {
+        const result = await msfRpcCall('job.stop', [msfToken, jobId]);
+        return { success: true, result };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+// ----------------------------------------------------------------------
+// Web Scanner - HTTP Fetch (bypasses CORS)
+// ----------------------------------------------------------------------
+
+interface WebScanRequest {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    timeout?: number;
+    followRedirects?: boolean;
+}
+
+interface WebScanResponse {
+    success: boolean;
+    status?: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    error?: string;
+    url?: string;
+    redirected?: boolean;
+}
+
+ipcMain.handle('web-scan-fetch', async (_event, request: WebScanRequest): Promise<WebScanResponse> => {
+    const timeout = request.timeout || 5000; // Default 5s timeout
+
+    return new Promise((resolve) => {
+        let resolved = false;
+        let req: ReturnType<typeof http.request> | null = null;
+
+        // Hard timeout - absolutely kill the request after timeout
+        const hardTimeout = setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                if (req) {
+                    req.destroy();
+                }
+                resolve({
+                    success: false,
+                    error: 'Request timed out',
+                    url: request.url
+                });
+            }
+        }, timeout);
+
+        const cleanup = () => {
+            clearTimeout(hardTimeout);
+        };
+
+        try {
+            const urlObj = new URL(request.url);
+            const isHttps = urlObj.protocol === 'https:';
+            const httpModule = isHttps ? https : http;
+
+            const options = {
+                hostname: urlObj.hostname,
+                port: urlObj.port || (isHttps ? 443 : 80),
+                path: urlObj.pathname + urlObj.search,
+                method: request.method || 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) STRIX-Scanner/1.0',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    ...request.headers
+                },
+                rejectUnauthorized: false // Allow self-signed certs for scanning
+            };
+
+            req = httpModule.request(options, (res) => {
+                let body = '';
+                const responseHeaders: Record<string, string> = {};
+
+                // Collect headers
+                for (const [key, value] of Object.entries(res.headers)) {
+                    if (typeof value === 'string') {
+                        responseHeaders[key.toLowerCase()] = value;
+                    } else if (Array.isArray(value)) {
+                        responseHeaders[key.toLowerCase()] = value.join(', ');
+                    }
+                }
+
+                // Handle redirects
+                if (request.followRedirects !== false && res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                    // Follow redirect - but with reduced timeout
+                    cleanup();
+                    if (!resolved) {
+                        resolved = true;
+                        const redirectUrl = new URL(res.headers.location, request.url).href;
+                        // Recursively handle redirect via new IPC call
+                        resolve({
+                            success: false,
+                            error: 'Redirect - skipping for speed',
+                            url: request.url
+                        });
+                    }
+                    return;
+                }
+
+                res.setEncoding('utf8');
+                res.on('data', (chunk) => {
+                    body += chunk;
+                    // Limit body size to 500KB for dir enum (speed)
+                    if (body.length > 500 * 1024) {
+                        cleanup();
+                        if (!resolved) {
+                            resolved = true;
+                            req?.destroy();
+                            resolve({
+                                success: true,
+                                status: res.statusCode,
+                                statusText: res.statusMessage,
+                                headers: responseHeaders,
+                                body: body.substring(0, 500 * 1024),
+                                url: request.url
+                            });
+                        }
+                    }
+                });
+
+                res.on('end', () => {
+                    cleanup();
+                    if (!resolved) {
+                        resolved = true;
+                        resolve({
+                            success: true,
+                            status: res.statusCode,
+                            statusText: res.statusMessage,
+                            headers: responseHeaders,
+                            body,
+                            url: request.url,
+                            redirected: false
+                        });
+                    }
+                });
+
+                res.on('error', () => {
+                    cleanup();
+                    if (!resolved) {
+                        resolved = true;
+                        resolve({
+                            success: false,
+                            error: 'Response error',
+                            url: request.url
+                        });
+                    }
+                });
+            });
+
+            // Socket timeout
+            req.setTimeout(timeout, () => {
+                cleanup();
+                if (!resolved) {
+                    resolved = true;
+                    req?.destroy();
+                    resolve({
+                        success: false,
+                        error: 'Socket timeout',
+                        url: request.url
+                    });
+                }
+            });
+
+            req.on('error', (e) => {
+                cleanup();
+                if (!resolved) {
+                    resolved = true;
+                    resolve({
+                        success: false,
+                        error: e.message,
+                        url: request.url
+                    });
+                }
+            });
+
+            if (request.body) {
+                req.write(request.body);
+            }
+
+            req.end();
+        } catch (e: any) {
+            cleanup();
+            if (!resolved) {
+                resolved = true;
+                resolve({
+                    success: false,
+                    error: e.message,
+                    url: request.url
+                });
+            }
+        }
+    });
+});
+
+// Batch fetch for scanning multiple URLs
+
+// ----------------------------------------------------------------------
+// API Key Tester - Tests exchange/service API credentials
+// ----------------------------------------------------------------------
+
+interface APITestRequest {
+    service: string;
+    apiKey: string;
+    secretKey?: string;
+    passphrase?: string;
+}
+
+interface APITestResponse {
+    success: boolean;
+    active: boolean;
+    service: string;
+    message: string;
+    accountInfo?: any;
+    permissions?: string[];
+    balance?: string;
+    error?: string;
+}
+
+// Helper to make HTTPS requests
+function makeRequest(options: https.RequestOptions, body?: string): Promise<{ status: number; data: string }> {
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve({ status: res.statusCode || 0, data }));
+        });
+        req.on('error', reject);
+        req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')); });
+        if (body) req.write(body);
+        req.end();
+    });
+}
+
+ipcMain.handle('test-api-credential', async (_event, request: APITestRequest): Promise<APITestResponse> => {
+    console.log('[API-Tester] Received test request for:', request.service);
+    console.log('[API-Tester] API Key (first 10):', request.apiKey?.substring(0, 10));
+
+    const { service, apiKey, secretKey, passphrase } = request;
+
+    try {
+        switch (service.toLowerCase()) {
+            case 'binance': {
+                if (!secretKey) {
+                    return { success: false, active: false, service, message: 'Secret key required for Binance', error: 'Missing secret key' };
+                }
+                const timestamp = Date.now();
+                const queryString = `timestamp=${timestamp}`;
+                const signature = crypto.createHmac('sha256', secretKey).update(queryString).digest('hex');
+
+                const result = await makeRequest({
+                    hostname: 'api.binance.com',
+                    path: `/api/v3/account?${queryString}&signature=${signature}`,
+                    method: 'GET',
+                    headers: { 'X-MBX-APIKEY': apiKey }
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    const balances = data.balances?.filter((b: any) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0) || [];
+                    return {
+                        success: true, active: true, service: 'Binance',
+                        message: 'API key is active',
+                        accountInfo: { canTrade: data.canTrade, canWithdraw: data.canWithdraw },
+                        permissions: data.permissions || [],
+                        balance: balances.length > 0 ? `${balances.length} assets with balance` : 'No balance'
+                    };
+                } else if (result.status === 401 || result.status === 403) {
+                    return { success: true, active: false, service: 'Binance', message: 'Invalid API key or secret' };
+                }
+                return { success: true, active: false, service: 'Binance', message: `API returned status ${result.status}` };
+            }
+
+            case 'coinbase': {
+                // Coinbase API v2 with API key
+                const timestamp = Math.floor(Date.now() / 1000).toString();
+                const method = 'GET';
+                const requestPath = '/v2/user';
+                const message = timestamp + method + requestPath;
+                const signature = secretKey ? crypto.createHmac('sha256', secretKey).update(message).digest('hex') : '';
+
+                const result = await makeRequest({
+                    hostname: 'api.coinbase.com',
+                    path: requestPath,
+                    method: 'GET',
+                    headers: {
+                        'CB-ACCESS-KEY': apiKey,
+                        'CB-ACCESS-SIGN': signature,
+                        'CB-ACCESS-TIMESTAMP': timestamp,
+                        'CB-VERSION': '2021-08-03'
+                    }
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    return {
+                        success: true, active: true, service: 'Coinbase',
+                        message: 'API key is active',
+                        accountInfo: { name: data.data?.name, email: data.data?.email }
+                    };
+                }
+                return { success: true, active: false, service: 'Coinbase', message: `API returned status ${result.status}` };
+            }
+
+            case 'kraken': {
+                if (!secretKey) {
+                    return { success: false, active: false, service, message: 'Private key required for Kraken', error: 'Missing private key' };
+                }
+                const nonce = Date.now() * 1000;
+                const postData = `nonce=${nonce}`;
+                const urlPath = '/0/private/Balance';
+                const hash = crypto.createHash('sha256').update(nonce + postData).digest();
+                const secretBuffer = Buffer.from(secretKey, 'base64');
+                const hmac = crypto.createHmac('sha512', secretBuffer);
+                hmac.update(urlPath);
+                hmac.update(hash);
+                const signature = hmac.digest('base64');
+
+                const result = await makeRequest({
+                    hostname: 'api.kraken.com',
+                    path: urlPath,
+                    method: 'POST',
+                    headers: {
+                        'API-Key': apiKey,
+                        'API-Sign': signature,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                }, postData);
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    if (data.error && data.error.length > 0) {
+                        return { success: true, active: false, service: 'Kraken', message: data.error.join(', ') };
+                    }
+                    const balances = Object.entries(data.result || {}).filter(([_, v]) => parseFloat(v as string) > 0);
+                    return {
+                        success: true, active: true, service: 'Kraken',
+                        message: 'API key is active',
+                        balance: balances.length > 0 ? `${balances.length} assets with balance` : 'No balance'
+                    };
+                }
+                return { success: true, active: false, service: 'Kraken', message: `API returned status ${result.status}` };
+            }
+
+            case 'kucoin': {
+                if (!secretKey || !passphrase) {
+                    return { success: false, active: false, service, message: 'Secret key and passphrase required for KuCoin', error: 'Missing credentials' };
+                }
+                const timestamp = Date.now().toString();
+                const method = 'GET';
+                const endpoint = '/api/v1/accounts';
+                const strToSign = timestamp + method + endpoint;
+                const signature = crypto.createHmac('sha256', secretKey).update(strToSign).digest('base64');
+                const passphraseSign = crypto.createHmac('sha256', secretKey).update(passphrase).digest('base64');
+
+                const result = await makeRequest({
+                    hostname: 'api.kucoin.com',
+                    path: endpoint,
+                    method: 'GET',
+                    headers: {
+                        'KC-API-KEY': apiKey,
+                        'KC-API-SIGN': signature,
+                        'KC-API-TIMESTAMP': timestamp,
+                        'KC-API-PASSPHRASE': passphraseSign,
+                        'KC-API-KEY-VERSION': '2'
+                    }
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    if (data.code === '200000') {
+                        const accounts = data.data || [];
+                        const withBalance = accounts.filter((a: any) => parseFloat(a.balance) > 0);
+                        return {
+                            success: true, active: true, service: 'KuCoin',
+                            message: 'API key is active',
+                            balance: withBalance.length > 0 ? `${withBalance.length} accounts with balance` : 'No balance'
+                        };
+                    }
+                    return { success: true, active: false, service: 'KuCoin', message: data.msg || 'Invalid response' };
+                }
+                return { success: true, active: false, service: 'KuCoin', message: `API returned status ${result.status}` };
+            }
+
+            case 'bybit': {
+                if (!secretKey) {
+                    return { success: false, active: false, service, message: 'Secret key required for Bybit', error: 'Missing secret key' };
+                }
+                const timestamp = Date.now().toString();
+                const recvWindow = '5000';
+                const queryString = `api_key=${apiKey}&recv_window=${recvWindow}&timestamp=${timestamp}`;
+                const signature = crypto.createHmac('sha256', secretKey).update(queryString).digest('hex');
+
+                const result = await makeRequest({
+                    hostname: 'api.bybit.com',
+                    path: `/v5/account/wallet-balance?accountType=UNIFIED`,
+                    method: 'GET',
+                    headers: {
+                        'X-BAPI-API-KEY': apiKey,
+                        'X-BAPI-SIGN': signature,
+                        'X-BAPI-TIMESTAMP': timestamp,
+                        'X-BAPI-RECV-WINDOW': recvWindow
+                    }
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    if (data.retCode === 0) {
+                        return {
+                            success: true, active: true, service: 'Bybit',
+                            message: 'API key is active',
+                            balance: data.result?.list?.[0]?.totalEquity || 'Unknown'
+                        };
+                    }
+                    return { success: true, active: false, service: 'Bybit', message: data.retMsg || 'Invalid key' };
+                }
+                return { success: true, active: false, service: 'Bybit', message: `API returned status ${result.status}` };
+            }
+
+            case 'github': {
+                const result = await makeRequest({
+                    hostname: 'api.github.com',
+                    path: '/user',
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `token ${apiKey}`,
+                        'User-Agent': 'API-Tester',
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    return {
+                        success: true, active: true, service: 'GitHub',
+                        message: 'Token is active',
+                        accountInfo: { login: data.login, name: data.name, type: data.type }
+                    };
+                } else if (result.status === 401) {
+                    return { success: true, active: false, service: 'GitHub', message: 'Invalid or expired token' };
+                }
+                return { success: true, active: false, service: 'GitHub', message: `API returned status ${result.status}` };
+            }
+
+            case 'stripe': {
+                const auth = Buffer.from(`${apiKey}:`).toString('base64');
+                const result = await makeRequest({
+                    hostname: 'api.stripe.com',
+                    path: '/v1/balance',
+                    method: 'GET',
+                    headers: { 'Authorization': `Basic ${auth}` }
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    return {
+                        success: true, active: true, service: 'Stripe',
+                        message: 'API key is active',
+                        balance: data.available?.[0]?.amount ? `${data.available[0].amount / 100} ${data.available[0].currency}` : 'Unknown'
+                    };
+                }
+                return { success: true, active: false, service: 'Stripe', message: `API returned status ${result.status}` };
+            }
+
+            case 'etherscan':
+            case 'polygonscan':
+            case 'bscscan':
+            case 'arbiscan': {
+                const hostMap: Record<string, string> = {
+                    'etherscan': 'api.etherscan.io',
+                    'polygonscan': 'api.polygonscan.com',
+                    'bscscan': 'api.bscscan.com',
+                    'arbiscan': 'api.arbiscan.io'
+                };
+                const hostname = hostMap[service.toLowerCase()] || 'api.etherscan.io';
+
+                const result = await makeRequest({
+                    hostname,
+                    path: `/api?module=account&action=balance&address=0x0000000000000000000000000000000000000000&apikey=${apiKey}`,
+                    method: 'GET'
+                });
+
+                if (result.status === 200) {
+                    const data = JSON.parse(result.data);
+                    if (data.status === '1' || data.message === 'OK') {
+                        return { success: true, active: true, service: service, message: 'API key is active' };
+                    }
+                    return { success: true, active: false, service, message: data.message || 'Invalid key' };
+                }
+                return { success: true, active: false, service, message: `API returned status ${result.status}` };
+            }
+
+            default:
+                return { success: false, active: false, service, message: `Unknown service: ${service}`, error: 'Unsupported service' };
+        }
+    } catch (e: any) {
+        return { success: false, active: false, service, message: `Error: ${e.message}`, error: e.message };
+    }
+});
+
+// ----------------------------------------------------------------------
 // Window Management
 // ----------------------------------------------------------------------
 
 function createWindow() {
     // Icon path - use build/icon.ico if it exists, otherwise use a default
-    const iconPath = app.isPackaged 
+    const iconPath = app.isPackaged
         ? path.join(__dirname, '../build/icon.ico')
         : path.join(__dirname, '../build/icon.ico');
-    
+
     const iconExists = fs.existsSync(iconPath);
-    
+
     win = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -1427,5 +3817,141 @@ app.on('activate', () => {
         createWindow()
     }
 })
+
+
+// ----------------------------------------------------------------------
+// Web Scanner IPC Handlers
+// ----------------------------------------------------------------------
+
+ipcMain.removeHandler('web-scan-fetch');
+
+ipcMain.handle('web-scan-fetch', async (_event, { url, options }) => {
+    const { net, session } = require('electron');
+
+    return new Promise(async (resolve, reject) => {
+        try {
+            // Determine session to use
+            let requestSession = session.defaultSession;
+
+            // If proxy is requested, use a dedicated partition to avoid global impact
+            if (options?.proxy) {
+                const proxyUrl = options.proxy.url; // e.g., "http://127.0.0.1:8080"
+
+                // Parse proxy string to separate auth if provided in URL, though UI provides separate fields
+                // UI provides: url, username, password.
+
+                requestSession = session.fromPartition('scanner-proxy-' + Date.now());
+
+                const proxyConfig: any = {
+                    proxyRules: proxyUrl
+                };
+
+                await requestSession.setProxy(proxyConfig);
+
+                // Handle Proxy Auth if username/password are provided
+                // setProxy doesn't directly take auth, we need to handle the 'login' event
+                if (options.proxy.username && options.proxy.password) {
+                    // This is complex for a one-off request. 
+                    // Alternate strategy: Embed auth in the proxy URL if it's HTTP basic
+                    // http://user:pass@host:port
+                    // But Electron often strips this.
+                    // Proper way:
+                    /*
+                    requestSession.on('will-download', (event, item, webContents) => { ... })
+                    // 'login' event is on app or webContents, slightly tricky for headless net.request
+                    */
+                }
+            }
+
+            const req = net.request({
+                method: options?.method || 'GET',
+                url,
+                session: requestSession,
+                useSessionCookies: true
+            });
+
+            // Set Headers
+            if (options?.headers) {
+                for (const [key, value] of Object.entries(options.headers)) {
+                    req.setHeader(key, value as string);
+                }
+            }
+
+            // Set Body
+            if (options?.body) {
+                req.write(options.body);
+            }
+
+            const timeout = options?.timeout || 15000;
+            const timeoutTimer = setTimeout(() => {
+                req.abort();
+                resolve({
+                    success: false,
+                    ok: false,
+                    error: `Request timed out after ${timeout}ms`
+                });
+            }, timeout);
+
+            req.on('response', (response: any) => {
+                const chunks: any[] = [];
+
+                response.on('data', (chunk: any) => {
+                    chunks.push(chunk);
+                });
+
+                response.on('end', () => {
+                    clearTimeout(timeoutTimer);
+                    const body = Buffer.concat(chunks).toString();
+                    const headers: Record<string, string> = {};
+                    // Electron headers are strictly string[] | string. normalize.
+                    for (const [k, v] of Object.entries(response.headers)) {
+                        headers[k] = Array.isArray(v) ? (v as string[]).join(', ') : (v as string);
+                    }
+
+                    resolve({
+                        success: true,
+                        ok: response.statusCode >= 200 && response.statusCode < 300,
+                        status: response.statusCode,
+                        statusText: response.statusMessage,
+                        headers,
+                        body: body
+                    });
+                });
+
+                response.on('error', (err: any) => {
+                    clearTimeout(timeoutTimer);
+                    resolve({ success: false, ok: false, error: err.message || 'Response error' });
+                });
+            });
+
+            req.on('error', (err: any) => {
+                clearTimeout(timeoutTimer);
+                resolve({ success: false, ok: false, error: err.message || 'Request connection error' });
+            });
+
+            // Handle Login (Proxy Auth)
+            // net.request usually emits 'login' event if auth is needed
+            req.on('login', (authInfo: any, callback: any) => {
+                if (options?.proxy?.username && options?.proxy?.password) {
+                    callback(options.proxy.username, options.proxy.password);
+                } else {
+                    // Cancel auth if we don't have creds
+                    // We can't really "cancel" easily here without context, providing empty might fail
+                    callback('', '');
+                }
+            });
+
+            req.end();
+
+        } catch (error: any) {
+            console.error('Web Scan Fetch Error:', error);
+            resolve({
+                success: false,
+                ok: false,
+                error: error.message || 'Internal scanner error'
+            });
+        }
+    });
+});
 
 app.whenReady().then(createWindow)

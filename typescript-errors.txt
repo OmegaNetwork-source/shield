@@ -1,0 +1,227 @@
+﻿src/App.tsx(2849,89): error TS2367: This comparison appears to be unintentional because the types '"copy" | "results" | "blockchain" | "dashboard" | "report" | "evidence" | "network" | "scan" | "checklist" | "review" | "poam" | "controls" | "compare" | "tools" | "webscan"' and '"codescan"' have no overlap.
+src/App.tsx(2849,143): error TS2345: Argument of type '"codescan"' is not assignable to parameter of type 'SetStateAction<"copy" | "results" | "blockchain" | "dashboard" | "report" | "evidence" | "network" | "scan" | "checklist" | "review" | "poam" | "controls" | "compare" | "tools" | "webscan">'.
+src/App.tsx(7196,25): error TS2367: This comparison appears to be unintentional because the types '"results" | "blockchain" | "dashboard" | "review"' and '"codescan"' have no overlap.
+src/blockchain/decompiler.ts(156,5): error TS1117: An object literal cannot have multiple properties with the same name.
+src/blockchain/decompiler.ts(405,33): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/CodeScanner.tsx(726,13): error TS2322: Type '(SASTFinding | GitHubSecretFinding)[]' is not assignable to type 'SASTFinding[] | GitHubSecretFinding[]'.
+  Type '(SASTFinding | GitHubSecretFinding)[]' is not assignable to type 'SASTFinding[]'.
+    Type 'SASTFinding | GitHubSecretFinding' is not assignable to type 'SASTFinding'.
+      Type 'GitHubSecretFinding' is missing the following properties from type 'SASTFinding': ruleId, title, description, category, location
+src/components/CodeScanner.tsx(731,13): error TS2322: Type '(SASTFinding | GitHubSecretFinding)[]' is not assignable to type 'SASTFinding[] | GitHubSecretFinding[]'.
+  Type '(SASTFinding | GitHubSecretFinding)[]' is not assignable to type 'SASTFinding[]'.
+    Type 'SASTFinding | GitHubSecretFinding' is not assignable to type 'SASTFinding'.
+      Type 'GitHubSecretFinding' is missing the following properties from type 'SASTFinding': ruleId, title, description, category, location
+src/components/CodeScanner.tsx(741,13): error TS2322: Type '(SASTFinding | GitHubSecretFinding)[]' is not assignable to type 'SASTFinding[] | GitHubSecretFinding[]'.
+  Type '(SASTFinding | GitHubSecretFinding)[]' is not assignable to type 'SASTFinding[]'.
+    Type 'SASTFinding | GitHubSecretFinding' is not assignable to type 'SASTFinding'.
+      Type 'GitHubSecretFinding' is missing the following properties from type 'SASTFinding': ruleId, title, description, category, location
+src/components/CodeScanner.tsx(883,117): error TS2339: Property 'isLive' does not exist on type 'WalletCheckResult | MnemonicCheckResult'.
+  Property 'isLive' does not exist on type 'MnemonicCheckResult'.
+src/components/NetworkDiagram.tsx(2080,41): error TS2345: Argument of type '(sw: { name: string; vendor: string; version: string; }) => void' is not assignable to parameter of type '(value: string, index: number, array: string[]) => void'.
+  Types of parameters 'sw' and 'value' are incompatible.
+    Type 'string' is not assignable to type '{ name: string; vendor: string; version: string; }'.
+src/pentest/modules/dirbrute.ts(87,1): error TS2322: Type 'string[]' is not assignable to type 'never[]'.
+  Type 'string' is not assignable to type 'never'.
+src/pentest/modules/dirbrute.ts(89,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/dirbrute.ts(90,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/dirbrute.ts(91,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/dirbrute.ts(92,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/dirbrute.ts(93,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/dirbuster.ts(205,53): error TS7053: Element implicitly has an 'any' type because expression of type '"small" | "large" | "common" | "custom"' can't be used to index type '{ small: string[]; common: string[]; large: string[]; }'.
+  Property 'custom' does not exist on type '{ small: string[]; common: string[]; large: string[]; }'.
+src/pentest/modules/http.ts(354,21): error TS2322: Type 'string | string[] | undefined' is not assignable to type 'string | undefined'.
+  Type 'string[]' is not assignable to type 'string'.
+src/pentest/modules/http.ts(355,21): error TS2322: Type 'string | string[] | undefined' is not assignable to type 'string | undefined'.
+  Type 'string[]' is not assignable to type 'string'.
+src/pentest/modules/webapp/directory-brute.ts(118,20): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,12): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,22): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,36): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,51): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,64): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(120,78): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,27): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,34): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,42): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,52): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,59): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,66): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(121,77): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,13): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,24): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,35): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,46): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,62): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,68): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(122,79): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,17): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,29): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,40): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,49): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,60): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,67): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(123,80): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,15): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,23): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,32): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,42): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,49): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,59): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,68): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(124,76): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,17): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,28): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,40): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,52): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,60): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,70): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(125,77): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,18): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,28): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,37): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,48): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,58): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(126,72): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,18): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,26): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,37): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,48): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,59): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(127,74): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,12): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,23): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,33): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,45): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,56): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,67): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(128,77): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,13): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,23): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,35): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,43): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,51): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,60): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(129,67): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(130,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(130,20): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(130,35): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(130,53): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(130,69): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(131,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(131,20): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(131,36): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(131,50): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(131,64): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(131,78): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,13): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,25): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,35): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,43): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,56): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,73): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(132,80): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,16): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,26): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,37): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,47): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,60): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(133,75): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,17): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,24): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,36): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,50): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,60): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,67): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(134,75): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,16): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,25): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,36): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,43): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,50): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,62): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(135,75): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,18): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,26): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,34): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,41): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,50): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,59): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,69): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(136,76): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,18): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,25): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,36): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,43): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,49): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,61): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,71): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(137,78): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,15): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,28): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,39): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,52): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,60): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,66): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(138,77): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(139,5): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(139,16): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(139,27): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(139,36): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/directory-brute.ts(139,46): error TS2322: Type 'string' is not assignable to type 'never'.
+src/pentest/modules/webapp/sqli-scanner.ts(394,13): error TS2353: Object literal may only specify known properties, and 'rejectUnauthorized' does not exist in type 'RequestOptions'.
+src/pentest/modules/webapp/sqli-scanner.ts(404,13): error TS7053: Element implicitly has an 'any' type because expression of type '"Cookie"' can't be used to index type 'readonly string[] | OutgoingHttpHeaders'.
+  Property 'Cookie' does not exist on type 'readonly string[] | OutgoingHttpHeaders'.
+src/pentest/modules/webapp/sqli-scanner.ts(408,13): error TS7053: Element implicitly has an 'any' type because expression of type '"Content-Type"' can't be used to index type 'readonly string[] | OutgoingHttpHeaders'.
+  Property 'Content-Type' does not exist on type 'readonly string[] | OutgoingHttpHeaders'.
+src/pentest/modules/webapp/sqli-scanner.ts(409,13): error TS7053: Element implicitly has an 'any' type because expression of type '"Content-Length"' can't be used to index type 'readonly string[] | OutgoingHttpHeaders'.
+  Property 'Content-Length' does not exist on type 'readonly string[] | OutgoingHttpHeaders'.
+src/pentest/payloads/msfvenom.ts(232,13): error TS2322: Type '"hta-psh"' is not assignable to type 'MsfFormat | undefined'.
+src/sast/github-scanner.ts(15,31): error TS2614: Module '"./rules/secrets"' has no exported member 'SecretPattern'. Did you mean to use 'import SecretPattern from "./rules/secrets"' instead?
+src/scanner/advanced-tests.ts(806,27): error TS2339: Property 'method' does not exist on type 'AdvancedTestResult'.
+src/scanner/advanced-tests.ts(811,34): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/scanner/compliance/index.ts(380,15): error TS2339: Property 'nist' does not exist on type 'UnifiedVulnerability'.
+src/scanner/compliance/index.ts(381,14): error TS2339: Property 'nist' does not exist on type 'UnifiedVulnerability'.
+src/scanner/crawler.ts(559,17): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type 'ScriptInfo'.
+src/scanner/crawler.ts(565,17): error TS2353: Object literal may only specify known properties, and 'type' does not exist in type 'ScriptInfo'.
+src/scanner/crawler.ts(850,41): error TS2339: Property 'content' does not exist on type 'ScriptInfo'.
+src/scanner/crawler.ts(851,55): error TS2339: Property 'content' does not exist on type 'ScriptInfo'.
+src/scanner/evidence.ts(275,18): error TS2678: Type '"auth"' is not comparable to type 'VulnerabilityCategory'.
+src/scanner/index.ts(14,1): error TS2308: Module './types' has already exported a member named 'CrawledPage'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(14,1): error TS2308: Module './types' has already exported a member named 'EndpointInfo'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(14,1): error TS2308: Module './types' has already exported a member named 'ParameterInfo'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(23,1): error TS2308: Module './crawler' has already exported a member named 'extractForms'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(23,1): error TS2308: Module './crawler' has already exported a member named 'extractLinks'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(23,1): error TS2308: Module './crawler' has already exported a member named 'extractParameters'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(23,1): error TS2308: Module './tests' has already exported a member named 'SQL_ERROR_PATTERNS'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(23,1): error TS2308: Module './types' has already exported a member named 'FormInfo'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(26,1): error TS2308: Module './tests' has already exported a member named 'COMMAND_INJECTION_PAYLOADS'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(26,1): error TS2308: Module './tests' has already exported a member named 'OPEN_REDIRECT_PAYLOADS'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(26,1): error TS2308: Module './tests' has already exported a member named 'SSRF_PAYLOADS'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(26,1): error TS2308: Module './tests' has already exported a member named 'XXE_PAYLOADS'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/index.ts(32,1): error TS2308: Module './types' has already exported a member named 'SecretFinding'. Consider explicitly re-exporting to resolve the ambiguity.
+src/scanner/tests/fingerprint.ts(612,21): error TS2322: Type '"component"' is not assignable to type 'VulnerabilityCategory'.
+src/scanner/tests/ssl.ts(177,13): error TS2353: Object literal may only specify known properties, and 'nist' does not exist in type 'UnifiedVulnerability'.
+src/scanner/tests/ssl.ts(241,17): error TS2353: Object literal may only specify known properties, and 'nist' does not exist in type 'UnifiedVulnerability'.
+src/scanner/tests/ssl.ts(312,13): error TS2353: Object literal may only specify known properties, and 'nist' does not exist in type 'UnifiedVulnerability'.
+src/scanner/tests/ssl.ts(357,13): error TS2353: Object literal may only specify known properties, and 'nist' does not exist in type 'UnifiedVulnerability'.
+src/scanner/tests/ssl.ts(375,17): error TS2353: Object literal may only specify known properties, and 'nist' does not exist in type 'UnifiedVulnerability'.
+src/scanner/tests/ssl.ts(395,17): error TS2353: Object literal may only specify known properties, and 'nist' does not exist in type 'UnifiedVulnerability'.

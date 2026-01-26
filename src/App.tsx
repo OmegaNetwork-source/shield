@@ -2,13 +2,16 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, Network
+    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 import NetworkDiagram from './components/NetworkDiagram';
+import WebScanner from './components/WebScanner';
+import CodeScanner from './components/CodeScanner';
+import { analyzeContract, validateAddress, decodeFunctionSelector, parseABI, formatWei, chainInfo, attackVectors, VulnerabilityResult, ContractAnalysis } from './blockchain';
 
 // --- Configuration ---
 
@@ -40,7 +43,7 @@ function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'evidence' | 'checklist' | 'review' | 'results' | 'report' | 'poam' | 'controls' | 'compare' | 'copy' | 'tools' | 'network'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'evidence' | 'checklist' | 'review' | 'results' | 'report' | 'poam' | 'controls' | 'compare' | 'copy' | 'tools' | 'network' | 'blockchain' | 'webscan'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -86,7 +89,7 @@ function App() {
     }, [showEvidenceModal, evidenceModalRule]);
 
     // Tools State
-    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor' | 'reportanalyzer'>('rename');
+    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor' | 'reportanalyzer' | 'master_copy'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [showDocsModal, setShowDocsModal] = useState(false);
     const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
@@ -94,6 +97,18 @@ function App() {
     const [renamePrefix, setRenamePrefix] = useState('');
     const [renameSuffix, setRenameSuffix] = useState('');
     const [heatmapChecklists, setHeatmapChecklists] = useState<typeof uploadedChecklists>([]);
+
+    // Master Copy Tool State
+    const [masterCopySource, setMasterCopySource] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [masterCopyTarget, setMasterCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
+    const [masterCopyBatchFiles, setMasterCopyBatchFiles] = useState<typeof uploadedChecklists>([]);
+    const [masterCopyTab, setMasterCopyTab] = useState<'notreviewed' | 'open' | 'reviewed' | 'newids' | 'droppedids'>('notreviewed');
+    const [masterCopySelectedIds, setMasterCopySelectedIds] = useState<Set<string>>(new Set());
+    const [masterCopySearch, setMasterCopySearch] = useState('');
+    const [masterCopyReplace, setMasterCopyReplace] = useState('');
+    const [masterCopyEditedIds, setMasterCopyEditedIds] = useState<Set<string>>(new Set());
+    const [masterCopySort, setMasterCopySort] = useState<{ key: string, dir: 'asc' | 'desc' }>({ key: 'severity', dir: 'desc' });
+
 
     // Extractor state
     const [extractorFiles, setExtractorFiles] = useState<File[]>([]);
@@ -105,6 +120,24 @@ function App() {
         groupId: false,
     });
     const [extractorProcessing, setExtractorProcessing] = useState(false);
+
+    // Blockchain State
+    const [blockchainMode, setBlockchainMode] = useState<'analyzer' | 'address' | 'decoder' | 'abi' | 'converter' | 'attacks'>('analyzer');
+    const [contractCode, setContractCode] = useState('');
+    const [contractAnalysis, setContractAnalysis] = useState<ContractAnalysis | null>(null);
+    const [addressInput, setAddressInput] = useState('');
+    const [addressValidation, setAddressValidation] = useState<{ valid: boolean; type: string; checksum?: boolean } | null>(null);
+    const [txDataInput, setTxDataInput] = useState('');
+    const [decodedFunction, setDecodedFunction] = useState<{ selector: string; name?: string } | null>(null);
+    const [abiInput, setAbiInput] = useState('');
+    const [parsedAbi, setParsedAbi] = useState<{ functions: string[]; events: string[]; errors: string[] } | null>(null);
+    const [weiInput, setWeiInput] = useState('');
+    const [convertedValues, setConvertedValues] = useState<{ wei: string; gwei: string; ether: string } | null>(null);
+    const [selectedChain, setSelectedChain] = useState(1);
+    const [selectedAttack, setSelectedAttack] = useState<typeof attackVectors[0] | null>(null);
+    const [attackLabMode, setAttackLabMode] = useState<'learn' | 'scan'>('learn');
+    const [scannerCode, setScannerCode] = useState('');
+    const [scanResults, setScanResults] = useState<ContractAnalysis | null>(null);
 
     // Report Analyzer State
     const [reportBaseData, setReportBaseData] = useState<{
@@ -504,6 +537,120 @@ function App() {
         return { notReviewed, newIds, droppedIds, totalOld, totalNew };
     }, [analyzerOldChecklist, analyzerNewChecklist]);
 
+    // Master Copy computed data
+    const masterCopyData = useMemo(() => {
+        if (!masterCopySource || !masterCopyTarget) {
+            return { notReviewed: [], openFindings: [], newIds: [], droppedIds: [], totalOld: 0, totalNew: 0 };
+        }
+
+        const totalOld = masterCopySource.findings.length;
+        const totalNew = masterCopyTarget.findings.length;
+
+        const oldMap = new Map(masterCopySource.findings.map(f => [f.vulnId, f]));
+        const newMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+
+        // Not Reviewed in new checklist but has data in old
+        const notReviewed = masterCopyTarget.findings
+            .filter(f => {
+                const status = f.status?.toLowerCase().replace(/[\s_]/g, '') || '';
+                return status === 'notreviewed' || status === 'not_reviewed';
+            })
+            .filter(f => oldMap.has(f.vulnId))
+            .map(f => ({
+                vulnId: f.vulnId,
+                newFinding: f,
+                oldFinding: oldMap.get(f.vulnId)!
+            }));
+
+        // Open Findings in new (target) checklist
+        const openFindings = masterCopyTarget.findings
+            .filter(f => {
+                const status = f.status?.toLowerCase().replace(/[\s_]/g, '') || '';
+                return status === 'open' || status === 'fail';
+            })
+            .map(f => ({
+                vulnId: f.vulnId,
+                newFinding: f,
+                oldFinding: oldMap.get(f.vulnId) // Optional
+            }));
+
+        // New Group IDs (in new but not in old)
+        const newIds = masterCopyTarget.findings
+            .filter(f => !oldMap.has(f.vulnId))
+            .map(f => ({ vulnId: f.vulnId, finding: f }));
+
+        // Dropped IDs (in old but not in new)
+        const droppedIds = masterCopySource.findings
+            .filter(f => !newMap.has(f.vulnId))
+            .map(f => ({ vulnId: f.vulnId, finding: f }));
+
+        return { notReviewed, openFindings, newIds, droppedIds, totalOld, totalNew };
+    }, [masterCopySource, masterCopyTarget]);
+
+    // Sorted Data for Master Copy
+    const sortedMasterCopy = useMemo(() => {
+        let findings: any[] = [];
+        if (masterCopyTab === 'notreviewed') findings = masterCopyData.notReviewed;
+        else if (masterCopyTab === 'open') findings = masterCopyData.openFindings;
+        else if (masterCopyTab === 'newids') findings = masterCopyData.newIds;
+        else if (masterCopyTab === 'droppedids') findings = masterCopyData.droppedIds;
+        else if (masterCopyTab === 'reviewed') {
+            // "Reviewed" means status is NOT 'Not_Reviewed'
+            if (!masterCopyTarget) return [];
+            findings = masterCopyTarget.findings
+                .filter(f => (f.status || '').toLowerCase().replace(/[\s_]/g, '') !== 'notreviewed')
+                .map(f => ({
+                    vulnId: f.vulnId,
+                    newFinding: f,
+                    // Look up old just in case we want to show it, though irrelevant for sorting logic usually
+                    oldFinding: masterCopySource?.findings.find(of => of.vulnId === f.vulnId)
+                }));
+        }
+
+        if (!masterCopySort.key) return findings;
+
+        return findings.sort((a, b) => {
+            let valA: any = '';
+            let valB: any = '';
+
+            // Handle different object structures (some have newFinding/oldFinding, some just finding)
+            const getField = (obj: any, source: 'new' | 'old') => {
+                if (obj.newFinding) return source === 'new' ? obj.newFinding : obj.oldFinding;
+                if (obj.finding) return obj.finding;
+                if (obj.vulnId) return obj; // Fallback
+                return {};
+            };
+
+            const itemA = getField(a, 'new');
+            const itemB = getField(b, 'new');
+
+            // For severity sort, prefer OLD severity if available in not_reviewed tab? 
+            // Analyzer logic uses oldFinding severity. Let's stick to NEW finding severity for Master Copy as it is the "Master" we are editing.
+            // EXCEPT for Not Reviewed, where new finding has no data usually? 
+            // Actually, in Not Reviewed, the NEW finding exists but is unreviewed. The user wants to compare with OLD.
+            // Let's use Old Finding for Severity sorting in Not Reviewed tab, else New Finding.
+            const useOldSev = masterCopyTab === 'notreviewed';
+            const sortItemA = useOldSev ? (a.oldFinding || itemA) : itemA;
+            const sortItemB = useOldSev ? (b.oldFinding || itemB) : itemB;
+
+            if (masterCopySort.key === 'groupid') {
+                valA = a.vulnId;
+                valB = b.vulnId;
+            } else if (masterCopySort.key === 'severity') {
+                const sevMap: Record<string, number> = { 'high': 3, 'cat i': 3, 'medium': 2, 'cat ii': 2, 'low': 1, 'cat iii': 1 };
+                valA = sevMap[(sortItemA?.severity || '').toLowerCase()] || 0;
+                valB = sevMap[(sortItemB?.severity || '').toLowerCase()] || 0;
+            } else if (masterCopySort.key === 'status') {
+                valA = sortItemA?.status || '';
+                valB = sortItemB?.status || '';
+            }
+
+            if (valA < valB) return masterCopySort.dir === 'asc' ? -1 : 1;
+            if (valA > valB) return masterCopySort.dir === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [masterCopyData, masterCopyTab, masterCopySort, masterCopySource, masterCopyTarget]);
+
     // Map for fast lookup of Old Findings in Reviewed Tab
     const oldFindingsMap = useMemo(() => {
         if (!analyzerOldChecklist) return new Map();
@@ -657,10 +804,35 @@ function App() {
     const [poamChecklists, setPoamChecklists] = useState<typeof uploadedChecklists>([]);
 
     // Load available checklists on mount
+    // Load available checklists on mount
     useEffect(() => {
-        loadChecklists();
-        // Default to Edge STIG for agent scanning (can be changed via dropdown)
-        loadStigFile('edge'); // Default to Edge STIG for focus
+        const init = async () => {
+            try {
+                // Determine if we should wait for checklists before loading file
+                await loadChecklists();
+                // Default to Edge STIG for agent scanning (can be changed via dropdown)
+                await loadStigFile('edge');
+            } catch (e) {
+                console.error("Initialization error:", e);
+                // Ensure we don't get stuck
+                setIsLoading(false);
+            }
+        };
+
+        init();
+
+        // Safety timeout: If IPC hangs or something fails silently, force app to load after 5s
+        const safetyTimer = setTimeout(() => {
+            setIsLoading(current => {
+                if (current) {
+                    console.warn("Forcing loading completion due to timeout");
+                    return false;
+                }
+                return current;
+            });
+        }, 5000);
+
+        return () => clearTimeout(safetyTimer);
     }, []);
 
     const loadChecklists = async () => {
@@ -1142,7 +1314,7 @@ function App() {
             const dateStr = new Date().toLocaleString();
             // If passed (compliant) = "isn't a finding", if failed (non-compliant) = "is a finding"
             const findingStatus = passed ? "isn't" : "is";
-            const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
+            const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STRIX Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
 
             // Save evidence with screenshot
             if (execResult.screenshot) {
@@ -1257,7 +1429,7 @@ function App() {
                     const dateStr = new Date().toLocaleString();
                     // If passed (compliant) = "isn't a finding", if failed (non-compliant) = "is a finding"
                     const findingStatus = passed ? "isn't" : "is";
-                    const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
+                    const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STRIX Scan was run, the following command was run: ${command} and this was the output ${execResult.output || '(no output)'}\nAccording to the Check Text, this ${findingStatus} a finding. Reference Evidence in ${safeFolder}`;
 
                     // Save evidence with screenshot
                     if (execResult.screenshot) {
@@ -1292,7 +1464,7 @@ function App() {
 
                     // Generate finding details for error case
                     const dateStr = new Date().toLocaleString();
-                    const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STIG Ops Scan was run, the following command was run: ${command} and this was the output ${execResult.output || 'Command execution failed'}\nAccording to the Check Text, this is a finding (error occurred). Reference Evidence in ${safeFolder}`;
+                    const findingDetails = `[${dateStr}] - [${scanUsernameValue}] - STRIX Scan was run, the following command was run: ${command} and this was the output ${execResult.output || 'Command execution failed'}\nAccording to the Check Text, this is a finding (error occurred). Reference Evidence in ${safeFolder}`;
 
                     // Save with error status even if screenshot failed
                     if (execResult.screenshot) {
@@ -2771,10 +2943,13 @@ function App() {
             <aside className={`w-[280px] flex flex-col border-r pt-8 pb-4 px-4 sticky top-0 h-screen overflow-y-auto transition-colors duration-300 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-[#f5f5f7] border-[#d2d2d7]/30'}`}>
                 <div className="flex items-center justify-between px-3 mb-8">
                     <div className="flex items-center gap-3">
-                        <div className={`size-9 rounded-xl flex items-center justify-center shadow-lg ${darkMode ? 'bg-blue-600 text-white' : 'bg-black text-white'}`}>
-                            <Target className="size-5" strokeWidth={2.5} />
+                        <div className={`size-10 rounded-xl flex items-center justify-center shadow-lg overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-slate-900'}`}>
+                            <img src="/strix-logo.svg" alt="STRIX" className="size-9" />
                         </div>
-                        <span className="font-semibold text-lg tracking-tight">STIG Ops</span>
+                        <div className="flex flex-col">
+                            <span className="font-bold text-lg tracking-tight">STRIX</span>
+                            <span className={`text-[10px] -mt-1 ${darkMode ? 'text-cyan-400' : 'text-cyan-600'}`}>Security Platform</span>
+                        </div>
                     </div>
                     <button
                         onClick={() => setDarkMode(!darkMode)}
@@ -2796,6 +2971,9 @@ function App() {
                     <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
                     <SidebarItem icon={<Shield size={18} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
                     <SidebarItem icon={<Network size={18} />} label="Network Diagram" active={activeTab === 'network'} onClick={() => setActiveTab('network')} darkMode={darkMode} />
+                    <SidebarItem icon={<Globe size={18} />} label="Web Scanner" active={activeTab === 'webscan'} onClick={() => setActiveTab('webscan')} darkMode={darkMode} />
+                    <SidebarItem icon={<Code size={18} />} label="Code Scanner" active={activeTab === 'codescan'} onClick={() => setActiveTab('codescan')} darkMode={darkMode} />
+                    <SidebarItem icon={<Link size={18} />} label="Blockchain" active={activeTab === 'blockchain'} onClick={() => setActiveTab('blockchain')} darkMode={darkMode} />
 
                     {/* Tools Dropdown */}
                     <div className="mb-1">
@@ -5377,9 +5555,9 @@ function App() {
                         <div className="space-y-6">
                             <h1 className="text-3xl font-semibold tracking-tight mb-8">Tools & Utilities</h1>
 
-                            <div className={`grid gap-6 ${toolsMode === 'analyzer' || toolsMode === 'reportanalyzer' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-4'}`}>
+                            <div className={`grid gap-6 ${toolsMode === 'analyzer' || toolsMode === 'reportanalyzer' || toolsMode === 'master_copy' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-4'}`}>
                                 {/* Tools Sidebar/Menu */}
-                                {toolsMode !== 'analyzer' && toolsMode !== 'reportanalyzer' && (
+                                {toolsMode !== 'analyzer' && toolsMode !== 'reportanalyzer' && toolsMode !== 'master_copy' && (
                                     <div className="space-y-2">
                                         <button
                                             onClick={() => setToolsMode('rename')}
@@ -5409,6 +5587,15 @@ function App() {
                                             <div className="font-medium">STIG Analyzer</div>
                                         </button>
                                         <button
+                                            onClick={() => setToolsMode('master_copy')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${(toolsMode as string) === 'master_copy'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <Copy size={18} />
+                                            <div className="font-medium">Master Copy</div>
+                                        </button>
+                                        <button
                                             onClick={() => setToolsMode('extractor')}
                                             className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${toolsMode === 'extractor'
                                                 ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
@@ -5430,7 +5617,7 @@ function App() {
                                 )}
 
                                 {/* Tool Content */}
-                                <div className={toolsMode === 'analyzer' || toolsMode === 'reportanalyzer' ? '' : 'md:col-span-3'}>
+                                <div className={toolsMode === 'analyzer' || toolsMode === 'reportanalyzer' || toolsMode === 'master_copy' ? '' : 'md:col-span-3'}>
                                     {toolsMode === 'rename' && (
                                         <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                             <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
@@ -6721,7 +6908,451 @@ function App() {
                                         </div>
                                     )}
 
-                                    {/* Report Analyzer Panel */}
+                                    {/* Master Copy Panel */}
+                                    {toolsMode === 'master_copy' && (
+                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <button
+                                                    onClick={() => setToolsMode('rename')}
+                                                    className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+                                                >
+                                                    <ChevronLeft size={20} />
+                                                </button>
+                                                <div className="p-3 bg-indigo-100 text-indigo-600 rounded-xl">
+                                                    <Copy size={24} />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <h2 className="text-xl font-semibold">Master Copy Tool</h2>
+                                                    <p className="text-sm text-gray-500">Edit master checklist and apply changes to multiple raw files.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Upload Zones (3 Columns) */}
+                                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                                {/* 1. Source (Old with Comments) */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${masterCopySource ? 'border-green-500 bg-green-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">1. Old Checklist (Source)</div>
+                                                    {masterCopySource ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium truncate">{masterCopySource.filename}</div>
+                                                            <div className="text-xs text-gray-500">{masterCopySource.findings.length} findings • {masterCopySource.hostname}</div>
+                                                            <button onClick={() => setMasterCopySource(null)} className="text-xs text-red-500 hover:underline mt-1">Remove</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-8 mx-auto bg-gray-100 text-gray-400 rounded-lg flex items-center justify-center mb-2"><Upload size={16} /></div>
+                                                            <span className="text-xs text-gray-500">Upload Old STIG</span>
+                                                            <input type="file" className="hidden" accept=".ckl,.cklb,.json,.xml" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const p = await parseCklFile(f); if (p) setMasterCopySource(p as any); } e.target.value = ''; }} />
+                                                        </label>
+                                                    )}
+                                                </div>
+
+                                                {/* 2. Target (New/Raw Master) */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${masterCopyTarget ? 'border-blue-500 bg-blue-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">2. Master Checklist (Target)</div>
+                                                    {masterCopyTarget ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium truncate">{masterCopyTarget.filename}</div>
+                                                            <div className="text-xs text-gray-500">{masterCopyTarget.findings.length} findings • {masterCopyTarget.hostname}</div>
+                                                            <button onClick={() => setMasterCopyTarget(null)} className="text-xs text-red-500 hover:underline mt-1">Remove</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-8 mx-auto bg-gray-100 text-gray-400 rounded-lg flex items-center justify-center mb-2"><Upload size={16} /></div>
+                                                            <span className="text-xs text-gray-500">Upload Raw Checklist</span>
+                                                            <input type="file" className="hidden" accept=".ckl,.cklb,.json,.xml" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const p = await parseCklFile(f); if (p) setMasterCopyTarget(p as any); } e.target.value = ''; }} />
+                                                        </label>
+                                                    )}
+                                                </div>
+
+                                                {/* 3. Batch (Raw Folder) */}
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${masterCopyBatchFiles.length > 0 ? 'border-purple-500 bg-purple-50' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    <div className="text-xs font-semibold uppercase text-gray-500 mb-2">3. All Checklists (Batch)</div>
+                                                    {masterCopyBatchFiles.length > 0 ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium">{masterCopyBatchFiles.length} files loaded</div>
+                                                            <div className="text-xs text-gray-500">Will apply Master changes to all</div>
+                                                            <button onClick={() => setMasterCopyBatchFiles([])} className="text-xs text-red-500 hover:underline mt-1">Remove All</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer">
+                                                            <div className="size-8 mx-auto bg-gray-100 text-gray-400 rounded-lg flex items-center justify-center mb-2"><FolderOpen size={16} /></div>
+                                                            <span className="text-xs text-gray-500">Upload Folder (Raw)</span>
+                                                            <input type="file" className="hidden" multiple webkitdirectory="" directory="" onChange={async (e) => {
+                                                                const files = Array.from(e.target.files || []);
+                                                                const valid = [];
+                                                                for (const f of files) {
+                                                                    if (f.name.match(/\.(ckl|cklb|json|xml)$/i)) {
+                                                                        const p = await parseCklFile(f);
+                                                                        if (p) valid.push(p as any);
+                                                                    }
+                                                                }
+                                                                setMasterCopyBatchFiles(valid);
+                                                                e.target.value = '';
+                                                            }} />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {masterCopySource && masterCopyTarget && (
+                                                <>
+                                                    {/* Find & Replace Bar */}
+                                                    <div className={`flex items-center gap-4 mb-6 p-4 rounded-xl border ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                        <div className="flex items-center gap-2 flex-1">
+                                                            <Search size={16} className="text-gray-400" />
+                                                            <input
+                                                                type="text"
+                                                                value={masterCopySearch}
+                                                                onChange={e => setMasterCopySearch(e.target.value)}
+                                                                placeholder="Find in Details/Comments..."
+                                                                className="flex-1 bg-transparent text-sm outline-none"
+                                                            />
+                                                        </div>
+                                                        <ArrowRight size={16} className="text-gray-400" />
+                                                        <div className="flex items-center gap-2 flex-1">
+                                                            <FileEdit size={16} className="text-gray-400" />
+                                                            <input
+                                                                type="text"
+                                                                value={masterCopyReplace}
+                                                                onChange={e => setMasterCopyReplace(e.target.value)}
+                                                                placeholder="Replace with..."
+                                                                className="flex-1 bg-transparent text-sm outline-none"
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!masterCopySearch) return;
+                                                                if (!confirm(`Replace instances of "${masterCopySearch}" with "${masterCopyReplace}" across ALL findings in the Master Checklist?`)) return;
+
+                                                                setMasterCopyTarget(prev => {
+                                                                    if (!prev) return null;
+                                                                    let count = 0;
+                                                                    const newFindings = prev.findings.map(f => {
+                                                                        let changed = false;
+                                                                        let details = f.findingDetails || '';
+                                                                        let comments = f.comments || '';
+
+                                                                        // Simple global replace
+                                                                        if (details.includes(masterCopySearch)) {
+                                                                            details = details.replaceAll(masterCopySearch, masterCopyReplace);
+                                                                            changed = true;
+                                                                        }
+                                                                        if (comments.includes(masterCopySearch)) {
+                                                                            comments = comments.replaceAll(masterCopySearch, masterCopyReplace);
+                                                                            changed = true;
+                                                                        }
+
+                                                                        if (changed) {
+                                                                            count++;
+                                                                            return { ...f, findingDetails: details, comments: comments };
+                                                                        }
+                                                                        return f;
+                                                                    });
+                                                                    alert(`Replaced text in ${count} findings.`);
+                                                                    return { ...prev, findings: newFindings };
+                                                                });
+                                                            }}
+                                                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                                                        >
+                                                            Replace All
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Tabs */}
+                                                    <div className="flex flex-wrap gap-2 mb-4">
+                                                        {[
+                                                            { id: 'notreviewed', label: 'Not Reviewed', count: masterCopyData.notReviewed.length },
+                                                            { id: 'open', label: 'Open Findings', count: masterCopyData.openFindings.length },
+                                                            { id: 'reviewed', label: 'Reviewed', count: masterCopyTarget.findings.filter(f => !['notreviewed', 'not_reviewed'].includes((f.status || '').toLowerCase().replace(/[\s_]/g, ''))).length },
+                                                            { id: 'newids', label: 'New IDs', count: masterCopyData.newIds.length },
+                                                            { id: 'droppedids', label: 'Dropped IDs', count: masterCopyData.droppedIds.length }
+                                                        ].map(tab => (
+                                                            <button
+                                                                key={tab.id}
+                                                                onClick={() => { setMasterCopyTab(tab.id as any); setMasterCopySelectedIds(new Set()); }}
+                                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${masterCopyTab === tab.id
+                                                                    ? 'bg-indigo-100 text-indigo-700 shadow-sm'
+                                                                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                                                    }`}
+                                                            >
+                                                                {tab.label} ({tab.count})
+                                                            </button>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Toolbar */}
+                                                    <div className="flex justify-between items-center mb-4">
+                                                        <div className="flex gap-2">
+                                                            {(masterCopyTab === 'notreviewed' && masterCopySelectedIds.size > 0) && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (!confirm(`Copy Status & Details for ${masterCopySelectedIds.size} items?`)) return;
+                                                                            setMasterCopyTarget(prev => {
+                                                                                if (!prev) return null;
+                                                                                const newFindings = prev.findings.map(f => {
+                                                                                    if (masterCopySelectedIds.has(f.vulnId)) {
+                                                                                        const match = masterCopyData.notReviewed.find(nr => nr.vulnId === f.vulnId);
+                                                                                        if (match) {
+                                                                                            return {
+                                                                                                ...f,
+                                                                                                status: match.oldFinding.status,
+                                                                                                findingDetails: match.oldFinding.findingDetails || match.oldFinding.comments || match.oldFinding.findingDetails,
+                                                                                                comments: match.oldFinding.comments || match.oldFinding.findingDetails
+                                                                                            };
+                                                                                        }
+                                                                                    }
+                                                                                    return f;
+                                                                                });
+                                                                                return { ...prev, findings: newFindings };
+                                                                            });
+                                                                            setMasterCopySelectedIds(new Set());
+                                                                        }}
+                                                                        className="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700"
+                                                                    >
+                                                                        Copy Both ({masterCopySelectedIds.size})
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            {masterCopyBatchFiles.length > 0 && (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (!confirm(`Apply changes from Master Checklist to ${masterCopyBatchFiles.length} batch files? This will generate a ZIP download.`)) return;
+
+                                                                        try {
+                                                                            const zip = new JSZip();
+                                                                            const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+
+                                                                            let processedCount = 0;
+
+                                                                            for (const file of masterCopyBatchFiles) {
+                                                                                // Clone raw JSON structure
+                                                                                const newJson = JSON.parse(JSON.stringify(file.rawJson || {}));
+
+                                                                                // Update findings in the JSON
+                                                                                if (newJson.stigs) {
+                                                                                    for (const stig of newJson.stigs) {
+                                                                                        if (stig.rules) {
+                                                                                            for (const rule of stig.rules) {
+                                                                                                const masterFinding = masterMap.get(rule.group_id);
+                                                                                                if (masterFinding) {
+                                                                                                    // Copy editable fields
+                                                                                                    rule.status = masterFinding.status;
+                                                                                                    rule.finding_details = masterFinding.findingDetails;
+                                                                                                    rule.comments = masterFinding.comments;
+                                                                                                    rule.severity = masterFinding.severity;
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                }
+
+                                                                                zip.file(file.filename, JSON.stringify(newJson, null, 2));
+                                                                                processedCount++;
+                                                                            }
+
+                                                                            const content = await zip.generateAsync({ type: "blob" });
+                                                                            const url = URL.createObjectURL(content);
+                                                                            const a = document.createElement('a');
+                                                                            a.href = url;
+                                                                            a.download = `master_batch_export_${new Date().toISOString().split('T')[0]}.zip`;
+                                                                            a.click();
+
+                                                                            alert(`Successfully processed ${processedCount} files.`);
+                                                                        } catch (e) {
+                                                                            console.error(e);
+                                                                            alert('Error generating batch export.');
+                                                                        }
+                                                                    }}
+                                                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2"
+                                                                >
+                                                                    <Copy size={14} /> Apply to Batch & Download
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => {
+                                                                    // Simple CKLB export of Master
+                                                                    const data = JSON.stringify(masterCopyTarget.rawJson || {}, null, 2);
+                                                                    const blob = new Blob([data], { type: 'application/json' });
+                                                                    const url = URL.createObjectURL(blob);
+                                                                    const a = document.createElement('a');
+                                                                    a.href = url;
+                                                                    a.download = `master_checklist_${new Date().toISOString().split('T')[0]}.cklb`;
+                                                                    a.click();
+                                                                }}
+                                                                className="px-3 py-1.5 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-100"
+                                                            >
+                                                                Export Master CKLB
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Data List */}
+                                                    <div className="space-y-4">
+                                                        {masterCopyTab === 'notreviewed' && sortedMasterCopy.length > 0 && (
+                                                            <div className="flex items-center gap-2 mb-2 px-2">
+                                                                <input type="checkbox" onChange={(e) => {
+                                                                    if (e.target.checked) setMasterCopySelectedIds(new Set(sortedMasterCopy.map(f => f.vulnId)));
+                                                                    else setMasterCopySelectedIds(new Set());
+                                                                }} checked={masterCopySelectedIds.size === sortedMasterCopy.length} />
+                                                                <span className="text-xs text-gray-500">Select All</span>
+                                                            </div>
+                                                        )}
+
+                                                        {sortedMasterCopy.map((row) => {
+                                                            const finding = row.newFinding || row.finding; // Base finding
+                                                            const old = row.oldFinding;
+                                                            const isSelected = masterCopySelectedIds.has(row.vulnId);
+
+                                                            return (
+                                                                <div key={row.vulnId} className={`p-4 rounded-xl border ${isSelected ? 'border-indigo-400 bg-indigo-50' : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200')}`}>
+                                                                    {/* Header Info */}
+                                                                    <div className="flex justify-between items-start mb-3">
+                                                                        <div className="flex items-center gap-3">
+                                                                            {masterCopyTab === 'notreviewed' && (
+                                                                                <input type="checkbox" checked={isSelected} onChange={e => {
+                                                                                    const next = new Set(masterCopySelectedIds);
+                                                                                    if (e.target.checked) next.add(row.vulnId);
+                                                                                    else next.delete(row.vulnId);
+                                                                                    setMasterCopySelectedIds(next);
+                                                                                }} />
+                                                                            )}
+                                                                            <div>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="text-sm font-bold font-mono">{row.vulnId}</span>
+                                                                                    <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${((finding.severity || '').toLowerCase().includes('high') || (finding.severity || '').includes('cat i')) ? 'bg-red-100 text-red-700' :
+                                                                                        ((finding.severity || '').toLowerCase().includes('medium') || (finding.severity || '').includes('cat ii')) ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'
+                                                                                        }`}>{finding.severity}</span>
+                                                                                </div>
+                                                                                <div className="text-xs text-gray-500 mt-0.5 max-w-xl truncate">{finding.title}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {/* Severity Editor */}
+                                                                            <select
+                                                                                value={finding.severity?.toLowerCase() || 'low'}
+                                                                                onChange={(e) => {
+                                                                                    setMasterCopyTarget(prev => {
+                                                                                        if (!prev) return null;
+                                                                                        const updated = prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, severity: e.target.value } : f);
+                                                                                        return { ...prev, findings: updated };
+                                                                                    });
+                                                                                }}
+                                                                                className="text-xs border rounded p-1 bg-white dark:bg-gray-900"
+                                                                            >
+                                                                                <option value="high">High / CAT I</option>
+                                                                                <option value="medium">Medium / CAT II</option>
+                                                                                <option value="low">Low / CAT III</option>
+                                                                            </select>
+
+                                                                            {/* Status Editor */}
+                                                                            <select
+                                                                                value={(finding.status || '').toLowerCase().replace(/[\s_]/g, '')}
+                                                                                onChange={(e) => {
+                                                                                    let val = e.target.value;
+                                                                                    // Map back to standard casing if needed
+                                                                                    if (val === 'open') val = 'Open';
+                                                                                    if (val === 'notafinding') val = 'NotAFinding';
+                                                                                    if (val === 'notapplicable') val = 'Not_Applicable';
+                                                                                    if (val === 'notreviewed') val = 'Not_Reviewed';
+
+                                                                                    setMasterCopyTarget(prev => {
+                                                                                        if (!prev) return null;
+                                                                                        const updated = prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, status: val } : f);
+                                                                                        return { ...prev, findings: updated };
+                                                                                    });
+                                                                                }}
+                                                                                className={`text-xs border rounded p-1 font-bold ${(finding.status || '').toLowerCase().includes('open') ? 'text-red-600 bg-red-50' :
+                                                                                    (finding.status || '').toLowerCase().includes('notafinding') ? 'text-green-600 bg-green-50' : 'text-gray-600'
+                                                                                    }`}
+                                                                            >
+                                                                                <option value="notreviewed">Not Reviewed</option>
+                                                                                <option value="open">Open</option>
+                                                                                <option value="notafinding">Not a Finding</option>
+                                                                                <option value="notapplicable">Not Applicable</option>
+                                                                            </select>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Comparison View (If Old exists) */}
+                                                                    {old && (
+                                                                        <div className="mb-3 p-2 bg-gray-50 dark:bg-gray-900 rounded border border-gray-100 text-xs">
+                                                                            <div className="grid grid-cols-2 gap-4">
+                                                                                <div>
+                                                                                    <div className="font-semibold text-gray-500 mb-1">Source (Old)</div>
+                                                                                    <div className="font-mono text-gray-700">{old.status}</div>
+                                                                                    <div className="text-gray-600 mt-1 line-clamp-2">{old.findingDetails || old.comments}</div>
+                                                                                </div>
+                                                                                <div className="flex flex-col justify-center gap-2">
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setMasterCopyTarget(prev => {
+                                                                                                if (!prev) return null;
+                                                                                                return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
+                                                                                            });
+                                                                                        }}
+                                                                                        className="text-xs text-blue-600 hover:text-blue-800 text-left"
+                                                                                    >
+                                                                                        ← Copy Status
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setMasterCopyTarget(prev => {
+                                                                                                if (!prev) return null;
+                                                                                                return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
+                                                                                            });
+                                                                                        }}
+                                                                                        className="text-xs text-blue-600 hover:text-blue-800 text-left"
+                                                                                    >
+                                                                                        ← Copy Details
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Editable Details */}
+                                                                    <div className="space-y-2">
+                                                                        <div>
+                                                                            <label className="text-[10px] uppercase font-semibold text-gray-400">Finding Details</label>
+                                                                            <textarea
+                                                                                className="w-full text-xs p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-20 focus:ring-1 ring-indigo-500 outline-none"
+                                                                                value={finding.findingDetails || ''}
+                                                                                onChange={(e) => {
+                                                                                    setMasterCopyTarget(prev => {
+                                                                                        if (!prev) return null;
+                                                                                        return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
+                                                                                    });
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="text-[10px] uppercase font-semibold text-gray-400">Comments</label>
+                                                                            <textarea
+                                                                                className="w-full text-xs p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-12 focus:ring-1 ring-indigo-500 outline-none"
+                                                                                value={finding.comments || ''}
+                                                                                onChange={(e) => {
+                                                                                    setMasterCopyTarget(prev => {
+                                                                                        if (!prev) return null;
+                                                                                        return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
+                                                                                    });
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Report Analyzer Panel */}{/* Report Analyzer Panel */}
                                     {toolsMode === 'reportanalyzer' && (
                                         <div id="report-analyzer-panel" className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                             <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
@@ -7136,6 +7767,1215 @@ function App() {
                     ) : activeTab === 'network' ? (
                         <div className="h-[calc(100vh-100px)] w-full">
                             <NetworkDiagram darkMode={darkMode} />
+                        </div>
+                    ) : activeTab === 'webscan' ? (
+                        <div className="h-[calc(100vh-100px)] w-full">
+                            <WebScanner darkMode={darkMode} />
+                        </div>
+                    ) : activeTab === 'codescan' ? (
+                        <div className="h-[calc(100vh-100px)] w-full overflow-auto">
+                            <CodeScanner darkMode={darkMode} />
+                        </div>
+                    ) : activeTab === 'blockchain' ? (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-3xl font-semibold tracking-tight">Blockchain Security</h1>
+                                    <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Smart contract analysis and Web3 security tools</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={selectedChain}
+                                        onChange={(e) => setSelectedChain(Number(e.target.value))}
+                                        className={`px-3 py-2 rounded-lg text-sm border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200'}`}
+                                    >
+                                        {Object.entries(chainInfo).map(([id, info]) => (
+                                            <option key={id} value={id}>{info.name}</option>
+                                        ))}
+                                    </select>
+                                    {chainInfo[selectedChain]?.explorer && (
+                                        <a
+                                            href={chainInfo[selectedChain].explorer}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+                                        >
+                                            <ExternalLink size={14} />
+                                            Explorer
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Tool Selection */}
+                            <div className={`flex gap-2 p-1.5 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                {[
+                                    { id: 'analyzer', icon: <FileCode size={16} />, label: 'Contract Analyzer' },
+                                    { id: 'address', icon: <Wallet size={16} />, label: 'Address Checker' },
+                                    { id: 'decoder', icon: <Code size={16} />, label: 'TX Decoder' },
+                                    { id: 'abi', icon: <FileText size={16} />, label: 'ABI Parser' },
+                                    { id: 'converter', icon: <Hash size={16} />, label: 'Unit Converter' },
+                                    { id: 'attacks', icon: <AlertTriangle size={16} />, label: 'Attack Vectors' },
+                                ].map((tool) => (
+                                    <button
+                                        key={tool.id}
+                                        onClick={() => setBlockchainMode(tool.id as any)}
+                                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${blockchainMode === tool.id
+                                            ? 'bg-purple-600 text-white shadow-lg'
+                                            : darkMode
+                                                ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+                                                : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+                                            }`}
+                                    >
+                                        {tool.icon}
+                                        <span className="hidden md:inline">{tool.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Smart Contract Analyzer */}
+                            {blockchainMode === 'analyzer' && (
+                                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
+                                            <FileCode size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Smart Contract Analyzer</h2>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paste Solidity code to scan for common vulnerabilities</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Solidity Code</label>
+                                            <textarea
+                                                value={contractCode}
+                                                onChange={(e) => setContractCode(e.target.value)}
+                                                placeholder={`// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract Example {
+    // Paste your contract code here...
+}`}
+                                                rows={20}
+                                                className={`w-full px-4 py-3 rounded-xl border font-mono text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-300 placeholder-gray-600' : 'bg-gray-50 border-gray-200 placeholder-gray-400'}`}
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    if (contractCode.trim()) {
+                                                        setContractAnalysis(analyzeContract(contractCode));
+                                                    }
+                                                }}
+                                                disabled={!contractCode.trim()}
+                                                className="mt-4 w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Search size={18} />
+                                                Analyze Contract
+                                            </button>
+                                        </div>
+
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Analysis Results</label>
+                                            {contractAnalysis ? (
+                                                <div className="space-y-4">
+                                                    {/* Summary */}
+                                                    <div className={`p-4 rounded-xl ${contractAnalysis.vulnerabilities.some(v => v.severity === 'critical')
+                                                        ? 'bg-red-500/10 border border-red-500/30'
+                                                        : contractAnalysis.vulnerabilities.some(v => v.severity === 'high')
+                                                            ? 'bg-orange-500/10 border border-orange-500/30'
+                                                            : contractAnalysis.vulnerabilities.length > 0
+                                                                ? 'bg-yellow-500/10 border border-yellow-500/30'
+                                                                : 'bg-green-500/10 border border-green-500/30'
+                                                        }`}>
+                                                        <p className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{contractAnalysis.summary}</p>
+                                                        <div className="flex gap-4 mt-2 text-xs">
+                                                            <span className="text-red-500">{contractAnalysis.vulnerabilities.filter(v => v.severity === 'critical').length} Critical</span>
+                                                            <span className="text-orange-500">{contractAnalysis.vulnerabilities.filter(v => v.severity === 'high').length} High</span>
+                                                            <span className="text-yellow-500">{contractAnalysis.vulnerabilities.filter(v => v.severity === 'medium').length} Medium</span>
+                                                            <span className="text-blue-500">{contractAnalysis.vulnerabilities.filter(v => v.severity === 'low').length} Low</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Vulnerabilities List */}
+                                                    <div className={`max-h-[400px] overflow-auto rounded-xl border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                                        {contractAnalysis.vulnerabilities.length > 0 ? (
+                                                            contractAnalysis.vulnerabilities.map((vuln, idx) => (
+                                                                <div key={idx} className={`p-4 border-b last:border-b-0 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                                                    <div className="flex items-start gap-3">
+                                                                        <span className={`px-2 py-1 text-xs font-bold rounded ${vuln.severity === 'critical' ? 'bg-red-500 text-white' :
+                                                                            vuln.severity === 'high' ? 'bg-orange-500 text-white' :
+                                                                                vuln.severity === 'medium' ? 'bg-yellow-500 text-black' :
+                                                                                    vuln.severity === 'low' ? 'bg-blue-500 text-white' :
+                                                                                        'bg-gray-500 text-white'
+                                                                            }`}>
+                                                                            {vuln.severity.toUpperCase()}
+                                                                        </span>
+                                                                        <div className="flex-1">
+                                                                            <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{vuln.title}</h4>
+                                                                            {vuln.line && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Line {vuln.line}</p>}
+                                                                            <p className={`text-sm mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{vuln.description}</p>
+                                                                            <p className={`text-sm mt-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                                                                <strong>Fix:</strong> {vuln.recommendation}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className={`p-8 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                <CheckCircle2 size={48} className="mx-auto mb-3 text-green-500" />
+                                                                <p>No obvious vulnerabilities detected</p>
+                                                                <p className="text-xs mt-1">Manual review still recommended</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className={`h-[500px] flex items-center justify-center rounded-xl border ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-500' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                                                    <div className="text-center">
+                                                        <FileCode size={48} className="mx-auto mb-3 opacity-30" />
+                                                        <p>Paste Solidity code and click Analyze</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Address Checker */}
+                            {blockchainMode === 'address' && (
+                                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                                            <Wallet size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Address Checker</h2>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Validate Ethereum addresses and check format</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="max-w-2xl">
+                                        <div className="flex gap-3">
+                                            <input
+                                                type="text"
+                                                value={addressInput}
+                                                onChange={(e) => setAddressInput(e.target.value)}
+                                                placeholder="0x..."
+                                                className={`flex-1 px-4 py-3 rounded-xl border font-mono text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200'}`}
+                                            />
+                                            <button
+                                                onClick={() => setAddressValidation(validateAddress(addressInput))}
+                                                disabled={!addressInput}
+                                                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white font-medium rounded-xl transition-colors"
+                                            >
+                                                Validate
+                                            </button>
+                                        </div>
+
+                                        {addressValidation && (
+                                            <div className={`mt-4 p-4 rounded-xl ${addressValidation.valid ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    {addressValidation.valid ? (
+                                                        <CheckCircle2 className="text-green-500" size={24} />
+                                                    ) : (
+                                                        <XCircle className="text-red-500" size={24} />
+                                                    )}
+                                                    <div>
+                                                        <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                            {addressValidation.valid ? 'Valid Address' : 'Invalid Address'}
+                                                        </p>
+                                                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                            {addressValidation.type}
+                                                            {addressValidation.checksum !== undefined && (
+                                                                <span className="ml-2">
+                                                                    • Checksum: {addressValidation.checksum ? 'Valid' : 'Not checksummed'}
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {addressValidation.valid && chainInfo[selectedChain]?.explorer && (
+                                                    <a
+                                                        href={`${chainInfo[selectedChain].explorer}/address/${addressInput}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className={`mt-3 inline-flex items-center gap-2 text-sm ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                        View on {chainInfo[selectedChain].name}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Transaction Decoder */}
+                            {blockchainMode === 'decoder' && (
+                                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="p-3 bg-green-100 text-green-600 rounded-xl">
+                                            <Code size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Transaction Data Decoder</h2>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Decode function selectors from transaction input data</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="max-w-2xl">
+                                        <div className="flex gap-3">
+                                            <input
+                                                type="text"
+                                                value={txDataInput}
+                                                onChange={(e) => setTxDataInput(e.target.value)}
+                                                placeholder="0xa9059cbb..."
+                                                className={`flex-1 px-4 py-3 rounded-xl border font-mono text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200'}`}
+                                            />
+                                            <button
+                                                onClick={() => setDecodedFunction(decodeFunctionSelector(txDataInput))}
+                                                disabled={!txDataInput}
+                                                className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white font-medium rounded-xl transition-colors"
+                                            >
+                                                Decode
+                                            </button>
+                                        </div>
+
+                                        {decodedFunction && (
+                                            <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <p className={`text-xs font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Function Selector</p>
+                                                        <p className={`font-mono ${darkMode ? 'text-white' : 'text-gray-900'}`}>{decodedFunction.selector}</p>
+                                                    </div>
+                                                    {decodedFunction.name && (
+                                                        <div>
+                                                            <p className={`text-xs font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Function Signature</p>
+                                                            <p className={`font-mono text-green-500`}>{decodedFunction.name}</p>
+                                                        </div>
+                                                    )}
+                                                    {!decodedFunction.name && (
+                                                        <p className={`text-sm ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                                                            Unknown function - check 4byte.directory or Etherscan
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ABI Parser */}
+                            {blockchainMode === 'abi' && (
+                                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="p-3 bg-orange-100 text-orange-600 rounded-xl">
+                                            <FileText size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>ABI Parser</h2>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Parse contract ABI to view functions, events, and errors</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Contract ABI (JSON)</label>
+                                            <textarea
+                                                value={abiInput}
+                                                onChange={(e) => setAbiInput(e.target.value)}
+                                                placeholder='[{"type":"function","name":"transfer",...}]'
+                                                rows={15}
+                                                className={`w-full px-4 py-3 rounded-xl border font-mono text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-300 placeholder-gray-600' : 'bg-gray-50 border-gray-200'}`}
+                                            />
+                                            <button
+                                                onClick={() => setParsedAbi(parseABI(abiInput))}
+                                                disabled={!abiInput}
+                                                className="mt-4 w-full px-4 py-3 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 text-white font-medium rounded-xl transition-colors"
+                                            >
+                                                Parse ABI
+                                            </button>
+                                        </div>
+
+                                        <div>
+                                            {parsedAbi ? (
+                                                <div className="space-y-4">
+                                                    {parsedAbi.functions.length > 0 && (
+                                                        <div>
+                                                            <h4 className={`text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                                <Play size={14} /> Functions ({parsedAbi.functions.length})
+                                                            </h4>
+                                                            <div className={`max-h-40 overflow-auto rounded-lg border ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                                {parsedAbi.functions.map((fn, idx) => (
+                                                                    <div key={idx} className={`px-3 py-2 text-xs font-mono border-b last:border-b-0 ${darkMode ? 'border-gray-700 text-green-400' : 'border-gray-100 text-green-600'}`}>
+                                                                        {fn}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {parsedAbi.events.length > 0 && (
+                                                        <div>
+                                                            <h4 className={`text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                                <Activity size={14} /> Events ({parsedAbi.events.length})
+                                                            </h4>
+                                                            <div className={`max-h-40 overflow-auto rounded-lg border ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                                {parsedAbi.events.map((ev, idx) => (
+                                                                    <div key={idx} className={`px-3 py-2 text-xs font-mono border-b last:border-b-0 ${darkMode ? 'border-gray-700 text-blue-400' : 'border-gray-100 text-blue-600'}`}>
+                                                                        {ev}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {parsedAbi.errors.length > 0 && (
+                                                        <div>
+                                                            <h4 className={`text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                                <AlertTriangle size={14} /> Errors ({parsedAbi.errors.length})
+                                                            </h4>
+                                                            <div className={`max-h-40 overflow-auto rounded-lg border ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                                                                {parsedAbi.errors.map((err, idx) => (
+                                                                    <div key={idx} className={`px-3 py-2 text-xs font-mono border-b last:border-b-0 ${darkMode ? 'border-gray-700 text-red-400' : 'border-gray-100 text-red-600'}`}>
+                                                                        {err}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className={`h-full flex items-center justify-center rounded-xl border ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-500' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+                                                    <div className="text-center py-20">
+                                                        <FileText size={48} className="mx-auto mb-3 opacity-30" />
+                                                        <p>Paste ABI JSON and click Parse</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Unit Converter */}
+                            {blockchainMode === 'converter' && (
+                                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="p-3 bg-cyan-100 text-cyan-600 rounded-xl">
+                                            <Hash size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Ethereum Unit Converter</h2>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Convert between Wei, Gwei, and Ether</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="max-w-xl">
+                                        <div className="flex gap-3">
+                                            <input
+                                                type="text"
+                                                value={weiInput}
+                                                onChange={(e) => setWeiInput(e.target.value)}
+                                                placeholder="Enter Wei amount"
+                                                className={`flex-1 px-4 py-3 rounded-xl border font-mono text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-600' : 'bg-gray-50 border-gray-200'}`}
+                                            />
+                                            <button
+                                                onClick={() => setConvertedValues(formatWei(weiInput))}
+                                                disabled={!weiInput}
+                                                className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 disabled:bg-gray-500 text-white font-medium rounded-xl transition-colors"
+                                            >
+                                                Convert
+                                            </button>
+                                        </div>
+
+                                        {convertedValues && (
+                                            <div className={`mt-4 grid grid-cols-3 gap-4`}>
+                                                <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
+                                                    <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Wei</p>
+                                                    <p className={`font-mono text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{convertedValues.wei}</p>
+                                                </div>
+                                                <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
+                                                    <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Gwei</p>
+                                                    <p className={`font-mono text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{convertedValues.gwei}</p>
+                                                </div>
+                                                <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-gray-50 border border-gray-200'}`}>
+                                                    <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Ether</p>
+                                                    <p className={`font-mono text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{convertedValues.ether}</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Quick Reference */}
+                                        <div className={`mt-6 p-4 rounded-xl ${darkMode ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
+                                            <h4 className={`text-sm font-medium mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Quick Reference</h4>
+                                            <div className={`grid grid-cols-2 gap-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                <span>1 Ether = 10^18 Wei</span>
+                                                <span>1 Gwei = 10^9 Wei</span>
+                                                <span>1 Ether = 10^9 Gwei</span>
+                                                <span>Gas Price typically 10-100 Gwei</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Attack Vectors Reference */}
+                            {blockchainMode === 'attacks' && (
+                                <div className="space-y-6">
+                                    {/* Header with Mode Toggle */}
+                                    <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-3 bg-red-100 text-red-600 rounded-xl">
+                                                    <AlertTriangle size={24} />
+                                                </div>
+                                                <div>
+                                                    <h2 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Security Lab</h2>
+                                                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Learn attacks & scan code for vulnerabilities</p>
+                                                </div>
+                                            </div>
+                                            {/* Mode Toggle */}
+                                            <div className={`flex rounded-xl p-1 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+                                                <button
+                                                    onClick={() => setAttackLabMode('learn')}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${attackLabMode === 'learn'
+                                                        ? 'bg-purple-500 text-white shadow'
+                                                        : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                                                        }`}
+                                                >
+                                                    <Book size={16} />
+                                                    Learn Attacks
+                                                </button>
+                                                <button
+                                                    onClick={() => setAttackLabMode('scan')}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${attackLabMode === 'scan'
+                                                        ? 'bg-purple-500 text-white shadow'
+                                                        : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                                                        }`}
+                                                >
+                                                    <Search size={16} />
+                                                    Scan Code
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className={`p-4 rounded-xl ${darkMode ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-yellow-50 border border-yellow-200'}`}>
+                                            <p className={`text-sm flex items-start gap-2 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                                                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                                                <span><strong>Warning:</strong> {attackLabMode === 'learn'
+                                                    ? 'These examples are for educational purposes and authorized security testing only. Never use against systems without explicit permission.'
+                                                    : 'This scanner detects common patterns but is NOT a replacement for professional audits. Always get contracts audited before deploying with real funds.'
+                                                }</span>
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* SCANNER MODE */}
+                                    {attackLabMode === 'scan' && (
+                                        <div className="space-y-6">
+                                            {/* Code Input */}
+                                            <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Paste Solidity Code</h3>
+                                                    <div className="flex items-center gap-2">
+                                                        {scannerCode && (
+                                                            <button
+                                                                onClick={() => { setScannerCode(''); setScanResults(null); }}
+                                                                className={`px-3 py-1.5 text-sm rounded-lg ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                                                            >
+                                                                Clear
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (scannerCode.trim()) {
+                                                                    setScanResults(analyzeContract(scannerCode));
+                                                                }
+                                                            }}
+                                                            disabled={!scannerCode.trim()}
+                                                            className={`px-4 py-2 rounded-xl font-medium flex items-center gap-2 transition-all ${scannerCode.trim()
+                                                                ? 'bg-purple-500 text-white hover:bg-purple-600'
+                                                                : darkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                                }`}
+                                                        >
+                                                            <Search size={16} />
+                                                            Scan for Vulnerabilities
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <textarea
+                                                    value={scannerCode}
+                                                    onChange={(e) => setScannerCode(e.target.value)}
+                                                    placeholder={`// Paste your Solidity code here...
+pragma solidity ^0.8.0;
+
+contract MyContract {
+    // ...
+}`}
+                                                    className={`w-full h-64 p-4 rounded-xl font-mono text-sm resize-none ${darkMode
+                                                        ? 'bg-gray-900 text-gray-300 border border-gray-700 placeholder-gray-600'
+                                                        : 'bg-gray-50 text-gray-800 border border-gray-200 placeholder-gray-400'
+                                                        }`}
+                                                />
+                                                <div className={`mt-2 flex items-center justify-between text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    <span>{scannerCode.split('\n').length} lines</span>
+                                                    <span>Supports Solidity 0.4.x - 0.8.x</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Scan Results */}
+                                            {scanResults && (
+                                                <div className="space-y-4">
+                                                    {/* Summary */}
+                                                    <div className={`p-6 rounded-2xl border ${scanResults.stats?.critical ? (darkMode ? 'bg-red-500/10 border-red-500/50' : 'bg-red-50 border-red-200') :
+                                                        scanResults.stats?.high ? (darkMode ? 'bg-orange-500/10 border-orange-500/50' : 'bg-orange-50 border-orange-200') :
+                                                            scanResults.vulnerabilities.length > 0 ? (darkMode ? 'bg-yellow-500/10 border-yellow-500/50' : 'bg-yellow-50 border-yellow-200') :
+                                                                darkMode ? 'bg-green-500/10 border-green-500/50' : 'bg-green-50 border-green-200'
+                                                        }`}>
+                                                        <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Scan Results</h3>
+                                                        <p className={`text-sm mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{scanResults.summary}</p>
+
+                                                        {/* Stats Grid */}
+                                                        {scanResults.stats && (
+                                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                                                <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                                                    <div className="text-2xl font-bold text-red-500">{scanResults.stats.critical}</div>
+                                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Critical</div>
+                                                                </div>
+                                                                <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                                                    <div className="text-2xl font-bold text-orange-500">{scanResults.stats.high}</div>
+                                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>High</div>
+                                                                </div>
+                                                                <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                                                    <div className="text-2xl font-bold text-yellow-500">{scanResults.stats.medium}</div>
+                                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Medium</div>
+                                                                </div>
+                                                                <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                                                    <div className="text-2xl font-bold text-blue-500">{scanResults.stats.low}</div>
+                                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Low</div>
+                                                                </div>
+                                                                <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                                                    <div className="text-2xl font-bold text-gray-500">{scanResults.stats.info}</div>
+                                                                    <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Info</div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Code Stats */}
+                                                        {scanResults.stats && (
+                                                            <div className={`mt-4 pt-4 border-t flex items-center gap-6 text-sm ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+                                                                <span>{scanResults.stats.lines} lines</span>
+                                                                <span>{scanResults.stats.contracts} contracts</span>
+                                                                <span>{scanResults.stats.functions} functions</span>
+                                                                <span>{scanResults.stats.modifiers} modifiers</span>
+                                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${scanResults.complexity === 'high' ? 'bg-red-500/20 text-red-400' :
+                                                                    scanResults.complexity === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                                                                        'bg-green-500/20 text-green-400'
+                                                                    }`}>
+                                                                    {scanResults.complexity} complexity
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Vulnerability List */}
+                                                    {scanResults.vulnerabilities.length > 0 && (
+                                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                            <h3 className={`font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                Found Issues ({scanResults.vulnerabilities.length})
+                                                            </h3>
+                                                            <div className="space-y-3">
+                                                                {scanResults.vulnerabilities.map((vuln, idx) => (
+                                                                    <div key={idx} className={`p-4 rounded-xl border-l-4 ${vuln.severity === 'critical' ? 'border-red-500 ' + (darkMode ? 'bg-red-500/10' : 'bg-red-50') :
+                                                                        vuln.severity === 'high' ? 'border-orange-500 ' + (darkMode ? 'bg-orange-500/10' : 'bg-orange-50') :
+                                                                            vuln.severity === 'medium' ? 'border-yellow-500 ' + (darkMode ? 'bg-yellow-500/10' : 'bg-yellow-50') :
+                                                                                vuln.severity === 'low' ? 'border-blue-500 ' + (darkMode ? 'bg-blue-500/10' : 'bg-blue-50') :
+                                                                                    'border-gray-400 ' + (darkMode ? 'bg-gray-700' : 'bg-gray-50')
+                                                                        }`}>
+                                                                        <div className="flex items-start justify-between gap-4">
+                                                                            <div className="flex-1">
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <span className={`px-2 py-0.5 text-xs font-bold rounded ${vuln.severity === 'critical' ? 'bg-red-500 text-white' :
+                                                                                        vuln.severity === 'high' ? 'bg-orange-500 text-white' :
+                                                                                            vuln.severity === 'medium' ? 'bg-yellow-500 text-black' :
+                                                                                                vuln.severity === 'low' ? 'bg-blue-500 text-white' :
+                                                                                                    'bg-gray-400 text-white'
+                                                                                        }`}>
+                                                                                        {vuln.severity.toUpperCase()}
+                                                                                    </span>
+                                                                                    <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{vuln.title}</h4>
+                                                                                    {vuln.line && (
+                                                                                        <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Line {vuln.line}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{vuln.description}</p>
+                                                                                {vuln.lineContent && (
+                                                                                    <pre className={`text-xs p-2 rounded mb-2 overflow-x-auto ${darkMode ? 'bg-gray-900 text-gray-400' : 'bg-white text-gray-600 border'}`}>
+                                                                                        {vuln.lineContent}
+                                                                                    </pre>
+                                                                                )}
+                                                                                <p className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                                                                    <strong>Fix:</strong> {vuln.recommendation}
+                                                                                </p>
+                                                                                <div className="flex items-center gap-3 mt-2">
+                                                                                    {vuln.attackVector && (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                const attack = attackVectors.find(a => a.name === vuln.attackVector);
+                                                                                                if (attack) {
+                                                                                                    setSelectedAttack(attack);
+                                                                                                    setAttackLabMode('learn');
+                                                                                                }
+                                                                                            }}
+                                                                                            className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${darkMode ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'}`}
+                                                                                        >
+                                                                                            <Book size={12} />
+                                                                                            Learn: {vuln.attackVector}
+                                                                                        </button>
+                                                                                    )}
+                                                                                    {vuln.cwe && (
+                                                                                        <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                            {vuln.cwe}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* No Issues Found */}
+                                                    {scanResults.vulnerabilities.length === 0 && (
+                                                        <div className={`p-8 rounded-2xl border text-center ${darkMode ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'}`}>
+                                                            <CheckCircle2 size={48} className="mx-auto mb-4 text-green-500" />
+                                                            <h3 className={`text-lg font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>No Obvious Vulnerabilities Found</h3>
+                                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                                This scanner checks for common patterns. Always get a professional audit before deploying contracts with real value.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Example Contracts to Test */}
+                                            {!scanResults && (
+                                                <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                    <h3 className={`font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Try These Examples</h3>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        <button
+                                                            onClick={() => setScannerCode(`// VULNERABLE: Reentrancy
+pragma solidity ^0.8.0;
+
+contract VulnerableBank {
+    mapping(address => uint256) public balances;
+    
+    function deposit() public payable {
+        balances[msg.sender] += msg.value;
+    }
+    
+    function withdraw() public {
+        uint256 amount = balances[msg.sender];
+        require(amount > 0);
+        
+        // Vulnerable: external call before state update
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success);
+        
+        balances[msg.sender] = 0;
+    }
+}`)}
+                                                            className={`p-4 rounded-xl text-left transition-all hover:scale-[1.02] ${darkMode ? 'bg-gray-900 hover:bg-gray-750 border border-gray-700' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'}`}
+                                                        >
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="px-2 py-0.5 text-xs font-bold rounded bg-red-500 text-white">CRITICAL</span>
+                                                                <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reentrancy Example</span>
+                                                            </div>
+                                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Classic vulnerable bank contract</p>
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => setScannerCode(`// VULNERABLE: tx.origin authentication
+pragma solidity ^0.7.0;
+
+contract VulnerableWallet {
+    address public owner;
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    function transfer(address to, uint amount) public {
+        // Vulnerable: using tx.origin
+        require(tx.origin == owner);
+        payable(to).transfer(amount);
+    }
+    
+    function destroy() public {
+        require(tx.origin == owner);
+        selfdestruct(payable(owner));
+    }
+}`)}
+                                                            className={`p-4 rounded-xl text-left transition-all hover:scale-[1.02] ${darkMode ? 'bg-gray-900 hover:bg-gray-750 border border-gray-700' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'}`}
+                                                        >
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="px-2 py-0.5 text-xs font-bold rounded bg-red-500 text-white">CRITICAL</span>
+                                                                <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Access Control Example</span>
+                                                            </div>
+                                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>tx.origin + selfdestruct vulnerabilities</p>
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => setScannerCode(`// VULNERABLE: Oracle manipulation
+pragma solidity ^0.8.0;
+
+interface IUniswapV2Pair {
+    function getReserves() external view returns (uint112, uint112, uint32);
+}
+
+contract VulnerableLending {
+    IUniswapV2Pair public pair;
+    mapping(address => uint256) public deposits;
+    
+    function getPrice() public view returns (uint256) {
+        // Vulnerable: spot price from DEX
+        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+        return (uint256(reserve1) * 1e18) / uint256(reserve0);
+    }
+    
+    function borrow(uint256 collateral) external {
+        uint256 price = getPrice();
+        uint256 borrowAmount = (collateral * price * 80) / 100 / 1e18;
+        // ... lending logic
+    }
+}`)}
+                                                            className={`p-4 rounded-xl text-left transition-all hover:scale-[1.02] ${darkMode ? 'bg-gray-900 hover:bg-gray-750 border border-gray-700' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'}`}
+                                                        >
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="px-2 py-0.5 text-xs font-bold rounded bg-red-500 text-white">CRITICAL</span>
+                                                                <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Oracle Manipulation</span>
+                                                            </div>
+                                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>DEX spot price vulnerability</p>
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => setScannerCode(`// SECURE: Well-protected contract
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract SecureVault is ReentrancyGuard, Ownable {
+    mapping(address => uint256) public balances;
+    
+    event Deposit(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
+    
+    function deposit() external payable {
+        require(msg.value > 0, "Amount must be > 0");
+        balances[msg.sender] += msg.value;
+        emit Deposit(msg.sender, msg.value);
+    }
+    
+    function withdraw(uint256 amount) external nonReentrant {
+        require(amount > 0, "Amount must be > 0");
+        require(balances[msg.sender] >= amount, "Insufficient balance");
+        
+        // Checks-effects-interactions pattern
+        balances[msg.sender] -= amount;
+        
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Transfer failed");
+        
+        emit Withdraw(msg.sender, amount);
+    }
+}`)}
+                                                            className={`p-4 rounded-xl text-left transition-all hover:scale-[1.02] ${darkMode ? 'bg-gray-900 hover:bg-gray-750 border border-gray-700' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'}`}
+                                                        >
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="px-2 py-0.5 text-xs font-bold rounded bg-green-500 text-white">SECURE</span>
+                                                                <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Secure Example</span>
+                                                            </div>
+                                                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Well-protected vault contract</p>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* LEARN MODE - Attack Cards Grid */}
+                                    {attackLabMode === 'learn' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {attackVectors.map((attack, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setSelectedAttack(attack)}
+                                                    className={`p-4 rounded-xl border text-left transition-all hover:scale-[1.02] ${selectedAttack?.name === attack.name
+                                                        ? 'ring-2 ring-purple-500 ' + (darkMode ? 'bg-purple-900/20 border-purple-500' : 'bg-purple-50 border-purple-300')
+                                                        : darkMode ? 'bg-gray-800 border-gray-700 hover:bg-gray-750' : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <span className={`px-2 py-1 text-xs font-bold rounded flex-shrink-0 ${attack.severity === 'critical' ? 'bg-red-500 text-white' :
+                                                            attack.severity === 'high' ? 'bg-orange-500 text-white' :
+                                                                'bg-yellow-500 text-black'
+                                                            }`}>
+                                                            {attack.severity.toUpperCase()}
+                                                        </span>
+                                                        <div className="flex-1 min-w-0">
+                                                            <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{attack.name}</h4>
+                                                            <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{attack.description}</p>
+                                                            {(attack as any).realWorldExample && (
+                                                                <p className={`text-xs mt-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                                                                    {(attack as any).realWorldExample}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Selected Attack Detail - Only show in Learn mode */}
+                                    {attackLabMode === 'learn' && selectedAttack && (
+                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-start justify-between mb-6">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-3 py-1.5 text-sm font-bold rounded ${selectedAttack.severity === 'critical' ? 'bg-red-500 text-white' :
+                                                        selectedAttack.severity === 'high' ? 'bg-orange-500 text-white' :
+                                                            'bg-yellow-500 text-black'
+                                                        }`}>
+                                                        {selectedAttack.severity.toUpperCase()}
+                                                    </span>
+                                                    <div>
+                                                        <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedAttack.name}</h3>
+                                                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{selectedAttack.description}</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => setSelectedAttack(null)}
+                                                    className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                                >
+                                                    <X size={20} />
+                                                </button>
+                                            </div>
+
+                                            {/* Real World Example */}
+                                            {(selectedAttack as any).realWorldExample && (
+                                                <div className={`mb-6 p-4 rounded-xl ${darkMode ? 'bg-red-500/10 border border-red-500/30' : 'bg-red-50 border border-red-200'}`}>
+                                                    <p className={`text-sm font-medium ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
+                                                        Real World Example: {(selectedAttack as any).realWorldExample}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                                {/* Vulnerable Code */}
+                                                {(selectedAttack as any).vulnerableCode && (
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h4 className={`text-sm font-semibold flex items-center gap-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
+                                                                <XCircle size={16} />
+                                                                Vulnerable Code
+                                                            </h4>
+                                                            <button
+                                                                onClick={() => navigator.clipboard.writeText((selectedAttack as any).vulnerableCode)}
+                                                                className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                                                            >
+                                                                <Copy size={12} />
+                                                                Copy
+                                                            </button>
+                                                        </div>
+                                                        <pre className={`p-4 rounded-xl text-xs overflow-auto max-h-80 ${darkMode ? 'bg-gray-900 text-red-300' : 'bg-red-50 text-red-800'}`}>
+                                                            {(selectedAttack as any).vulnerableCode}
+                                                        </pre>
+                                                    </div>
+                                                )}
+
+                                                {/* Attack Code */}
+                                                {(selectedAttack as any).attackCode && (
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h4 className={`text-sm font-semibold flex items-center gap-2 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                                                                <Zap size={16} />
+                                                                Attack Implementation
+                                                            </h4>
+                                                            <button
+                                                                onClick={() => navigator.clipboard.writeText((selectedAttack as any).attackCode)}
+                                                                className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                                                            >
+                                                                <Copy size={12} />
+                                                                Copy
+                                                            </button>
+                                                        </div>
+                                                        <pre className={`p-4 rounded-xl text-xs overflow-auto max-h-80 ${darkMode ? 'bg-gray-900 text-orange-300' : 'bg-orange-50 text-orange-800'}`}>
+                                                            {(selectedAttack as any).attackCode}
+                                                        </pre>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Test Steps */}
+                                            {(selectedAttack as any).testSteps && (
+                                                <div className="mt-6">
+                                                    <h4 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                                        <ClipboardList size={16} />
+                                                        Testing Steps (Local Testnet)
+                                                    </h4>
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-blue-50'}`}>
+                                                        <ol className="space-y-2">
+                                                            {(selectedAttack as any).testSteps.map((step: string, i: number) => (
+                                                                <li key={i} className={`text-sm flex gap-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${darkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
+                                                                        {i + 1}
+                                                                    </span>
+                                                                    {step}
+                                                                </li>
+                                                            ))}
+                                                        </ol>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Fixed Code */}
+                                            {(selectedAttack as any).fixedCode && (
+                                                <div className="mt-6">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <h4 className={`text-sm font-semibold flex items-center gap-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                                            <CheckCircle2 size={16} />
+                                                            Secure Implementation
+                                                        </h4>
+                                                        <button
+                                                            onClick={() => navigator.clipboard.writeText((selectedAttack as any).fixedCode)}
+                                                            className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${darkMode ? 'text-gray-400 hover:text-white hover:bg-gray-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                                                        >
+                                                            <Copy size={12} />
+                                                            Copy
+                                                        </button>
+                                                    </div>
+                                                    <pre className={`p-4 rounded-xl text-xs overflow-auto max-h-80 ${darkMode ? 'bg-gray-900 text-green-300' : 'bg-green-50 text-green-800'}`}>
+                                                        {(selectedAttack as any).fixedCode}
+                                                    </pre>
+                                                </div>
+                                            )}
+
+                                            {/* Mitigation Summary */}
+                                            <div className={`mt-6 p-4 rounded-xl ${darkMode ? 'bg-green-500/10 border border-green-500/30' : 'bg-green-50 border border-green-200'}`}>
+                                                <h4 className={`text-sm font-semibold mb-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>Mitigation Summary</h4>
+                                                <p className={`text-sm ${darkMode ? 'text-green-300' : 'text-green-600'}`}>{selectedAttack.mitigation}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Getting Started Guide - Only show in Learn mode when no attack selected */}
+                                    {attackLabMode === 'learn' && !selectedAttack && (
+                                        <div className="space-y-6">
+                                            {/* What Each Section Means */}
+                                            <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Understanding the Code Sections</h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className={`p-4 rounded-xl border-l-4 border-red-500 ${darkMode ? 'bg-gray-900' : 'bg-red-50'}`}>
+                                                        <h4 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
+                                                            <XCircle size={18} />
+                                                            Vulnerable Code
+                                                        </h4>
+                                                        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            This is the <strong>target</strong> - a smart contract with a security flaw. You deploy this first to have something to attack. In real audits, this represents code you're reviewing.
+                                                        </p>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl border-l-4 border-orange-500 ${darkMode ? 'bg-gray-900' : 'bg-orange-50'}`}>
+                                                        <h4 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-orange-400' : 'text-orange-700'}`}>
+                                                            <Zap size={18} />
+                                                            Attack Implementation
+                                                        </h4>
+                                                        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            This is the <strong>exploit</strong> - a separate contract (or script) that exploits the vulnerability. Deploy this second and call its attack function to drain/exploit the vulnerable contract.
+                                                        </p>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl border-l-4 border-blue-500 ${darkMode ? 'bg-gray-900' : 'bg-blue-50'}`}>
+                                                        <h4 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-blue-400' : 'text-blue-700'}`}>
+                                                            <ClipboardList size={18} />
+                                                            Testing Steps
+                                                        </h4>
+                                                        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            Step-by-step instructions for running the attack in your test environment. Follow these in order to see the exploit in action.
+                                                        </p>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl border-l-4 border-green-500 ${darkMode ? 'bg-gray-900' : 'bg-green-50'}`}>
+                                                        <h4 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
+                                                            <CheckCircle2 size={18} />
+                                                            Secure Implementation
+                                                        </h4>
+                                                        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                            The <strong>fix</strong> - how the vulnerable code should have been written. Use this to understand what secure code looks like and to verify your fix works.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Full Workflow */}
+                                            <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Complete Testing Workflow</h3>
+
+                                                <div className="space-y-4">
+                                                    {/* Step 1 */}
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <div className="flex items-start gap-3">
+                                                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${darkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>1</span>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Set Up Local Blockchain</h4>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Install Hardhat and create a new project. This gives you a local Ethereum blockchain to test on.</p>
+                                                                <pre className={`p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border'}`}>{`mkdir attack-lab && cd attack-lab
+npm init -y
+npm install --save-dev hardhat @nomicfoundation/hardhat-toolbox
+npx hardhat init  # Choose "Create a JavaScript project"`}</pre>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Step 2 */}
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <div className="flex items-start gap-3">
+                                                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${darkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>2</span>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Create the Vulnerable Contract</h4>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Copy the "Vulnerable Code" into a new file in the contracts folder.</p>
+                                                                <pre className={`p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border'}`}>{`# Create file: contracts/VulnerableBank.sol
+# Paste the "Vulnerable Code" from any attack above`}</pre>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Step 3 */}
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <div className="flex items-start gap-3">
+                                                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${darkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>3</span>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Create the Attacker Contract</h4>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Copy the "Attack Implementation" into another file. This contract will exploit the vulnerable one.</p>
+                                                                <pre className={`p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border'}`}>{`# Create file: contracts/Attacker.sol
+# Paste the "Attack Implementation" code`}</pre>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Step 4 */}
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <div className="flex items-start gap-3">
+                                                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${darkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>4</span>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Write a Test Script</h4>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Create a test that deploys both contracts and executes the attack.</p>
+                                                                <pre className={`p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border'}`}>{`// test/Attack.js
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("Reentrancy Attack", function() {
+  it("should drain the vulnerable contract", async function() {
+    // 1. Deploy vulnerable contract
+    const Bank = await ethers.getContractFactory("VulnerableBank");
+    const bank = await Bank.deploy();
+    
+    // 2. Fund it with some ETH (simulating other users)
+    const [owner, victim, attacker] = await ethers.getSigners();
+    await bank.connect(victim).deposit({ value: ethers.parseEther("10") });
+    
+    // 3. Deploy attacker contract
+    const Attacker = await ethers.getContractFactory("ReentrancyAttacker");
+    const attackContract = await Attacker.connect(attacker).deploy(bank.target);
+    
+    // 4. Execute attack
+    console.log("Bank balance before:", await ethers.provider.getBalance(bank.target));
+    await attackContract.attack({ value: ethers.parseEther("1") });
+    console.log("Bank balance after:", await ethers.provider.getBalance(bank.target));
+    
+    // Bank should be drained!
+    expect(await ethers.provider.getBalance(bank.target)).to.equal(0);
+  });
+});`}</pre>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Step 5 */}
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <div className="flex items-start gap-3">
+                                                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${darkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>5</span>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Run the Test</h4>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Execute the test and watch the attack succeed.</p>
+                                                                <pre className={`p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border'}`}>{`npx hardhat test
+
+# Expected output:
+# Bank balance before: 10000000000000000000 (10 ETH)
+# Bank balance after: 0
+# ✓ should drain the vulnerable contract`}</pre>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Step 6 */}
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <div className="flex items-start gap-3">
+                                                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-600'}`}>6</span>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Test the Fix</h4>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Replace VulnerableBank with the "Secure Implementation" and verify the attack no longer works.</p>
+                                                                <pre className={`p-3 rounded-lg text-xs overflow-x-auto ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-700 border'}`}>{`# Replace contracts/VulnerableBank.sol with SecureBank code
+# Run test again - attack should fail now!
+
+npx hardhat test
+# Expected: Transaction reverts or attack has no effect`}</pre>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Quick Reference */}
+                                            <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Quick Reference</h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <h4 className={`font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Common Commands</h4>
+                                                        <pre className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{`npx hardhat compile
+npx hardhat test
+npx hardhat node
+npx hardhat console`}</pre>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <h4 className={`font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Useful Packages</h4>
+                                                        <pre className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{`@openzeppelin/contracts
+@chainlink/contracts
+@uniswap/v2-periphery
+dotenv`}</pre>
+                                                    </div>
+                                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                                        <h4 className={`font-medium mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Testing Resources</h4>
+                                                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                            • Damn Vulnerable DeFi<br />
+                                                            • Ethernaut (OpenZeppelin)<br />
+                                                            • Capture the Ether<br />
+                                                            • Paradigm CTF
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <p className={`text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                Click any attack card above to view detailed code examples and test the specific vulnerability.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     ) : null}
 
@@ -7742,13 +9582,13 @@ function App() {
                 </div>
             )}
 
-            {/* STIG Ops Documentation Modal - Root Level */}
+            {/* STRIX Documentation Modal - Root Level */}
             {showDocsModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDocsModal(false)}>
                     <div className={`w-full max-w-5xl h-[85vh] rounded-2xl shadow-xl flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
                         {/* Header */}
                         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-                            <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STIG Ops Technical Documentation</h2>
+                            <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STRIX Technical Documentation</h2>
                             <button
                                 onClick={() => setShowDocsModal(false)}
                                 className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
@@ -7763,7 +9603,7 @@ function App() {
                             <div className={`w-64 border-r overflow-y-auto ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
                                 <div className="p-4 space-y-1">
                                     {[
-                                        { id: 'intro', label: 'Intro to STIG Ops' },
+                                        { id: 'intro', label: 'Intro to STRIX' },
                                         { id: 'how-it-works', label: 'How It Works' },
                                         { id: 'getting-started', label: 'Getting Started' },
                                         { id: 'checklist-editor', label: 'Checklist Editor' },
@@ -7793,14 +9633,14 @@ function App() {
                                 <div className="max-w-3xl mx-auto space-y-6">
                                     {selectedDocSection === 'intro' && (
                                         <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Introduction to STIG Ops</h3>
+                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Introduction to STRIX</h3>
                                             <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STIG Ops is a comprehensive tool designed to help security professionals manage, analyze, and document STIG (Security Technical Implementation Guide) compliance. Built with modern web technologies, STIG Ops provides an intuitive interface for creating checklists, capturing evidence, generating reports, and analyzing compliance data.
+                                                STRIX is a comprehensive tool designed to help security professionals manage, analyze, and document STIG (Security Technical Implementation Guide) compliance. Built with modern web technologies, STRIX provides an intuitive interface for creating checklists, capturing evidence, generating reports, and analyzing compliance data.
                                             </p>
                                             <div className="space-y-3">
                                                 <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Core Philosophy</h4>
                                                 <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    STIG Ops emphasizes privacy, local processing, and user control. All data processing is performed locally on your machine—no files are uploaded to any server or database. This ensures maximum security and compliance with sensitive government and enterprise data requirements.
+                                                    STRIX emphasizes privacy, local processing, and user control. All data processing is performed locally on your machine—no files are uploaded to any server or database. This ensures maximum security and compliance with sensitive government and enterprise data requirements.
                                                 </p>
                                             </div>
                                             <div className="space-y-3">
@@ -7821,13 +9661,13 @@ function App() {
                                         <div className="space-y-4">
                                             <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How It Works</h3>
                                             <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STIG Ops operates on a local-first architecture where all data processing occurs on your device.
+                                                STRIX operates on a local-first architecture where all data processing occurs on your device.
                                             </p>
                                             <div className="space-y-4">
                                                 <div>
                                                     <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>1. STIG Selection</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Start by selecting a STIG checklist from the main dashboard. STIG Ops supports Windows 11, Windows Server 2019, SQL Server, IIS, Edge, Defender, and more.
+                                                        Start by selecting a STIG checklist from the main dashboard. STRIX supports Windows 11, Windows Server 2019, SQL Server, IIS, Edge, Defender, and more.
                                                     </p>
                                                 </div>
                                                 <div>
@@ -7865,7 +9705,7 @@ function App() {
                                                 <div>
                                                     <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 2: Load Your Checklist</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Navigate to the Checklist Editor and upload your checklist file. STIG Ops supports .ckl, .cklb, .json, and .xml formats.
+                                                        Navigate to the Checklist Editor and upload your checklist file. STRIX supports .ckl, .cklb, .json, and .xml formats.
                                                     </p>
                                                 </div>
                                                 <div>
@@ -7894,7 +9734,7 @@ function App() {
                                         <div className="space-y-4">
                                             <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Editor</h3>
                                             <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                The Checklist Editor is the core of STIG Ops, allowing you to manage and update STIG compliance findings.
+                                                The Checklist Editor is the core of STRIX, allowing you to manage and update STIG compliance findings.
                                             </p>
                                             <div className="space-y-4">
                                                 <div>
@@ -7954,7 +9794,7 @@ function App() {
                                         <div className="space-y-4">
                                             <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reports</h3>
                                             <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STIG Ops provides comprehensive reporting capabilities to document compliance status and generate required documentation.
+                                                STRIX provides comprehensive reporting capabilities to document compliance status and generate required documentation.
                                             </p>
                                             <div className="space-y-4">
                                                 <div>
@@ -7980,7 +9820,7 @@ function App() {
                                         <div className="space-y-4">
                                             <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tools & Utilities</h3>
                                             <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STIG Ops includes several utility tools to help streamline your compliance workflow.
+                                                STRIX includes several utility tools to help streamline your compliance workflow.
                                             </p>
                                             <div className="space-y-4">
                                                 <div>
@@ -8012,7 +9852,7 @@ function App() {
                                                 <div>
                                                     <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Architecture</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        STIG Ops is built with React and TypeScript, providing a modern, responsive user interface. The application can run as a web application in any modern browser or as a desktop application using Electron.
+                                                        STRIX is built with React and TypeScript, providing a modern, responsive user interface. The application can run as a web application in any modern browser or as a desktop application using Electron.
                                                     </p>
                                                 </div>
                                                 <div>
@@ -8033,7 +9873,7 @@ function App() {
                                                 <div>
                                                     <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Browser Requirements</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        STIG Ops requires a modern browser with support for ES6+, IndexedDB, and File API. Recommended browsers include Chrome, Firefox, Edge, and Safari (latest versions).
+                                                        STRIX requires a modern browser with support for ES6+, IndexedDB, and File API. Recommended browsers include Chrome, Firefox, Edge, and Safari (latest versions).
                                                     </p>
                                                 </div>
                                             </div>
@@ -8086,9 +9926,9 @@ function App() {
                                                     </p>
                                                 </div>
                                                 <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I use STIG Ops offline?</h4>
+                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I use STRIX offline?</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Yes. Once loaded, STIG Ops works completely offline. The Electron desktop version is fully offline-capable.
+                                                        Yes. Once loaded, STRIX works completely offline. The Electron desktop version is fully offline-capable.
                                                     </p>
                                                 </div>
                                                 <div>
@@ -8100,7 +9940,7 @@ function App() {
                                                 <div>
                                                     <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I import data from other STIG tools?</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        STIG Ops supports standard STIG formats (.ckl, .cklb, .xml) that are compatible with most STIG tools. You can import checklists created in other tools.
+                                                        STRIX supports standard STIG formats (.ckl, .cklb, .xml) that are compatible with most STIG tools. You can import checklists created in other tools.
                                                     </p>
                                                 </div>
                                             </div>

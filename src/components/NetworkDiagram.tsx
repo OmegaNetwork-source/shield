@@ -60,7 +60,8 @@ import {
     Plus,
     Copy,
     FileSpreadsheet,
-    HardDrive
+    HardDrive,
+    Code
 } from 'lucide-react';
 import JSZip from 'jszip';
 
@@ -977,6 +978,21 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
     const [editingEdgeLabel, setEditingEdgeLabel] = useState<string | null>(null);
     const [edgeLabelText, setEdgeLabelText] = useState('');
     const edgeLabelInputRef = useRef<HTMLInputElement>(null);
+    const [showSoftwareModal, setShowSoftwareModal] = useState(false);
+    const [pendingNodeForSoftware, setPendingNodeForSoftware] = useState<Node | null>(null);
+    const [selectedSoftware, setSelectedSoftware] = useState<Array<{ name: string; vendor: string; version: string }>>([]);
+    const [manualSoftwareInfo, setManualSoftwareInfo] = useState('');
+    const [showSoftwareListModal, setShowSoftwareListModal] = useState(false);
+    const [softwareList, setSoftwareList] = useState<Array<{
+        deviceType: string;
+        icon: any;
+        label: string;
+        color: string;
+        quantity: number;
+        deviceName: string;
+        software: Array<{ name: string; vendor: string; version: string }>;
+        manualInfo: string;
+    }>>([]);
 
     // Keyboard handler for Delete/Backspace
     useEffect(() => {
@@ -1173,7 +1189,15 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                 height: type === 'textbox' ? 80 : type === 'boundary' ? 300 : undefined,
             };
 
-            setNodes((nds) => nds.concat(newNode));
+            // Check if this node type needs software selection
+            if (type === 'desktop' || type === 'server' || type === 'laptop') {
+                setPendingNodeForSoftware(newNode);
+                setSelectedSoftware([]);
+                setManualSoftwareInfo('');
+                setShowSoftwareModal(true);
+            } else {
+                setNodes((nds) => nds.concat(newNode));
+            }
         },
         [reactFlowInstance, nodeCounter, setNodes]
     );
@@ -1938,6 +1962,241 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
         });
     };
 
+    // Software selection handlers
+    const getSoftwareOptions = (deviceType: string): string[] => {
+        if (deviceType === 'desktop' || deviceType === 'laptop') {
+            return ['Windows 11', 'Windows 10', 'Linux', 'macOS'];
+        } else if (deviceType === 'server') {
+            return ['Windows Server 2019', 'Windows Server 2022', 'Linux (Ubuntu)', 'Linux (CentOS)', 'Linux (RHEL)', 'VMware ESXi', 'Other'];
+        }
+        return [];
+    };
+
+    const handleSoftwareSelection = (software: string) => {
+        setSelectedSoftware(prev => {
+            if (prev.some(s => s.name === software)) {
+                return prev.filter(s => s.name !== software);
+            } else {
+                return [...prev, { name: software, vendor: '', version: '' }];
+            }
+        });
+    };
+
+    const updateSoftwareVendor = (softwareName: string, vendor: string) => {
+        setSelectedSoftware(prev =>
+            prev.map(s => s.name === softwareName ? { ...s, vendor } : s)
+        );
+    };
+
+    const updateSoftwareVersion = (softwareName: string, version: string) => {
+        setSelectedSoftware(prev =>
+            prev.map(s => s.name === softwareName ? { ...s, version } : s)
+        );
+    };
+
+    const handleSaveSoftware = () => {
+        if (!pendingNodeForSoftware) return;
+
+        const nodeWithSoftware: Node = {
+            ...pendingNodeForSoftware,
+            data: {
+                ...pendingNodeForSoftware.data,
+                software: selectedSoftware,
+                manualSoftwareInfo: manualSoftwareInfo,
+            },
+        };
+
+        setNodes((nds) => nds.concat(nodeWithSoftware));
+        setShowSoftwareModal(false);
+        setPendingNodeForSoftware(null);
+        setSelectedSoftware([]);
+        setManualSoftwareInfo('');
+    };
+
+    const handleCancelSoftware = () => {
+        setShowSoftwareModal(false);
+        setPendingNodeForSoftware(null);
+        setSelectedSoftware([]);
+        setManualSoftwareInfo('');
+    };
+
+    const createSoftwareList = () => {
+        // Device type mapping with icons and labels
+        const deviceMap: Record<string, { icon: any; label: string; color: string }> = {
+            server: { icon: Server, label: 'Server', color: 'blue' },
+            desktop: { icon: Monitor, label: 'Desktop', color: 'indigo' },
+            laptop: { icon: Laptop, label: 'Laptop', color: 'teal' },
+        };
+
+        // Count devices by type and collect software info
+        const deviceSoftwareMap: Record<string, {
+            deviceType: string;
+            icon: any;
+            label: string;
+            color: string;
+            quantity: number;
+            devices: Array<{ software: string[]; manualInfo: string; deviceName: string }>;
+        }> = {};
+
+        nodes.forEach(node => {
+            if (node.type && (node.type === 'server' || node.type === 'desktop' || node.type === 'laptop')) {
+                const device = deviceMap[node.type];
+                if (device) {
+                    if (!deviceSoftwareMap[node.type]) {
+                        deviceSoftwareMap[node.type] = {
+                            deviceType: node.type,
+                            icon: device.icon,
+                            label: device.label,
+                            color: device.color,
+                            quantity: 0,
+                            devices: [],
+                        };
+                    }
+                    deviceSoftwareMap[node.type].quantity++;
+                    // Handle both old format (string[]) and new format (Array<{name, vendor, version}>)
+                    const softwareData = node.data?.software || [];
+                    const normalizedSoftware = Array.isArray(softwareData) && softwareData.length > 0
+                        ? (typeof softwareData[0] === 'string' 
+                            ? softwareData.map((s: string) => ({ name: s, vendor: '', version: '' }))
+                            : softwareData)
+                        : [];
+                    
+                    deviceSoftwareMap[node.type].devices.push({
+                        software: normalizedSoftware,
+                        manualInfo: node.data?.manualSoftwareInfo || '',
+                        deviceName: node.data?.label || '',
+                    });
+                }
+            }
+        });
+
+        // Generate software list - aggregate all software from all devices
+        const softwareListData = Object.values(deviceSoftwareMap).map(deviceData => {
+            // Collect all unique software items with their vendor/version
+            const allSoftware: Array<{ name: string; vendor: string; version: string }> = [];
+            const softwareMap = new Map<string, { name: string; vendor: string; version: string }>();
+            
+            deviceData.devices.forEach(device => {
+                device.software.forEach((sw: { name: string; vendor: string; version: string }) => {
+                    if (!softwareMap.has(sw.name)) {
+                        softwareMap.set(sw.name, { name: sw.name, vendor: sw.vendor || '', version: sw.version || '' });
+                    }
+                });
+            });
+            
+            return {
+                deviceType: deviceData.deviceType,
+                icon: deviceData.icon,
+                label: deviceData.label,
+                color: deviceData.color,
+                quantity: deviceData.quantity,
+                deviceName: deviceData.devices.map(d => d.deviceName).join(', ') || '',
+                software: Array.from(softwareMap.values()),
+                manualInfo: deviceData.devices.map(d => d.manualInfo).filter(m => m).join('; ') || '',
+            };
+        });
+
+        if (softwareListData.length === 0) {
+            alert('No devices with software information found. Add desktop, server, or laptop devices first.');
+            return;
+        }
+
+        setSoftwareList(softwareListData);
+        setShowSoftwareListModal(true);
+    };
+
+    const exportSoftwareListToCSV = () => {
+        const headers = ['Device Type', 'Quantity', 'Device Name', 'Software', 'Vendor', 'Version', 'Manual Info'];
+        const rows: string[][] = [];
+        
+        softwareList.forEach(item => {
+            if (item.software.length === 0) {
+                // If no software, add one row with empty software fields
+                rows.push([
+                    item.label,
+                    item.quantity.toString(),
+                    item.deviceName || '',
+                    '',
+                    '',
+                    '',
+                    item.manualInfo || '',
+                ]);
+            } else {
+                // Add one row per software item
+                item.software.forEach(sw => {
+                    rows.push([
+                        item.label,
+                        item.quantity.toString(),
+                        item.deviceName || '',
+                        sw.name || '',
+                        sw.vendor || '',
+                        sw.version || '',
+                        item.manualInfo || '',
+                    ]);
+                });
+            }
+        });
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `software_list_${diagramName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const copySoftwareList = () => {
+        const headers = ['Device Type', 'Quantity', 'Device Name', 'Software', 'Vendor', 'Version', 'Manual Info'];
+        const rows: string[][] = [];
+        
+        softwareList.forEach(item => {
+            if (item.software.length === 0) {
+                rows.push([
+                    item.label,
+                    item.quantity.toString(),
+                    item.deviceName || '',
+                    '',
+                    '',
+                    '',
+                    item.manualInfo || '',
+                ]);
+            } else {
+                item.software.forEach(sw => {
+                    rows.push([
+                        item.label,
+                        item.quantity.toString(),
+                        item.deviceName || '',
+                        sw.name || '',
+                        sw.vendor || '',
+                        sw.version || '',
+                        item.manualInfo || '',
+                    ]);
+                });
+            }
+        });
+
+        const textContent = [
+            headers.join('\t'),
+            ...rows.map(row => row.join('\t'))
+        ].join('\n');
+
+        navigator.clipboard.writeText(textContent).then(() => {
+            alert('Software list copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+            alert('Failed to copy software list to clipboard.');
+        });
+    };
+
     const clearDiagram = () => {
         if (window.confirm('Clear the current diagram? This cannot be undone.')) {
             setNodes([]);
@@ -1949,71 +2208,161 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
     };
 
     return (
-        <div ref={networkDiagramContainer} className="flex h-full">
-            {/* Left Sidebar - Device Palette (wider for grid) - Always visible */}
-            <div className={`w-32 border-r ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'} p-2 overflow-y-auto`}>
-                <h3 className={`font-semibold mb-2 text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Devices</h3>
+        <div ref={networkDiagramContainer} className="flex h-full w-full">
+            {/* Left Sidebar - Device Palette - Always visible */}
+            <div className={`w-44 flex-shrink-0 border-r ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} overflow-y-auto`}>
+                <div className={`p-3 border-b flex-shrink-0 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h3 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>Devices</h3>
+                </div>
 
-                <div className="grid grid-cols-2 gap-1.5 mb-4">
-                    {[
-                        { type: 'server', icon: Server, label: 'Server', color: 'blue' },
-                        { type: 'firewall', icon: Shield, label: 'Firewall', color: 'red' },
-                        { type: 'router', icon: Router, label: 'Router', color: 'green' },
-                        { type: 'switch', icon: Network, label: 'Switch', color: 'purple' },
-                        { type: 'cloud', icon: Cloud, label: 'Cloud', color: 'cyan' },
-                        { type: 'database', icon: Database, label: 'Database', color: 'orange' },
-                        { type: 'desktop', icon: Monitor, label: 'Desktop', color: 'indigo' },
-                        { type: 'laptop', icon: Laptop, label: 'Laptop', color: 'teal' },
-                        { type: 'idsidp', icon: ShieldCheck, label: 'IDS/IDP', color: 'pink' },
-                        { type: 'loadbalancer', icon: Activity, label: 'Load Bal', color: 'amber' },
-                        { type: 'vpngateway', icon: Lock, label: 'VPN', color: 'slate' },
-                        { type: 'wap', icon: Radio, label: 'WAP', color: 'emerald' },
-                        { type: 'printer', icon: Printer, label: 'Printer', color: 'rose' },
-                        { type: 'personalbox', icon: User, label: 'Personal', color: 'violet' },
-                        { type: 'textbox', icon: Type, label: 'Text', color: 'gray' },
-                        { type: 'linetext', icon: Minus, label: 'Line Text', color: 'gray' },
-                        { type: 'dashedboundary', icon: Minus, label: 'Dashed', color: 'gray' },
-                        { type: 'boundary', icon: Square, label: 'Boundary', color: 'gray' },
-                    ].map((device) => {
-                        const Icon = device.icon;
-                        return (
-                            <div
-                                key={device.type}
-                                draggable
-                                onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
-                                className={`p-1.5 border-2 border-dashed rounded cursor-move transition-all hover:shadow-md text-xs ${
-                                    darkMode 
-                                        ? 'border-gray-600 bg-gray-700 hover:border-gray-500' 
-                                        : 'border-gray-300 bg-white hover:border-gray-400'
-                                }`}
-                                title={device.label}
-                            >
-                                <div className="flex flex-col items-center gap-0.5">
-                                    <Icon size={14} className={`text-${device.color}-600`} />
-                                    <span className={`text-[8px] font-medium leading-tight text-center ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                {/* Network Infrastructure */}
+                <div className={`p-2.5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h4 className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Infrastructure</h4>
+                    <div className="space-y-1">
+                        {[
+                            { type: 'server', icon: Server, label: 'Server', color: 'blue' },
+                            { type: 'firewall', icon: Shield, label: 'Firewall', color: 'red' },
+                            { type: 'router', icon: Router, label: 'Router', color: 'green' },
+                            { type: 'switch', icon: Network, label: 'Switch', color: 'purple' },
+                            { type: 'loadbalancer', icon: Activity, label: 'Load Balancer', color: 'amber' },
+                            { type: 'idsidp', icon: ShieldCheck, label: 'IDS/IDP', color: 'pink' },
+                        ].map((device) => {
+                            const Icon = device.icon;
+                            return (
+                                <div
+                                    key={device.type}
+                                    draggable
+                                    onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
+                                        darkMode 
+                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
+                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                    }`}
+                                    title={device.label}
+                                >
+                                    <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
+                                    <span className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                                         {device.label}
                                     </span>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
 
-                <div className="pt-3 border-t border-gray-300">
-                    <h4 className={`font-semibold mb-1.5 text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Templates</h4>
-                    <div className="space-y-1 mb-3 max-h-48 overflow-y-auto">
+                {/* Endpoints */}
+                <div className={`p-2.5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h4 className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Endpoints</h4>
+                    <div className="space-y-1">
+                        {[
+                            { type: 'desktop', icon: Monitor, label: 'Desktop', color: 'indigo' },
+                            { type: 'laptop', icon: Laptop, label: 'Laptop', color: 'teal' },
+                            { type: 'printer', icon: Printer, label: 'Printer', color: 'rose' },
+                            { type: 'personalbox', icon: User, label: 'Personal', color: 'violet' },
+                        ].map((device) => {
+                            const Icon = device.icon;
+                            return (
+                                <div
+                                    key={device.type}
+                                    draggable
+                                    onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
+                                        darkMode 
+                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
+                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                    }`}
+                                    title={device.label}
+                                >
+                                    <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
+                                    <span className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        {device.label}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Network Services */}
+                <div className={`p-2.5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h4 className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Services</h4>
+                    <div className="space-y-1">
+                        {[
+                            { type: 'cloud', icon: Cloud, label: 'Cloud', color: 'cyan' },
+                            { type: 'database', icon: Database, label: 'Database', color: 'orange' },
+                            { type: 'vpngateway', icon: Lock, label: 'VPN Gateway', color: 'slate' },
+                            { type: 'wap', icon: Radio, label: 'WAP', color: 'emerald' },
+                        ].map((device) => {
+                            const Icon = device.icon;
+                            return (
+                                <div
+                                    key={device.type}
+                                    draggable
+                                    onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
+                                        darkMode 
+                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
+                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                    }`}
+                                    title={device.label}
+                                >
+                                    <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
+                                    <span className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        {device.label}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Tools & Shapes */}
+                <div className="p-2.5">
+                    <h4 className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Tools</h4>
+                    <div className="space-y-1">
+                        {[
+                            { type: 'textbox', icon: Type, label: 'Text Box', color: 'gray' },
+                            { type: 'boundary', icon: Square, label: 'Boundary', color: 'gray' },
+                            { type: 'dashedboundary', icon: Minus, label: 'Dashed Boundary', color: 'gray' },
+                        ].map((device) => {
+                            const Icon = device.icon;
+                            return (
+                                <div
+                                    key={device.type}
+                                    draggable
+                                    onDragStart={(e) => e.dataTransfer.setData('application/reactflow', device.type)}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-move transition-all group ${
+                                        darkMode 
+                                            ? 'bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-gray-500' 
+                                            : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
+                                    }`}
+                                    title={device.label}
+                                >
+                                    <Icon size={14} className={`text-${device.color}-600 flex-shrink-0`} />
+                                    <span className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                        {device.label}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className={`p-2.5 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h4 className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Templates</h4>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
                         {Object.entries(templates).map(([key, template]) => (
                             <div
                                 key={key}
-                                className={`p-1.5 rounded border cursor-pointer transition-all text-xs ${
+                                className={`px-2 py-1.5 rounded-md border cursor-pointer transition-all ${
                                     darkMode 
-                                        ? 'bg-gray-700 border-gray-600 hover:bg-gray-600 hover:border-gray-500' 
-                                        : 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                                        ? 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500' 
+                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                                 }`}
                                 onClick={() => loadTemplate(key as keyof typeof templates)}
                                 title={template.description}
                             >
-                                <div className={`font-medium text-[10px] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                <div className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                                     {template.name}
                                 </div>
                             </div>
@@ -2021,23 +2370,23 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                     </div>
                 </div>
 
-                <div className="pt-3 border-t border-gray-300">
-                    <h4 className={`font-semibold mb-1.5 text-xs ${darkMode ? 'text-white' : 'text-gray-900'}`}>Saved</h4>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                <div className={`p-2.5 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                    <h4 className={`text-[10px] font-semibold mb-1.5 uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Saved</h4>
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
                         {savedDiagrams.map((diagram) => (
                             <div
                                 key={diagram.id}
-                                className={`p-1.5 rounded border cursor-pointer transition-all text-xs ${
+                                className={`px-2 py-1.5 rounded-md border cursor-pointer transition-all group ${
                                     selectedDiagram === diagram.id
-                                        ? darkMode ? 'bg-blue-900 border-blue-600' : 'bg-blue-50 border-blue-300'
-                                        : darkMode ? 'bg-gray-700 border-gray-600 hover:bg-gray-600' : 'bg-white border-gray-200 hover:bg-gray-50'
+                                        ? darkMode ? 'bg-indigo-900/30 border-indigo-600' : 'bg-indigo-50 border-indigo-500'
+                                        : darkMode ? 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500' : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
                                 }`}
                                 onClick={() => loadDiagram(diagram.id)}
                                 title={diagram.name}
                             >
-                                <div className="flex items-center justify-between">
+                                <div className="flex items-center justify-between gap-2">
                                     <div className="flex-1 min-w-0">
-                                        <div className={`font-medium truncate text-[10px] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        <div className={`text-[11px] font-medium truncate ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                                             {diagram.name}
                                         </div>
                                     </div>
@@ -2046,16 +2395,16 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                             e.stopPropagation();
                                             deleteDiagram(diagram.id);
                                         }}
-                                        className="p-0.5 hover:bg-red-500 rounded text-gray-400 hover:text-white ml-1"
+                                        className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-500 rounded transition-all text-gray-400 hover:text-white flex-shrink-0"
                                     >
-                                        <Trash2 size={10} />
+                                        <Trash2 size={11} />
                                     </button>
                                 </div>
                             </div>
                         ))}
                         {savedDiagrams.length === 0 && (
-                            <p className={`text-[10px] text-center py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                No saved
+                            <p className={`text-[11px] text-center py-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                No saved diagrams
                             </p>
                         )}
                     </div>
@@ -2063,68 +2412,86 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
             </div>
 
             {/* Main Canvas Area (wider) */}
-            <div className="flex-1 flex flex-col min-w-0">
-                {/* Toolbar */}
-                <div className={`border-b p-2 flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="text"
-                            value={diagramName}
-                            onChange={(e) => setDiagramName(e.target.value)}
-                            className={`px-3 py-1 border rounded-lg text-sm font-medium ${
-                                darkMode 
-                                    ? 'bg-gray-700 border-gray-600 text-white' 
-                                    : 'bg-white border-gray-300 text-gray-900'
-                            }`}
-                            placeholder="Diagram Name"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setShowSaveAsModal(true)}
-                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"
-                        >
-                            <Save size={14} /> Save As
-                        </button>
-                        <button
-                            onClick={startAlign}
-                            className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"
-                            title="Align selected nodes"
-                        >
-                            <AlignLeft size={14} /> Align
-                        </button>
-                        <button
-                            onClick={createIconBox}
-                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"
-                            title="Create legend box with all device types"
-                        >
-                            <List size={14} /> Icon
-                        </button>
-                        <button
-                            onClick={createHardwareList}
-                            className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"
-                            title="Generate hardware list from diagram"
-                        >
-                            <HardDrive size={14} /> Hardware List
-                        </button>
-                        <button
-                            onClick={clearDiagram}
-                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"
-                        >
-                            <Trash2 size={14} /> Clear
-                        </button>
-                        <button
-                            onClick={toggleFullscreen}
-                            className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg flex items-center gap-1"
-                            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                        >
-                            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                        </button>
-                    </div>
-                </div>
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                {/* Toolbar - Clean Two Row Layout */}
+                        <div className={`border-b flex-shrink-0 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                            {/* Row 1: Diagram Name */}
+                            <div className={`px-4 py-2.5 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <label className={`text-sm font-semibold whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        Diagram Name:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={diagramName}
+                                        onChange={(e) => setDiagramName(e.target.value)}
+                                        className={`px-3 py-1.5 border rounded-lg text-sm font-medium flex-1 max-w-md ${
+                                            darkMode 
+                                                ? 'bg-gray-700 border-gray-600 text-white' 
+                                                : 'bg-white border-gray-300 text-gray-900'
+                                        }`}
+                                        placeholder="Enter diagram name"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Row 2: Action Buttons - Uniform Size */}
+                            <div className="px-4 py-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <button
+                                        onClick={() => setShowSaveAsModal(true)}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                    >
+                                        <Save size={16} /> Save As
+                                    </button>
+                                    <button
+                                        onClick={startAlign}
+                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                        title="Align selected nodes"
+                                    >
+                                        <AlignLeft size={16} /> Align
+                                    </button>
+                                    <button
+                                        onClick={createIconBox}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                        title="Create legend box with all device types"
+                                    >
+                                        <List size={16} /> Icon
+                                    </button>
+                                    <button
+                                        onClick={createHardwareList}
+                                        className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                        title="Generate hardware list from diagram"
+                                    >
+                                        <HardDrive size={16} /> Hardware List
+                                    </button>
+                                    <button
+                                        onClick={createSoftwareList}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                        title="Generate software list from diagram"
+                                    >
+                                        <Code size={16} /> Software List
+                                    </button>
+                                    <button
+                                        onClick={clearDiagram}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                    >
+                                        <Trash2 size={16} /> Clear
+                                    </button>
+                                    <button
+                                        onClick={toggleFullscreen}
+                                        className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm min-w-[120px]"
+                                        title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                                    >
+                                        {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                                        <span>{isFullscreen ? 'Exit' : 'Fullscreen'}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
 
                 {/* React Flow Canvas */}
-                <div ref={reactFlowWrapper} className="flex-1" style={{ background: darkMode ? '#1f2937' : '#f9fafb' }}>
+                <div ref={reactFlowWrapper} className="flex-1 min-h-0" style={{ background: darkMode ? '#1f2937' : '#f9fafb' }}>
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
@@ -2176,7 +2543,7 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                         />
                         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
                         <Panel position="top-right" className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>
-                            <div className="text-xs bg-white/90 px-2 py-1 rounded shadow">
+                            <div className={`text-xs px-3 py-1.5 rounded-md shadow-sm ${darkMode ? 'bg-gray-800/90 text-gray-200' : 'bg-white/90 text-gray-700'}`}>
                                 {nodes.length} nodes, {edges.length} connections
                             </div>
                         </Panel>
@@ -2753,6 +3120,286 @@ export default function NetworkDiagram({ darkMode = false }: NetworkDiagramProps
                                 {hardwareList.length === 0 && (
                                     <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                         No hardware devices found in the diagram.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Software Selection Modal */}
+            {showSoftwareModal && pendingNodeForSoftware && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCancelSoftware}>
+                    <div 
+                        className={`rounded-xl shadow-2xl max-w-2xl w-full mx-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className={`px-6 py-4 border-b flex items-center justify-between ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Select Software - {pendingNodeForSoftware.type === 'desktop' ? 'Desktop' : pendingNodeForSoftware.type === 'laptop' ? 'Laptop' : 'Server'}
+                            </h3>
+                            <button 
+                                onClick={handleCancelSoftware} 
+                                className={`p-1 rounded hover:bg-gray-600/50 transition-colors ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <div className="mb-6">
+                                <label className={`block text-sm font-semibold mb-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                    Operating System / Software
+                                </label>
+                                <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Select all that apply:
+                                </p>
+                                <div className="space-y-3 max-h-96 overflow-y-auto">
+                                    {getSoftwareOptions(pendingNodeForSoftware.type || '').map((option) => {
+                                        const isSelected = selectedSoftware.some(s => s.name === option);
+                                        const softwareItem = selectedSoftware.find(s => s.name === option);
+                                        return (
+                                            <div
+                                                key={option}
+                                                className={`p-3 rounded-lg transition-all ${
+                                                    darkMode
+                                                        ? isSelected
+                                                            ? 'bg-indigo-900/30 border-2 border-indigo-600 shadow-md'
+                                                            : 'bg-gray-700/50 border-2 border-gray-600 hover:bg-gray-700 hover:border-gray-500'
+                                                        : isSelected
+                                                            ? 'bg-indigo-50 border-2 border-indigo-500 shadow-sm'
+                                                            : 'bg-gray-50 border-2 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                                                }`}
+                                            >
+                                                <label className="flex items-center gap-3 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleSoftwareSelection(option)}
+                                                        className="w-5 h-5 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer"
+                                                    />
+                                                    <span className={`text-sm font-medium flex-1 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+                                                        {option}
+                                                    </span>
+                                                </label>
+                                                {isSelected && (
+                                                    <div className="mt-3 ml-8 grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                Vendor
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={softwareItem?.vendor || ''}
+                                                                onChange={(e) => updateSoftwareVendor(option, e.target.value)}
+                                                                placeholder="e.g., Microsoft"
+                                                                className={`w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${
+                                                                    darkMode 
+                                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                                        : 'border-gray-300 bg-white placeholder-gray-400'
+                                                                }`}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                Version
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={softwareItem?.version || ''}
+                                                                onChange={(e) => updateSoftwareVersion(option, e.target.value)}
+                                                                placeholder="e.g., 11.0"
+                                                                className={`w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none ${
+                                                                    darkMode 
+                                                                        ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                                                        : 'border-gray-300 bg-white placeholder-gray-400'
+                                                                }`}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="mb-6">
+                                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                                    Manual Info
+                                </label>
+                                <textarea
+                                    value={manualSoftwareInfo}
+                                    onChange={(e) => setManualSoftwareInfo(e.target.value)}
+                                    placeholder="Enter additional software information..."
+                                    rows={3}
+                                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none ${
+                                        darkMode 
+                                            ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
+                                            : 'border-gray-300 bg-white placeholder-gray-400'
+                                    }`}
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <button
+                                    onClick={handleCancelSoftware}
+                                    className={`px-5 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                                        darkMode 
+                                            ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                    }`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveSoftware}
+                                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                                >
+                                    Save & Add Node
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Software List Modal */}
+            {showSoftwareListModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowSoftwareListModal(false)}>
+                    <div 
+                        className={`rounded-xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className={`px-6 py-4 border-b flex items-center justify-between ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Software List</h3>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={exportSoftwareListToCSV}
+                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${
+                                        darkMode 
+                                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
+                                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                    }`}
+                                    title="Export to CSV"
+                                >
+                                    <FileSpreadsheet size={16} /> Export CSV
+                                </button>
+                                <button
+                                    onClick={copySoftwareList}
+                                    className={`px-3 py-1.5 text-sm font-medium rounded-lg flex items-center gap-1.5 transition-colors ${
+                                        darkMode 
+                                            ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600' 
+                                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                                    }`}
+                                    title="Copy to clipboard"
+                                >
+                                    <Copy size={16} /> Copy
+                                </button>
+                                <button 
+                                    onClick={() => setShowSoftwareListModal(false)} 
+                                    className={`p-1 rounded hover:bg-gray-600/50 transition-colors ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <div className="overflow-x-auto">
+                                <table className={`w-full border-collapse ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                    <thead>
+                                        <tr className={`border-b-2 ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Device</th>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Quantity</th>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Device Name</th>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Software</th>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Vendor</th>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Version</th>
+                                            <th className={`px-4 py-3 text-left text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Manual Info</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {softwareList.map((item) => {
+                                            const Icon = item.icon;
+                                            const colorClasses: Record<string, string> = {
+                                                blue: 'text-blue-600',
+                                                indigo: 'text-indigo-600',
+                                                teal: 'text-teal-600',
+                                            };
+                                            const iconColorClass = colorClasses[item.color] || 'text-gray-600';
+                                            return (
+                                                <tr 
+                                                    key={item.deviceType} 
+                                                    className={`border-b transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700/30' : 'border-gray-200 hover:bg-gray-50'}`}
+                                                >
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Icon size={18} className={iconColorClass} />
+                                                            <span className="font-medium">{item.label}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="font-semibold">{item.quantity}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.deviceName || '-'}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {item.software.length > 0 ? (
+                                                                item.software.map((software, idx) => (
+                                                                    <span
+                                                                        key={idx}
+                                                                        className={`px-2.5 py-1 rounded-md text-xs font-medium ${
+                                                                            darkMode
+                                                                                ? 'bg-indigo-900/40 text-indigo-200 border border-indigo-700'
+                                                                                : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                                                        }`}
+                                                                    >
+                                                                        {software.name}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>-</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col gap-1">
+                                                            {item.software.length > 0 ? (
+                                                                item.software.map((software, idx) => (
+                                                                    <span key={idx} className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                        {software.vendor || '-'}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>-</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col gap-1">
+                                                            {item.software.length > 0 ? (
+                                                                item.software.map((software, idx) => (
+                                                                    <span key={idx} className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                                        {software.version || '-'}
+                                                                    </span>
+                                                                ))
+                                                            ) : (
+                                                                <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>-</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.manualInfo || '-'}</span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                                {softwareList.length === 0 && (
+                                    <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        <p className="text-sm">No software information found in the diagram.</p>
+                                        <p className="text-xs mt-2">Add desktop, server, or laptop devices and select their software.</p>
                                     </div>
                                 )}
                             </div>

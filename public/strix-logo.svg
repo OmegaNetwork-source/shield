@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <!-- Gradient for the eyes glow effect -->
+    <radialGradient id="eyeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </radialGradient>
+    <radialGradient id="eyeGlowInner" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </radialGradient>
+    <!-- Subtle shadow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Owl face outline - angular/geometric style -->
+  <path 
+    d="M50 8 L85 35 L80 75 L50 92 L20 75 L15 35 Z" 
+    fill="#1e293b" 
+    stroke="#334155" 
+    stroke-width="2"
+  />
+  
+  <!-- Inner face detail -->
+  <path 
+    d="M50 15 L75 35 L72 68 L50 82 L28 68 L25 35 Z" 
+    fill="#0f172a"
+  />
+  
+  <!-- Left eye socket (angular) -->
+  <path 
+    d="M25 38 L38 30 L48 38 L45 52 L32 55 L25 48 Z" 
+    fill="#1e293b"
+  />
+  
+  <!-- Right eye socket (angular) -->
+  <path 
+    d="M75 38 L62 30 L52 38 L55 52 L68 55 L75 48 Z" 
+    fill="#1e293b"
+  />
+  
+  <!-- Left eye (glowing) -->
+  <circle cx="36" cy="43" r="10" fill="url(#eyeGlow)" filter="url(#glow)"/>
+  <circle cx="36" cy="43" r="6" fill="url(#eyeGlowInner)"/>
+  <circle cx="36" cy="43" r="3" fill="#0f172a"/>
+  <!-- Eye highlight -->
+  <circle cx="34" cy="41" r="1.5" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Right eye (glowing) -->
+  <circle cx="64" cy="43" r="10" fill="url(#eyeGlow)" filter="url(#glow)"/>
+  <circle cx="64" cy="43" r="6" fill="url(#eyeGlowInner)"/>
+  <circle cx="64" cy="43" r="3" fill="#0f172a"/>
+  <!-- Eye highlight -->
+  <circle cx="62" cy="41" r="1.5" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Beak -->
+  <path 
+    d="M50 52 L44 60 L50 72 L56 60 Z" 
+    fill="#64748b"
+  />
+  <path 
+    d="M50 52 L47 58 L50 65 L53 58 Z" 
+    fill="#475569"
+  />
+  
+  <!-- Eyebrow/horn tufts (angular) -->
+  <path 
+    d="M22 32 L30 22 L38 30" 
+    fill="none" 
+    stroke="#334155" 
+    stroke-width="3" 
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path 
+    d="M78 32 L70 22 L62 30" 
+    fill="none" 
+    stroke="#334155" 
+    stroke-width="3" 
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

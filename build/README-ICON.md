@@ -1,6 +1,6 @@
 # Desktop Icon Setup
 
-To add a desktop icon for STIG Ops:
+To add a desktop icon for STRIX:
 
 1. Create or obtain an icon file named `icon.ico` (Windows ICO format)
 2. Place it in this `build/` directory
