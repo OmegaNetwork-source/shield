@@ -7167,28 +7167,49 @@ function App() {
                                                                             let processedCount = 0;
 
                                                                             for (const file of masterCopyBatchFiles) {
-                                                                                // Clone raw JSON structure
-                                                                                const newJson = JSON.parse(JSON.stringify(file.rawJson || {}));
-
-                                                                                // Update findings in the JSON
-                                                                                if (newJson.stigs) {
-                                                                                    for (const stig of newJson.stigs) {
-                                                                                        if (stig.rules) {
-                                                                                            for (const rule of stig.rules) {
-                                                                                                const masterFinding = masterMap.get(rule.group_id);
-                                                                                                if (masterFinding) {
-                                                                                                    // Copy editable fields
-                                                                                                    rule.status = masterFinding.status;
-                                                                                                    rule.finding_details = masterFinding.findingDetails;
-                                                                                                    rule.comments = masterFinding.comments;
-                                                                                                    rule.severity = masterFinding.severity;
-                                                                                                }
-                                                                                            }
-                                                                                        }
+                                                                                // Apply master finding updates (status, details, comments) to the batch file findings
+                                                                                const updatedFindings = file.findings.map(f => {
+                                                                                    const masterFinding = masterMap.get(f.vulnId);
+                                                                                    if (masterFinding) {
+                                                                                        return {
+                                                                                            ...f,
+                                                                                            status: masterFinding.status,
+                                                                                            findingDetails: masterFinding.findingDetails,
+                                                                                            comments: masterFinding.comments
+                                                                                        };
                                                                                     }
+                                                                                    return f;
+                                                                                });
+
+                                                                                // Convert to flat JSON structure that STIG Viewer 3 likes
+                                                                                const outputJson = {
+                                                                                    hostname: file.hostname || 'Target-System',
+                                                                                    stigName: file.stigName,
+                                                                                    findings: updatedFindings.map(f => ({
+                                                                                        vulnId: f.vulnId,
+                                                                                        status: f.status,
+                                                                                        severity: f.severity,
+                                                                                        title: f.title,
+                                                                                        comments: f.comments,
+                                                                                        findingDetails: f.findingDetails,
+                                                                                        finding_details: f.findingDetails,
+                                                                                        ruleId: f.ruleId,
+                                                                                        fixText: f.fixText,
+                                                                                        checkText: f.checkText,
+                                                                                        description: f.description,
+                                                                                        ccis: f.ccis
+                                                                                    }))
+                                                                                };
+
+                                                                                // Ensure file extension is .cklb (JSON format)
+                                                                                let filename = file.filename;
+                                                                                if (filename.toLowerCase().endsWith('.ckl')) {
+                                                                                    filename = filename.replace(/\.ckl$/i, '.cklb');
+                                                                                } else if (!filename.toLowerCase().endsWith('.cklb')) {
+                                                                                    filename += '.cklb';
                                                                                 }
 
-                                                                                zip.file(file.filename, JSON.stringify(newJson, null, 2));
+                                                                                zip.file(filename, JSON.stringify(outputJson, null, 2));
                                                                                 processedCount++;
                                                                             }
 
@@ -7212,34 +7233,41 @@ function App() {
                                                             )}
                                                             <button
                                                                 onClick={() => {
-                                                                    // Simple CKLB export of Master
-                                                                    // Clone the raw content
-                                                                    const newJson = JSON.parse(JSON.stringify(masterCopyTarget.rawJson || {}));
-                                                                    const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+                                                                    // Simple CKLB export of Master (Flat format for STIG Viewer 3 compatibility)
+                                                                    const exportFindings = masterCopyTarget.findings.map(f => ({
+                                                                        vulnId: f.vulnId,
+                                                                        status: f.status,
+                                                                        severity: f.severity,
+                                                                        title: f.title,
+                                                                        comments: f.comments,
+                                                                        findingDetails: f.findingDetails,
+                                                                        finding_details: f.findingDetails,
+                                                                        ruleId: f.ruleId,
+                                                                        fixText: f.fixText,
+                                                                        checkText: f.checkText,
+                                                                        description: f.description,
+                                                                        ccis: f.ccis
+                                                                    }));
 
-                                                                    // Sync updates
-                                                                    if (newJson.stigs) {
-                                                                        for (const stig of newJson.stigs) {
-                                                                            if (stig.rules) {
-                                                                                for (const rule of stig.rules) {
-                                                                                    const masterFinding = masterMap.get(rule.group_id);
-                                                                                    if (masterFinding) {
-                                                                                        rule.status = masterFinding.status;
-                                                                                        rule.finding_details = masterFinding.findingDetails;
-                                                                                        rule.comments = masterFinding.comments;
-                                                                                        // rule.severity = masterFinding.severity; // Usually severity isn't changed by user, but if it was, we'd sync it
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                    }
+                                                                    const outputJson = {
+                                                                        hostname: masterCopyTarget.hostname || 'Master-System',
+                                                                        stigName: masterCopyTarget.stigName,
+                                                                        findings: exportFindings
+                                                                    };
 
-                                                                    const data = JSON.stringify(newJson, null, 2);
+                                                                    const data = JSON.stringify(outputJson, null, 2);
                                                                     const blob = new Blob([data], { type: 'application/json' });
                                                                     const url = URL.createObjectURL(blob);
                                                                     const a = document.createElement('a');
                                                                     a.href = url;
-                                                                    a.download = `master_checklist_${new Date().toISOString().split('T')[0]}.cklb`;
+
+                                                                    let filename = masterCopyTarget.filename;
+                                                                    if (filename.toLowerCase().endsWith('.ckl')) {
+                                                                        filename = filename.replace(/\.ckl$/i, '.cklb');
+                                                                    } else if (!filename.toLowerCase().endsWith('.cklb')) {
+                                                                        filename += '.cklb';
+                                                                    }
+                                                                    a.download = filename;
                                                                     a.click();
                                                                 }}
                                                                 className="px-3 py-1.5 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-100"
