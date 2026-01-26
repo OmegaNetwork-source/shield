@@ -76,7 +76,7 @@ export const CWE_TO_NIST: Record<string, string[]> = {
     'CWE-91': ['SI-10'],               // XML Injection
     'CWE-94': ['SI-10', 'SC-18'],      // Code Injection
     'CWE-917': ['SI-10'],              // Expression Language Injection
-    
+
     // Authentication/Session
     'CWE-287': ['IA-2', 'IA-5'],       // Improper Authentication
     'CWE-306': ['IA-2'],               // Missing Authentication
@@ -84,7 +84,7 @@ export const CWE_TO_NIST: Record<string, string[]> = {
     'CWE-384': ['SC-23'],              // Session Fixation
     'CWE-613': ['SC-23'],              // Session Expiration
     'CWE-614': ['SC-23'],              // Sensitive Cookie in HTTPS
-    
+
     // Access Control
     'CWE-22': ['AC-3', 'AC-6'],        // Path Traversal
     'CWE-284': ['AC-3'],               // Improper Access Control
@@ -92,7 +92,7 @@ export const CWE_TO_NIST: Record<string, string[]> = {
     'CWE-639': ['AC-3', 'AC-6'],       // IDOR
     'CWE-862': ['AC-3'],               // Missing Authorization
     'CWE-863': ['AC-3'],               // Incorrect Authorization
-    
+
     // Cryptography
     'CWE-295': ['SC-8', 'SC-12'],      // Improper Certificate Validation
     'CWE-310': ['SC-13'],              // Cryptographic Issues
@@ -101,26 +101,26 @@ export const CWE_TO_NIST: Record<string, string[]> = {
     'CWE-327': ['SC-13'],              // Broken Crypto
     'CWE-328': ['SC-13'],              // Weak Hash
     'CWE-330': ['SC-13'],              // Weak Random
-    
+
     // Information Disclosure
     'CWE-200': ['SI-11', 'AU-9'],      // Information Exposure
     'CWE-209': ['SI-11'],              // Error Message Info Leak
     'CWE-532': ['AU-9'],               // Log Exposure
     'CWE-538': ['CM-7'],               // File Exposure
-    
+
     // SSRF/Redirect
     'CWE-601': ['AC-4', 'SC-7'],       // Open Redirect
     'CWE-918': ['AC-4', 'SC-7'],       // SSRF
-    
+
     // Config/Security
     'CWE-16': ['CM-6'],                // Configuration
     'CWE-693': ['CM-7'],               // Protection Mechanism Failure
     'CWE-942': ['SC-7'],               // CORS Misconfiguration
     'CWE-1021': ['SC-18'],             // Clickjacking
-    
+
     // Components
     'CWE-1104': ['SI-2', 'RA-5'],      // Vulnerable Components
-    
+
     // XXE
     'CWE-611': ['SI-10', 'CM-7'],      // XXE
 };
@@ -317,11 +317,11 @@ export interface ComplianceMapping {
  */
 export function getComplianceMapping(vuln: UnifiedVulnerability): ComplianceMapping {
     const mapping: ComplianceMapping = {};
-    
+
     // Map from CWE
     if (vuln.cwe) {
         mapping.cwe = vuln.cwe;
-        
+
         // Get NIST controls
         const cweNum = vuln.cwe.replace('CWE-', '');
         const nistControls = CWE_TO_NIST[vuln.cwe] || CWE_TO_NIST[`CWE-${cweNum}`];
@@ -333,7 +333,7 @@ export function getComplianceMapping(vuln: UnifiedVulnerability): ComplianceMapp
             }));
         }
     }
-    
+
     // Map from OWASP
     if (vuln.owasp) {
         mapping.owasp = vuln.owasp;
@@ -350,7 +350,7 @@ export function getComplianceMapping(vuln: UnifiedVulnerability): ComplianceMapp
             }
         }
     }
-    
+
     // Map to STIG
     const stigMatches: string[] = [];
     for (const [stigId, stig] of Object.entries(STIG_WEB_APP_CONTROLS)) {
@@ -366,7 +366,7 @@ export function getComplianceMapping(vuln: UnifiedVulnerability): ComplianceMapp
             severity: STIG_WEB_APP_CONTROLS[id].severity
         }));
     }
-    
+
     return mapping;
 }
 
@@ -375,12 +375,12 @@ export function getComplianceMapping(vuln: UnifiedVulnerability): ComplianceMapp
  */
 export function enrichWithCompliance(vuln: UnifiedVulnerability): UnifiedVulnerability & { compliance: ComplianceMapping } {
     const compliance = getComplianceMapping(vuln);
-    
+
     // Add NIST to vuln if not present
-    if (!vuln.nist && compliance.nist) {
-        vuln.nist = compliance.nist;
+    if (!vuln.nistControl && compliance.nist) {
+        vuln.nistControl = compliance.nist.join(', ');
     }
-    
+
     return {
         ...vuln,
         compliance
@@ -400,22 +400,22 @@ export function generateComplianceSummary(vulnerabilities: UnifiedVulnerability[
     const nistControls: Record<string, number> = {};
     const stigFindings: Record<string, { count: number; severity: string }> = {};
     const cweDistribution: Record<string, number> = {};
-    
+
     for (const vuln of vulnerabilities) {
         const mapping = getComplianceMapping(vuln);
-        
+
         // OWASP
         if (mapping.owasp) {
             owaspCoverage[mapping.owasp] = (owaspCoverage[mapping.owasp] || 0) + 1;
         }
-        
+
         // NIST
         if (mapping.nist) {
             for (const ctrl of mapping.nist) {
                 nistControls[ctrl] = (nistControls[ctrl] || 0) + 1;
             }
         }
-        
+
         // STIG
         if (mapping.stigDetails) {
             for (const stig of mapping.stigDetails) {
@@ -425,13 +425,13 @@ export function generateComplianceSummary(vulnerabilities: UnifiedVulnerability[
                 stigFindings[stig.id].count++;
             }
         }
-        
+
         // CWE
         if (mapping.cwe) {
             cweDistribution[mapping.cwe] = (cweDistribution[mapping.cwe] || 0) + 1;
         }
     }
-    
+
     return { owaspCoverage, nistControls, stigFindings, cweDistribution };
 }
 
@@ -445,32 +445,32 @@ export function checkCompliance(vulnerabilities: UnifiedVulnerability[], standar
 } {
     const issues: string[] = [];
     let score = 100;
-    
+
     for (const vuln of vulnerabilities) {
         const mapping = getComplianceMapping(vuln);
-        
+
         if (standard === 'nist' && mapping.nist) {
             for (const ctrl of mapping.nist) {
                 issues.push(`${ctrl} (${NIST_CONTROLS[ctrl]?.title}): ${vuln.title}`);
                 score -= vuln.severity === 'critical' ? 20 : vuln.severity === 'high' ? 10 : 5;
             }
         }
-        
+
         if (standard === 'stig' && mapping.stigDetails) {
             for (const stig of mapping.stigDetails) {
                 issues.push(`${stig.id} (${stig.severity}): ${vuln.title}`);
                 score -= stig.severity === 'CAT I' ? 25 : stig.severity === 'CAT II' ? 10 : 5;
             }
         }
-        
+
         if (standard === 'owasp' && mapping.owasp) {
             issues.push(`${mapping.owasp} (${mapping.owaspName}): ${vuln.title}`);
             score -= vuln.severity === 'critical' ? 15 : vuln.severity === 'high' ? 10 : 5;
         }
     }
-    
+
     score = Math.max(0, score);
-    
+
     return {
         compliant: score >= 70,
         issues,
