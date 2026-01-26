@@ -102,11 +102,14 @@ function App() {
     const [masterCopySource, setMasterCopySource] = useState<typeof uploadedChecklists[0] | null>(null);
     const [masterCopyTarget, setMasterCopyTarget] = useState<typeof uploadedChecklists[0] | null>(null);
     const [masterCopyBatchFiles, setMasterCopyBatchFiles] = useState<typeof uploadedChecklists>([]);
-    const [masterCopyTab, setMasterCopyTab] = useState<'all' | 'notreviewed' | 'open' | 'reviewed' | 'newids' | 'droppedids'>('notreviewed');
+    const [masterCopyTab, setMasterCopyTab] = useState<'all' | 'notreviewed' | 'open' | 'reviewed' | 'newids' | 'droppedids' | 'done'>('notreviewed');
     const [masterCopySelectedIds, setMasterCopySelectedIds] = useState<Set<string>>(new Set());
     const [masterCopySearch, setMasterCopySearch] = useState('');
     const [masterCopyReplace, setMasterCopyReplace] = useState('');
     const [masterCopyEditedIds, setMasterCopyEditedIds] = useState<Set<string>>(new Set());
+    const [masterCopyDoneIds, setMasterCopyDoneIds] = useState<Set<string>>(new Set());
+    const [masterCopyExpandedId, setMasterCopyExpandedId] = useState<string | null>(null);
+    const [showDoneToast, setShowDoneToast] = useState(false);
     const [masterCopySort, setMasterCopySort] = useState<{ key: string, dir: 'asc' | 'desc' }>({ key: 'severity', dir: 'desc' });
 
 
@@ -584,15 +587,24 @@ function App() {
             .filter(f => !newMap.has(f.vulnId))
             .map(f => ({ vulnId: f.vulnId, finding: f }));
 
-        // All Findings (mapped with old)
+        // All Findings
         const allFindings = masterCopyTarget.findings.map(f => ({
             vulnId: f.vulnId,
             newFinding: f,
             oldFinding: oldMap.get(f.vulnId)
         }));
 
-        return { notReviewed, openFindings, newIds, droppedIds, totalOld, totalNew, allFindings };
-    }, [masterCopySource, masterCopyTarget]);
+        // Done Findings
+        const doneFindings = masterCopyTarget.findings
+            .filter(f => masterCopyDoneIds.has(f.vulnId))
+            .map(f => ({
+                vulnId: f.vulnId,
+                newFinding: f,
+                oldFinding: oldMap.get(f.vulnId)
+            }));
+
+        return { notReviewed, openFindings, newIds, droppedIds, totalOld, totalNew, allFindings, doneFindings };
+    }, [masterCopySource, masterCopyTarget, masterCopyDoneIds]);
 
     // Sorted Data for Master Copy
     const sortedMasterCopy = useMemo(() => {
@@ -613,6 +625,8 @@ function App() {
                     oldFinding: masterCopySource?.findings.find(of => of.vulnId === f.vulnId)
                 }));
 
+        } else if (masterCopyTab === 'done') {
+            findings = masterCopyData.doneFindings;
         } else if (masterCopyTab === 'all') {
             findings = masterCopyData.allFindings;
         }
@@ -7088,6 +7102,7 @@ function App() {
                                                             { id: 'notreviewed', label: 'Not Reviewed', count: masterCopyData.notReviewed.length },
                                                             { id: 'open', label: 'Open Findings', count: masterCopyData.openFindings.length },
                                                             { id: 'reviewed', label: 'Reviewed', count: masterCopyTarget.findings.filter(f => !['notreviewed', 'not_reviewed'].includes((f.status || '').toLowerCase().replace(/[\s_]/g, ''))).length },
+                                                            { id: 'done', label: 'Done', count: masterCopyData.doneFindings.length },
                                                             { id: 'newids', label: 'New IDs', count: masterCopyData.newIds.length },
                                                             { id: 'droppedids', label: 'Dropped IDs', count: masterCopyData.droppedIds.length }
                                                         ].map(tab => (
@@ -7333,6 +7348,9 @@ function App() {
                                                                                                     if (!prev) return null;
                                                                                                     return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
                                                                                                 });
+                                                                                                setMasterCopyDoneIds(prev => new Set(prev).add(row.vulnId));
+                                                                                                setShowDoneToast(true);
+                                                                                                setTimeout(() => setShowDoneToast(false), 2000);
                                                                                             }}
                                                                                             className="flex-1 py-1.5 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 text-[10px] font-medium text-gray-600 dark:text-gray-300 rounded shadow-sm transition-all text-center"
                                                                                         >
@@ -7344,6 +7362,9 @@ function App() {
                                                                                                     if (!prev) return null;
                                                                                                     return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
                                                                                                 });
+                                                                                                setMasterCopyDoneIds(prev => new Set(prev).add(row.vulnId));
+                                                                                                setShowDoneToast(true);
+                                                                                                setTimeout(() => setShowDoneToast(false), 2000);
                                                                                             }}
                                                                                             className="flex-1 py-1.5 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:text-blue-600 text-[10px] font-medium text-gray-600 dark:text-gray-300 rounded shadow-sm transition-all text-center"
                                                                                         >
@@ -7367,33 +7388,31 @@ function App() {
                                                                                     <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
                                                                                     Master Copy (New)
                                                                                 </div>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <button
+                                                                                        onClick={() => setMasterCopyExpandedId(masterCopyExpandedId === row.vulnId ? null : row.vulnId)}
+                                                                                        className="text-gray-400 hover:text-indigo-500 transition-colors"
+                                                                                    >
+                                                                                        {masterCopyExpandedId === row.vulnId ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                                                                                    </button>
+                                                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${(finding.status || '').toLowerCase().includes('open') ? 'bg-red-100 text-red-600' :
+                                                                                        (finding.status || '').toLowerCase().includes('notafinding') ? 'bg-green-100 text-green-600' :
+                                                                                            (finding.status || '').toLowerCase().includes('notreviewed') ? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600'
+                                                                                        }`}>{finding.status || 'Not_Reviewed'}</span>
+                                                                                </div>
                                                                             </div>
 
                                                                             <div className="space-y-3">
                                                                                 <div>
-                                                                                    <label className="text-[10px] font-medium text-gray-400 mb-1 block">DETAILS</label>
+                                                                                    <label className="text-[10px] font-medium text-gray-400 mb-1 block">FINDING DETAILS</label>
                                                                                     <textarea
-                                                                                        className="w-full text-xs p-3 rounded-lg border bg-gray-50 dark:bg-gray-950 border-gray-200 dark:border-gray-700 h-20 focus:ring-2 ring-indigo-500/50 outline-none transition-all resize-none"
-                                                                                        value={finding.findingDetails || ''}
+                                                                                        className="w-full text-xs p-3 rounded-lg border bg-gray-50 dark:bg-gray-950 border-gray-200 dark:border-gray-700 h-32 focus:ring-2 ring-indigo-500/50 outline-none transition-all resize-none"
+                                                                                        value={finding.findingDetails || finding.comments || ''}
                                                                                         placeholder="Enter technical details..."
                                                                                         onChange={(e) => {
                                                                                             setMasterCopyTarget((prev: any) => {
                                                                                                 if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
-                                                                                            });
-                                                                                        }}
-                                                                                    />
-                                                                                </div>
-                                                                                <div>
-                                                                                    <label className="text-[10px] font-medium text-gray-400 mb-1 block">COMMENTS</label>
-                                                                                    <textarea
-                                                                                        className="w-full text-xs p-3 rounded-lg border bg-gray-50 dark:bg-gray-950 border-gray-200 dark:border-gray-700 h-12 focus:ring-2 ring-indigo-500/50 outline-none transition-all resize-none"
-                                                                                        value={finding.comments || ''}
-                                                                                        placeholder="Add comments..."
-                                                                                        onChange={(e) => {
-                                                                                            setMasterCopyTarget((prev: any) => {
-                                                                                                if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
+                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value, comments: e.target.value } : f) };
                                                                                             });
                                                                                         }}
                                                                                     />
@@ -7401,10 +7420,40 @@ function App() {
                                                                             </div>
                                                                         </div>
                                                                     </div>
+
+                                                                    {/* Expanded View Modal/Panel */}
+                                                                    {masterCopyExpandedId === row.vulnId && (
+                                                                        <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 border border-indigo-100 dark:border-indigo-900/30 rounded-xl relative">
+                                                                            <div className="grid grid-cols-2 gap-8">
+                                                                                <div>
+                                                                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Check Text</h4>
+                                                                                    <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 whitespace-pre-wrap font-mono text-[10px] max-h-60 overflow-y-auto">
+                                                                                        {finding.checkText || 'No check text available.'}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Fix Text</h4>
+                                                                                    <div className="text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 p-3 rounded border border-gray-200 dark:border-gray-700 whitespace-pre-wrap font-mono text-[10px] max-h-60 overflow-y-auto">
+                                                                                        {finding.fixText || 'No fix text available.'}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
                                                     </div>
+
+                                                    {/* Done Toast */}
+                                                    {showDoneToast && (
+                                                        <div className="fixed bottom-8 right-8 bg-green-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-bounce z-50">
+                                                            <div className="p-1 bg-white/20 rounded-full">
+                                                                <Check size={16} />
+                                                            </div>
+                                                            <span className="font-bold">Marked as Done!</span>
+                                                        </div>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
