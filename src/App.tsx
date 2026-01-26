@@ -6220,15 +6220,17 @@ function App() {
                                                                 </button>
                                                                 <button
                                                                     onClick={() => {
-                                                                        if (!confirm(`Copy DETAILS for ${analyzerSelectedIds.size} items?`)) return;
+                                                                        if (!confirm(`Copy & Prepend DETAILS for ${analyzerSelectedIds.size} items?`)) return;
                                                                         setAnalyzerNewChecklist((prev: any) => {
                                                                             if (!prev) return null;
                                                                             const newFindings = prev.findings.map((f: any) => {
                                                                                 if (analyzerSelectedIds.has(f.vulnId)) {
                                                                                     const match = analyzerData.notReviewed.find(nr => nr.vulnId === f.vulnId);
                                                                                     if (match) {
-                                                                                        const details = match.oldFinding.findingDetails || match.oldFinding.comments || '';
-                                                                                        return { ...f, findingDetails: details };
+                                                                                        const sourceDetails = match.oldFinding.findingDetails || match.oldFinding.comments || '';
+                                                                                        const targetDetails = f.findingDetails || '';
+                                                                                        const finalDetails = sourceDetails + (sourceDetails && targetDetails ? "\n\n" : "") + targetDetails;
+                                                                                        return { ...f, findingDetails: finalDetails };
                                                                                     }
                                                                                 }
                                                                                 return f;
@@ -6248,15 +6250,21 @@ function App() {
                                                                 </button>
                                                                 <button
                                                                     onClick={() => {
-                                                                        if (!confirm(`Copy BOTH (Status & Details) for ${analyzerSelectedIds.size} items?`)) return;
+                                                                        if (!confirm(`Copy STATUS and PREPEND DETAILS for ${analyzerSelectedIds.size} items?`)) return;
                                                                         setAnalyzerNewChecklist((prev: any) => {
                                                                             if (!prev) return null;
                                                                             const newFindings = prev.findings.map((f: any) => {
                                                                                 if (analyzerSelectedIds.has(f.vulnId)) {
                                                                                     const match = analyzerData.notReviewed.find(nr => nr.vulnId === f.vulnId);
                                                                                     if (match) {
-                                                                                        const details = match.oldFinding.findingDetails || match.oldFinding.comments || '';
-                                                                                        return { ...f, status: match.oldFinding.status, findingDetails: details };
+                                                                                        const sourceDetails = match.oldFinding.findingDetails || match.oldFinding.comments || '';
+                                                                                        const targetDetails = f.findingDetails || '';
+                                                                                        const finalDetails = sourceDetails + (sourceDetails && targetDetails ? "\n\n" : "") + targetDetails;
+                                                                                        return {
+                                                                                            ...f,
+                                                                                            status: match.oldFinding.status,
+                                                                                            findingDetails: finalDetails
+                                                                                        };
                                                                                     }
                                                                                 }
                                                                                 return f;
@@ -7126,17 +7134,21 @@ function App() {
                                                                 <>
                                                                     <button
                                                                         onClick={() => {
-                                                                            if (!confirm(`Copy Status & Details for ${masterCopySelectedIds.size} items?`)) return;
+                                                                            if (!confirm(`Copy Status and Prepend Details for ${masterCopySelectedIds.size} items?`)) return;
                                                                             setMasterCopyTarget((prev: any) => {
                                                                                 if (!prev) return null;
                                                                                 const newFindings = prev.findings.map((f: any) => {
                                                                                     if (masterCopySelectedIds.has(f.vulnId)) {
                                                                                         const match = masterCopyData.notReviewed.find(nr => nr.vulnId === f.vulnId);
                                                                                         if (match) {
+                                                                                            const sourceDetails = match.oldFinding.findingDetails || match.oldFinding.comments || '';
+                                                                                            const targetDetails = f.findingDetails || '';
+                                                                                            const finalDetails = sourceDetails + (sourceDetails && targetDetails ? "\n\n" : "") + targetDetails;
+
                                                                                             return {
                                                                                                 ...f,
                                                                                                 status: match.oldFinding.status,
-                                                                                                findingDetails: match.oldFinding.findingDetails || match.oldFinding.comments || match.oldFinding.findingDetails,
+                                                                                                findingDetails: finalDetails,
                                                                                                 comments: match.oldFinding.comments || match.oldFinding.findingDetails
                                                                                             };
                                                                                         }
@@ -7167,41 +7179,57 @@ function App() {
                                                                             let processedCount = 0;
 
                                                                             for (const file of masterCopyBatchFiles) {
-                                                                                // Apply master finding updates (status, details, comments) to the batch file findings
-                                                                                const updatedFindings = file.findings.map(f => {
-                                                                                    const masterFinding = masterMap.get(f.vulnId);
-                                                                                    if (masterFinding) {
-                                                                                        return {
-                                                                                            ...f,
-                                                                                            status: masterFinding.status,
-                                                                                            findingDetails: masterFinding.findingDetails,
-                                                                                            comments: masterFinding.comments
-                                                                                        };
-                                                                                    }
-                                                                                    return f;
-                                                                                });
+                                                                                // Clone the original raw structure to preserve all STIG metadata
+                                                                                const exportData = JSON.parse(JSON.stringify(file.rawJson || { stigs: [{ rules: [] }] }));
 
-                                                                                // Convert to flat JSON structure that STIG Viewer 3 likes
-                                                                                const outputJson = {
-                                                                                    hostname: file.hostname || 'Target-System',
-                                                                                    stigName: file.stigName,
-                                                                                    findings: updatedFindings.map(f => ({
-                                                                                        vulnId: f.vulnId,
-                                                                                        status: f.status,
-                                                                                        severity: f.severity,
-                                                                                        title: f.title,
-                                                                                        comments: f.comments,
-                                                                                        findingDetails: f.findingDetails,
-                                                                                        finding_details: f.findingDetails,
-                                                                                        ruleId: f.ruleId,
-                                                                                        fixText: f.fixText,
-                                                                                        checkText: f.checkText,
-                                                                                        description: f.description,
-                                                                                        ccis: f.ccis
-                                                                                    }))
+                                                                                const mapStatus = (s: string) => {
+                                                                                    const raw = (s || '').toLowerCase().replace(/[^a-z]/g, '');
+                                                                                    if (raw.includes('open')) return 'open';
+                                                                                    if (raw.includes('notafinding')) return 'not_a_finding';
+                                                                                    if (raw.includes('notapplicable')) return 'not_applicable';
+                                                                                    return 'not_reviewed';
                                                                                 };
 
-                                                                                // Ensure file extension is .cklb (JSON format)
+                                                                                // Process nested structure (typical for CKLB/STIG Viewer 3)
+                                                                                if (exportData.stigs) {
+                                                                                    exportData.stigs = exportData.stigs.map((stig: any) => ({
+                                                                                        ...stig,
+                                                                                        uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                        rules: stig.rules?.map((rule: any) => {
+                                                                                            // Match by Vuln ID or Rule ID
+                                                                                            const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
+                                                                                            if (finding) {
+                                                                                                return {
+                                                                                                    ...rule,
+                                                                                                    uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                                    status: mapStatus(finding.status),
+                                                                                                    finding_details: finding.findingDetails || rule.finding_details,
+                                                                                                    comments: finding.comments || rule.comments
+                                                                                                };
+                                                                                            }
+                                                                                            return { ...rule, uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()) };
+                                                                                        })
+                                                                                    }));
+                                                                                    if (exportData.target_data) {
+                                                                                        exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
+                                                                                    }
+                                                                                } else if (exportData.findings) {
+                                                                                    // Handle flat format if present
+                                                                                    exportData.findings = exportData.findings.map((f: any) => {
+                                                                                        const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
+                                                                                        if (finding) {
+                                                                                            return {
+                                                                                                ...f,
+                                                                                                status: mapStatus(finding.status),
+                                                                                                finding_details: finding.findingDetails || f.finding_details,
+                                                                                                comments: finding.comments || f.comments
+                                                                                            };
+                                                                                        }
+                                                                                        return f;
+                                                                                    });
+                                                                                }
+
+                                                                                // Ensure file extension is .cklb
                                                                                 let filename = file.filename;
                                                                                 if (filename.toLowerCase().endsWith('.ckl')) {
                                                                                     filename = filename.replace(/\.ckl$/i, '.cklb');
@@ -7209,7 +7237,7 @@ function App() {
                                                                                     filename += '.cklb';
                                                                                 }
 
-                                                                                zip.file(filename, JSON.stringify(outputJson, null, 2));
+                                                                                zip.file(filename, JSON.stringify(exportData, null, 2));
                                                                                 processedCount++;
                                                                             }
 
@@ -7233,29 +7261,55 @@ function App() {
                                                             )}
                                                             <button
                                                                 onClick={() => {
-                                                                    // Simple CKLB export of Master (Flat format for STIG Viewer 3 compatibility)
-                                                                    const exportFindings = masterCopyTarget.findings.map(f => ({
-                                                                        vulnId: f.vulnId,
-                                                                        status: f.status,
-                                                                        severity: f.severity,
-                                                                        title: f.title,
-                                                                        comments: f.comments,
-                                                                        findingDetails: f.findingDetails,
-                                                                        finding_details: f.findingDetails,
-                                                                        ruleId: f.ruleId,
-                                                                        fixText: f.fixText,
-                                                                        checkText: f.checkText,
-                                                                        description: f.description,
-                                                                        ccis: f.ccis
-                                                                    }));
+                                                                    // Simple CKLB export of Master (Analyzer-style for STIG Viewer 3 compatibility)
+                                                                    const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+                                                                    const exportData = JSON.parse(JSON.stringify(masterCopyTarget.rawJson || { stigs: [{ rules: [] }] }));
 
-                                                                    const outputJson = {
-                                                                        hostname: masterCopyTarget.hostname || 'Master-System',
-                                                                        stigName: masterCopyTarget.stigName,
-                                                                        findings: exportFindings
+                                                                    const mapStatus = (s: string) => {
+                                                                        const raw = (s || '').toLowerCase().replace(/[^a-z]/g, '');
+                                                                        if (raw.includes('open')) return 'open';
+                                                                        if (raw.includes('notafinding')) return 'not_a_finding';
+                                                                        if (raw.includes('notapplicable')) return 'not_applicable';
+                                                                        return 'not_reviewed';
                                                                     };
 
-                                                                    const data = JSON.stringify(outputJson, null, 2);
+                                                                    if (exportData.stigs) {
+                                                                        exportData.stigs = exportData.stigs.map((stig: any) => ({
+                                                                            ...stig,
+                                                                            uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                            rules: stig.rules?.map((rule: any) => {
+                                                                                const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
+                                                                                if (finding) {
+                                                                                    return {
+                                                                                        ...rule,
+                                                                                        uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                        status: mapStatus(finding.status),
+                                                                                        finding_details: finding.findingDetails || rule.finding_details,
+                                                                                        comments: finding.comments || rule.comments
+                                                                                    };
+                                                                                }
+                                                                                return { ...rule, uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()) };
+                                                                            })
+                                                                        }));
+                                                                        if (exportData.target_data) {
+                                                                            exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
+                                                                        }
+                                                                    } else if (exportData.findings) {
+                                                                        exportData.findings = exportData.findings.map((f: any) => {
+                                                                            const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
+                                                                            if (finding) {
+                                                                                return {
+                                                                                    ...f,
+                                                                                    status: mapStatus(finding.status),
+                                                                                    finding_details: finding.findingDetails || f.finding_details,
+                                                                                    comments: finding.comments || f.comments
+                                                                                };
+                                                                            }
+                                                                            return f;
+                                                                        });
+                                                                    }
+
+                                                                    const data = JSON.stringify(exportData, null, 2);
                                                                     const blob = new Blob([data], { type: 'application/json' });
                                                                     const url = URL.createObjectURL(blob);
                                                                     const a = document.createElement('a');
@@ -7409,7 +7463,22 @@ function App() {
                                                                                             onClick={() => {
                                                                                                 setMasterCopyTarget((prev: any) => {
                                                                                                     if (!prev) return null;
-                                                                                                    return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
+                                                                                                    const sourceDetails = old.findingDetails || old.comments || '';
+                                                                                                    return {
+                                                                                                        ...prev,
+                                                                                                        findings: prev.findings.map((f: any) => {
+                                                                                                            if (f.vulnId === row.vulnId) {
+                                                                                                                const currentDetails = f.findingDetails || '';
+                                                                                                                const finalDetails = sourceDetails + (sourceDetails && currentDetails ? "\n\n" : "") + currentDetails;
+                                                                                                                return {
+                                                                                                                    ...f,
+                                                                                                                    findingDetails: finalDetails,
+                                                                                                                    comments: old.comments || old.findingDetails
+                                                                                                                };
+                                                                                                            }
+                                                                                                            return f;
+                                                                                                        })
+                                                                                                    };
                                                                                                 });
                                                                                                 setMasterCopyDoneIds(prev => new Set(prev).add(row.vulnId));
                                                                                                 setShowDoneToast(true);
@@ -9272,7 +9341,7 @@ dotenv`}</pre>
                         )
                     }
                 </div>
-            </main>
+            </main >
 
             {/* --- Hidden Virtual Evidence Rendering Area --- */}
             {/* Using absolute positioning to keep it out of view but renderable. Opacity 0 makes it invisible but html2canvas can still capture it if we temporarily make it visible or use specific settings. */}
@@ -9305,809 +9374,821 @@ dotenv`}</pre>
             </div>
 
             {/* Evidence Capture Confirmation Modal */}
-            {showEvidenceModal && evidenceModalRule && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-                    onPaste={async (e) => {
-                        const items = e.clipboardData.items;
-                        for (let i = 0; i < items.length; i++) {
-                            if (items[i].type.indexOf('image') !== -1) {
-                                const blob = items[i].getAsFile();
-                                if (blob) {
-                                    const reader = new FileReader();
-                                    reader.onload = async (event) => {
-                                        if (event.target?.result) {
-                                            const newImg = event.target.result as string;
-                                            // Merge with existing
-                                            const base = evidenceScreenshot || '';
-                                            const merged = await mergeImages(base ? [base, newImg] : [newImg]);
-                                            setEvidenceScreenshot(merged);
-                                        }
-                                    };
-                                    reader.readAsDataURL(blob);
+            {
+                showEvidenceModal && evidenceModalRule && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                        onPaste={async (e) => {
+                            const items = e.clipboardData.items;
+                            for (let i = 0; i < items.length; i++) {
+                                if (items[i].type.indexOf('image') !== -1) {
+                                    const blob = items[i].getAsFile();
+                                    if (blob) {
+                                        const reader = new FileReader();
+                                        reader.onload = async (event) => {
+                                            if (event.target?.result) {
+                                                const newImg = event.target.result as string;
+                                                // Merge with existing
+                                                const base = evidenceScreenshot || '';
+                                                const merged = await mergeImages(base ? [base, newImg] : [newImg]);
+                                                setEvidenceScreenshot(merged);
+                                            }
+                                        };
+                                        reader.readAsDataURL(blob);
+                                    }
                                 }
                             }
-                        }
-                    }}
-                >
-                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="text-lg font-semibold text-gray-900">Capture Evidence</h3>
-                            <button onClick={() => setShowEvidenceModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle size={20} /></button>
-                        </div>
-
-                        <div className="p-6 space-y-4 overflow-y-auto flex-1">
-                            {/* Rule Info */}
-                            <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-100">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-mono text-xs font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{evidenceModalRule.vulnId}</span>
-                                    <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Target Folder:</span>
-                                </div>
-                                <input
-                                    type="text"
-                                    value={evidenceFolderName}
-                                    onChange={(e) => setEvidenceFolderName(e.target.value)}
-                                    placeholder="Folder Name"
-                                    className="w-full bg-white px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
+                        }}
+                    >
+                        <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-lg font-semibold text-gray-900">Capture Evidence</h3>
+                                <button onClick={() => setShowEvidenceModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle size={20} /></button>
                             </div>
 
-                            {/* Screenshot Preview Area */}
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-sm font-medium text-gray-700">Evidence Image</label>
-                                    <span className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded font-medium animate-pulse">
-                                        💡 Tip: Paste (Ctrl+V) to attach Regedit/PowerShell screenshots!
-                                    </span>
+                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                                {/* Rule Info */}
+                                <div className="bg-blue-50/50 rounded-lg p-3 border border-blue-100">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-mono text-xs font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{evidenceModalRule.vulnId}</span>
+                                        <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">Target Folder:</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={evidenceFolderName}
+                                        onChange={(e) => setEvidenceFolderName(e.target.value)}
+                                        placeholder="Folder Name"
+                                        className="w-full bg-white px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
                                 </div>
-                                <div className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 min-h-[200px] flex items-center justify-center relative group">
-                                    {evidenceScreenshot ? (
-                                        <div className="relative w-full">
-                                            <img src={evidenceScreenshot} alt="Evidence Preview" className="w-full h-auto object-contain" />
-                                            <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => setEvidenceScreenshot(null)}
-                                                    className="bg-red-600 text-white p-1.5 rounded-lg shadow-lg hover:bg-red-700 text-xs font-bold"
-                                                >
-                                                    Clear Image
-                                                </button>
+
+                                {/* Screenshot Preview Area */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-medium text-gray-700">Evidence Image</label>
+                                        <span className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded font-medium animate-pulse">
+                                            💡 Tip: Paste (Ctrl+V) to attach Regedit/PowerShell screenshots!
+                                        </span>
+                                    </div>
+                                    <div className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 min-h-[200px] flex items-center justify-center relative group">
+                                        {evidenceScreenshot ? (
+                                            <div className="relative w-full">
+                                                <img src={evidenceScreenshot} alt="Evidence Preview" className="w-full h-auto object-contain" />
+                                                <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => setEvidenceScreenshot(null)}
+                                                        className="bg-red-600 text-white p-1.5 rounded-lg shadow-lg hover:bg-red-700 text-xs font-bold"
+                                                    >
+                                                        Clear Image
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center p-8 text-gray-400">
-                                            <ImageIcon size={48} className="mx-auto mb-2 opacity-20" />
-                                            <p className="text-sm">No evidence captured yet.</p>
-                                            <p className="text-xs mt-1">Run check to auto-capture, or Paste (Ctrl+V) an image here.</p>
-                                        </div>
-                                    )}
+                                        ) : (
+                                            <div className="text-center p-8 text-gray-400">
+                                                <ImageIcon size={48} className="mx-auto mb-2 opacity-20" />
+                                                <p className="text-sm">No evidence captured yet.</p>
+                                                <p className="text-xs mt-1">Run check to auto-capture, or Paste (Ctrl+V) an image here.</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
-                            <button
-                                onClick={() => { setShowEvidenceModal(false); setEvidenceModalRule(null); setEvidenceScreenshot(null); }}
-                                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!evidenceModalRule) return;
-                                    const rule = evidenceModalRule;
-                                    const res = results.get(rule.vulnId);
-                                    let rpaType: 'regedit' | 'powershell' = 'powershell';
-                                    let rpaPath = '';
-                                    let rpaCommand = res?.command || 'Write-Host "No Command Recorded"';
+                            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+                                <button
+                                    onClick={() => { setShowEvidenceModal(false); setEvidenceModalRule(null); setEvidenceScreenshot(null); }}
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (!evidenceModalRule) return;
+                                        const rule = evidenceModalRule;
+                                        const res = results.get(rule.vulnId);
+                                        let rpaType: 'regedit' | 'powershell' = 'powershell';
+                                        let rpaPath = '';
+                                        let rpaCommand = res?.command || 'Write-Host "No Command Recorded"';
 
-                                    if (rule.automatedCheck?.type === 'registry' && rule.automatedCheck.registryPath) {
-                                        rpaType = 'regedit';
-                                        rpaPath = rule.automatedCheck.registryPath;
-                                    }
-
-                                    // Guide User
-                                    if (rpaType === 'regedit') {
-                                        alert("GUIDED CAPTURE MODE:\n\n1. Please Open 'Registry Editor' (Regedit) manually.\n2. In Regedit, navigate to: " + rpaPath + "\n\nPress OK when Regedit is open and visible on screen.");
-                                    } else {
-                                        await navigator.clipboard.writeText(rpaCommand);
-                                        alert("GUIDED CAPTURE MODE:\n\n1. I have COPIED the command to your clipboard.\n2. Please OPEN 'PowerShell' (Run as Administrator).\n3. PASTE the command and press Enter.\n\nPress OK when the result is visible on screen.");
-                                    }
-
-                                    // Give user a moment to put their hand back on the mouse if they want, but really we just want them to click OK, then we snap.
-                                    // Actually, we need to hide the browser window or ensure it doesn't block? 
-                                    // The screenshot captures PRIMARY SCREEN.
-                                    // We will minimize the app? No, just alert.
-
-                                    try {
-                                        // @ts-ignore
-                                        const captureRes = await window.ipcRenderer.invoke('capture-real-evidence', {
-                                            type: rpaType,
-                                            path: rpaPath,
-                                            command: rpaCommand,
-                                            manual: true // <--- NEW FLAG
-                                        });
-
-                                        if (captureRes.success && captureRes.base64) {
-                                            setEvidenceScreenshot(captureRes.base64);
-                                        } else {
-                                            alert("Capture failed: " + (captureRes.error || "Unknown error"));
+                                        if (rule.automatedCheck?.type === 'registry' && rule.automatedCheck.registryPath) {
+                                            rpaType = 'regedit';
+                                            rpaPath = rule.automatedCheck.registryPath;
                                         }
-                                    } catch (e: any) {
-                                        alert("Capture failed: " + e.message);
-                                    }
-                                }}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
-                            >
-                                Capture Evidence
-                            </button>
-                            <button
-                                onClick={runAgent}
-                                disabled={isScanning || isBatchCapturing || rules.length === 0 || filteredRules.filter(r => r.automatedCheck?.type === 'registry').length === 0}
-                                className="px-4 py-2 bg-black hover:bg-black/80 text-white text-sm font-bold rounded-lg shadow-lg flex items-center gap-2 group transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <Cpu size={16} className={`${isBatchCapturing ? 'animate-pulse' : 'group-hover:animate-bounce'}`} />
-                                {isBatchCapturing ? 'Scanning...' : 'Run Scan'}
-                            </button>
-                            <button
-                                onClick={confirmCaptureEvidence}
-                                disabled={!evidenceScreenshot}
-                                className="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <Save size={16} /> Save Evidence
-                            </button>
+
+                                        // Guide User
+                                        if (rpaType === 'regedit') {
+                                            alert("GUIDED CAPTURE MODE:\n\n1. Please Open 'Registry Editor' (Regedit) manually.\n2. In Regedit, navigate to: " + rpaPath + "\n\nPress OK when Regedit is open and visible on screen.");
+                                        } else {
+                                            await navigator.clipboard.writeText(rpaCommand);
+                                            alert("GUIDED CAPTURE MODE:\n\n1. I have COPIED the command to your clipboard.\n2. Please OPEN 'PowerShell' (Run as Administrator).\n3. PASTE the command and press Enter.\n\nPress OK when the result is visible on screen.");
+                                        }
+
+                                        // Give user a moment to put their hand back on the mouse if they want, but really we just want them to click OK, then we snap.
+                                        // Actually, we need to hide the browser window or ensure it doesn't block? 
+                                        // The screenshot captures PRIMARY SCREEN.
+                                        // We will minimize the app? No, just alert.
+
+                                        try {
+                                            // @ts-ignore
+                                            const captureRes = await window.ipcRenderer.invoke('capture-real-evidence', {
+                                                type: rpaType,
+                                                path: rpaPath,
+                                                command: rpaCommand,
+                                                manual: true // <--- NEW FLAG
+                                            });
+
+                                            if (captureRes.success && captureRes.base64) {
+                                                setEvidenceScreenshot(captureRes.base64);
+                                            } else {
+                                                alert("Capture failed: " + (captureRes.error || "Unknown error"));
+                                            }
+                                        } catch (e: any) {
+                                            alert("Capture failed: " + e.message);
+                                        }
+                                    }}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+                                >
+                                    Capture Evidence
+                                </button>
+                                <button
+                                    onClick={runAgent}
+                                    disabled={isScanning || isBatchCapturing || rules.length === 0 || filteredRules.filter(r => r.automatedCheck?.type === 'registry').length === 0}
+                                    className="px-4 py-2 bg-black hover:bg-black/80 text-white text-sm font-bold rounded-lg shadow-lg flex items-center gap-2 group transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Cpu size={16} className={`${isBatchCapturing ? 'animate-pulse' : 'group-hover:animate-bounce'}`} />
+                                    {isBatchCapturing ? 'Scanning...' : 'Run Scan'}
+                                </button>
+                                <button
+                                    onClick={confirmCaptureEvidence}
+                                    disabled={!evidenceScreenshot}
+                                    className="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Save size={16} /> Save Evidence
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Evidence Type Selection Modal */}
-            {showEvidenceTypeModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
-                            <h3 className="text-lg font-semibold text-gray-900">Select Evidence Type</h3>
-                        </div>
+            {
+                showEvidenceTypeModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
+                                <h3 className="text-lg font-semibold text-gray-900">Select Evidence Type</h3>
+                            </div>
 
-                        <div className="p-6 space-y-4">
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                                <p className="text-sm text-yellow-800 font-medium">
-                                    <strong>⚠️ Disclaimer:</strong> The AI Audit Agent will automatically capture screenshots of the selected evidence type(s) during the scan.
+                            <div className="p-6 space-y-4">
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                                    <p className="text-sm text-yellow-800 font-medium">
+                                        <strong>⚠️ Disclaimer:</strong> The AI Audit Agent will automatically capture screenshots of the selected evidence type(s) during the scan.
+                                    </p>
+                                </div>
+
+                                <p className="text-sm text-gray-700 mb-4">
+                                    Choose what type of evidence you want to gather for each registry check:
                                 </p>
-                            </div>
 
-                            <p className="text-sm text-gray-700 mb-4">
-                                Choose what type of evidence you want to gather for each registry check:
-                            </p>
-
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => {
-                                        if ((window as any).__evidenceTypeResolver) {
-                                            (window as any).__evidenceTypeResolver('powershell');
-                                            (window as any).__evidenceTypeResolver = null;
-                                        }
-                                    }}
-                                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-gray-900">PowerShell Only</div>
-                                            <div className="text-xs text-gray-600 mt-1">Capture PowerShell console with command output</div>
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={() => {
+                                            if ((window as any).__evidenceTypeResolver) {
+                                                (window as any).__evidenceTypeResolver('powershell');
+                                                (window as any).__evidenceTypeResolver = null;
+                                            }
+                                        }}
+                                        className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                                            <div className="flex-1">
+                                                <div className="font-semibold text-gray-900">PowerShell Only</div>
+                                                <div className="text-xs text-gray-600 mt-1">Capture PowerShell console with command output</div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
+                                    </button>
 
-                                <button
-                                    onClick={() => {
-                                        if ((window as any).__evidenceTypeResolver) {
-                                            (window as any).__evidenceTypeResolver('regedit');
-                                            (window as any).__evidenceTypeResolver = null;
-                                        }
-                                    }}
-                                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-gray-900">Regedit Only</div>
-                                            <div className="text-xs text-gray-600 mt-1">Capture Registry Editor showing the registry path</div>
+                                    <button
+                                        onClick={() => {
+                                            if ((window as any).__evidenceTypeResolver) {
+                                                (window as any).__evidenceTypeResolver('regedit');
+                                                (window as any).__evidenceTypeResolver = null;
+                                            }
+                                        }}
+                                        className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                                            <div className="flex-1">
+                                                <div className="font-semibold text-gray-900">Regedit Only</div>
+                                                <div className="text-xs text-gray-600 mt-1">Capture Registry Editor showing the registry path</div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
+                                    </button>
 
-                                <button
-                                    onClick={() => {
-                                        if ((window as any).__evidenceTypeResolver) {
-                                            (window as any).__evidenceTypeResolver('both');
-                                            (window as any).__evidenceTypeResolver = null;
-                                        }
-                                    }}
-                                    className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-gray-900">Both (PowerShell + Regedit)</div>
-                                            <div className="text-xs text-gray-600 mt-1">Capture both PowerShell console and Registry Editor side-by-side</div>
+                                    <button
+                                        onClick={() => {
+                                            if ((window as any).__evidenceTypeResolver) {
+                                                (window as any).__evidenceTypeResolver('both');
+                                                (window as any).__evidenceTypeResolver = null;
+                                            }
+                                        }}
+                                        className="w-full text-left p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-4 h-4 rounded-full border-2 border-gray-400"></div>
+                                            <div className="flex-1">
+                                                <div className="font-semibold text-gray-900">Both (PowerShell + Regedit)</div>
+                                                <div className="text-xs text-gray-600 mt-1">Capture both PowerShell console and Registry Editor side-by-side</div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
-                            </div>
+                                    </button>
+                                </div>
 
-                            <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
-                                <button
-                                    onClick={() => {
-                                        if ((window as any).__evidenceTypeResolver) {
-                                            (window as any).__evidenceTypeResolver(null);
-                                            (window as any).__evidenceTypeResolver = null;
-                                        }
-                                        setShowEvidenceTypeModal(false);
-                                    }}
-                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
-                                >
-                                    Cancel
-                                </button>
+                                <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
+                                    <button
+                                        onClick={() => {
+                                            if ((window as any).__evidenceTypeResolver) {
+                                                (window as any).__evidenceTypeResolver(null);
+                                                (window as any).__evidenceTypeResolver = null;
+                                            }
+                                            setShowEvidenceTypeModal(false);
+                                        }}
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Username Input Modal */}
-            {showUsernameModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
-                            <h3 className="text-lg font-semibold text-gray-900">Enter Username</h3>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-gray-700">
-                                Please enter your username for the scan. This will be included in the finding details for each check.
-                            </p>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Username
-                                </label>
-                                <input
-                                    type="text"
-                                    value={scanUsername}
-                                    onChange={(e) => setScanUsername(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && scanUsername.trim()) {
-                                            if ((window as any).__usernameResolver) {
-                                                (window as any).__usernameResolver(scanUsername.trim());
-                                                (window as any).__usernameResolver = null;
-                                            }
-                                            setShowUsernameModal(false);
-                                        }
-                                    }}
-                                    placeholder="Enter your username"
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                    autoFocus
-                                />
+            {
+                showUsernameModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
+                                <h3 className="text-lg font-semibold text-gray-900">Enter Username</h3>
                             </div>
 
-                            <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
-                                <button
-                                    onClick={() => {
-                                        if ((window as any).__usernameResolver) {
-                                            (window as any).__usernameResolver(null);
-                                            (window as any).__usernameResolver = null;
-                                        }
-                                        setShowUsernameModal(false);
-                                        setScanUsername('');
-                                    }}
-                                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        if (scanUsername.trim()) {
+                            <div className="p-6 space-y-4">
+                                <p className="text-sm text-gray-700">
+                                    Please enter your username for the scan. This will be included in the finding details for each check.
+                                </p>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Username
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={scanUsername}
+                                        onChange={(e) => setScanUsername(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && scanUsername.trim()) {
+                                                if ((window as any).__usernameResolver) {
+                                                    (window as any).__usernameResolver(scanUsername.trim());
+                                                    (window as any).__usernameResolver = null;
+                                                }
+                                                setShowUsernameModal(false);
+                                            }
+                                        }}
+                                        placeholder="Enter your username"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                        autoFocus
+                                    />
+                                </div>
+
+                                <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
+                                    <button
+                                        onClick={() => {
                                             if ((window as any).__usernameResolver) {
-                                                (window as any).__usernameResolver(scanUsername.trim());
+                                                (window as any).__usernameResolver(null);
                                                 (window as any).__usernameResolver = null;
                                             }
                                             setShowUsernameModal(false);
-                                        }
-                                    }}
-                                    disabled={!scanUsername.trim()}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg"
-                                >
-                                    Continue
-                                </button>
+                                            setScanUsername('');
+                                        }}
+                                        className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (scanUsername.trim()) {
+                                                if ((window as any).__usernameResolver) {
+                                                    (window as any).__usernameResolver(scanUsername.trim());
+                                                    (window as any).__usernameResolver = null;
+                                                }
+                                                setShowUsernameModal(false);
+                                            }
+                                        }}
+                                        disabled={!scanUsername.trim()}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg"
+                                    >
+                                        Continue
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* New Evidence Folder Modal */}
-            {showNewFolderModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
-                        <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
-                            <h3 className="text-lg font-semibold text-gray-900">New Evidence Folder</h3>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Folder Name</label>
-                                <input
-                                    type="text"
-                                    value={newFolderName}
-                                    onChange={e => setNewFolderName(e.target.value)}
-                                    placeholder="e.g. Server_Audit_v1"
-                                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    autoFocus
-                                />
+            {
+                showNewFolderModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden">
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100">
+                                <h3 className="text-lg font-semibold text-gray-900">New Evidence Folder</h3>
                             </div>
-                            <div className="flex justify-end gap-2 pt-2">
-                                <button
-                                    onClick={() => setShowNewFolderModal(false)}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={createEvidenceFolder}
-                                    disabled={!newFolderName.trim()}
-                                    className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
-                                >
-                                    Create Folder
-                                </button>
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Folder Name</label>
+                                    <input
+                                        type="text"
+                                        value={newFolderName}
+                                        onChange={e => setNewFolderName(e.target.value)}
+                                        placeholder="e.g. Server_Audit_v1"
+                                        className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <button
+                                        onClick={() => setShowNewFolderModal(false)}
+                                        className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={createEvidenceFolder}
+                                        disabled={!newFolderName.trim()}
+                                        className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                    >
+                                        Create Folder
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* --- AGENT OVERLAY --- */}
-            {agentState.status !== 'idle' && (
-                <div className="fixed bottom-6 right-6 z-[100] w-[450px] shadow-2xl font-mono text-sm overflow-hidden rounded-xl border border-gray-800 bg-gray-950 text-green-500 flex flex-col animate-in slide-in-from-bottom duration-300">
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
-                        <div className="flex items-center gap-2">
-                            <div className={`size-3 rounded-full ${agentState.status === 'working' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                            <span className="font-bold text-gray-100">SCAN MANAGER</span>
-                        </div>
-                        <div className="text-xs text-gray-400">
-                            {agentState.progress} / {agentState.total}
-                        </div>
-                    </div>
-
-                    {/* Activity Monitor */}
-                    <div className="p-4 space-y-3 bg-black/90 h-[280px] overflow-y-auto flex flex-col-reverse">
-
-                        {/* Current Status */}
-                        <div className="pt-2 border-t border-gray-800/50 mt-2">
-                            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500 mb-1">
-                                Current Task
+            {
+                agentState.status !== 'idle' && (
+                    <div className="fixed bottom-6 right-6 z-[100] w-[450px] shadow-2xl font-mono text-sm overflow-hidden rounded-xl border border-gray-800 bg-gray-950 text-green-500 flex flex-col animate-in slide-in-from-bottom duration-300">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+                            <div className="flex items-center gap-2">
+                                <div className={`size-3 rounded-full ${agentState.status === 'working' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                                <span className="font-bold text-gray-100">SCAN MANAGER</span>
                             </div>
-                            <div className="font-semibold text-green-400 text-base leading-tight">
-                                {agentState.currentAction}
+                            <div className="text-xs text-gray-400">
+                                {agentState.progress} / {agentState.total}
                             </div>
                         </div>
 
-                        {/* Logs */}
-                        <div className="space-y-1">
-                            {agentState.logs.map((log, i) => (
-                                <div key={i} className="text-gray-400 text-xs font-mono break-all opacity-80">
-                                    {log}
+                        {/* Activity Monitor */}
+                        <div className="p-4 space-y-3 bg-black/90 h-[280px] overflow-y-auto flex flex-col-reverse">
+
+                            {/* Current Status */}
+                            <div className="pt-2 border-t border-gray-800/50 mt-2">
+                                <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-500 mb-1">
+                                    Current Task
                                 </div>
-                            ))}
+                                <div className="font-semibold text-green-400 text-base leading-tight">
+                                    {agentState.currentAction}
+                                </div>
+                            </div>
+
+                            {/* Logs */}
+                            <div className="space-y-1">
+                                {agentState.logs.map((log, i) => (
+                                    <div key={i} className="text-gray-400 text-xs font-mono break-all opacity-80">
+                                        {log}
+                                    </div>
+                                ))}
+                            </div>
+
                         </div>
 
-                    </div>
+                        {/* Progress Bar */}
+                        <div className="h-1 bg-gray-800 w-full">
+                            <div
+                                className="h-full bg-green-500 transition-all duration-300 ease-out"
+                                style={{ width: `${(agentState.progress / Math.max(agentState.total, 1)) * 100}%` }}
+                            />
+                        </div>
 
-                    {/* Progress Bar */}
-                    <div className="h-1 bg-gray-800 w-full">
-                        <div
-                            className="h-full bg-green-500 transition-all duration-300 ease-out"
-                            style={{ width: `${(agentState.progress / Math.max(agentState.total, 1)) * 100}%` }}
-                        />
+                        {/* Footer Controls */}
+                        <div className="bg-gray-900 p-2 flex justify-between items-center text-xs text-gray-500">
+                            <span>v1.0.4 AGENT</span>
+                            {agentState.status === 'complete' || agentState.status === 'stopped' ? (
+                                <button
+                                    onClick={() => {
+                                        setAgentState(prev => ({ ...prev, status: 'idle' }));
+                                        scanCancelledRef.current = false;
+                                    }}
+                                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-white transition-colors"
+                                >
+                                    CLOSE
+                                </button>
+                            ) : agentState.status === 'working' ? (
+                                <button
+                                    onClick={stopScan}
+                                    className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white transition-colors font-medium"
+                                >
+                                    STOP SCAN
+                                </button>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <span className="animate-pulse">PROCESSING...</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
-
-                    {/* Footer Controls */}
-                    <div className="bg-gray-900 p-2 flex justify-between items-center text-xs text-gray-500">
-                        <span>v1.0.4 AGENT</span>
-                        {agentState.status === 'complete' || agentState.status === 'stopped' ? (
-                            <button
-                                onClick={() => {
-                                    setAgentState(prev => ({ ...prev, status: 'idle' }));
-                                    scanCancelledRef.current = false;
-                                }}
-                                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded text-white transition-colors"
-                            >
-                                CLOSE
-                            </button>
-                        ) : agentState.status === 'working' ? (
-                            <button
-                                onClick={stopScan}
-                                className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white transition-colors font-medium"
-                            >
-                                STOP SCAN
-                            </button>
-                        ) : (
-                            <div className="flex gap-2">
-                                <span className="animate-pulse">PROCESSING...</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+                )
+            }
 
             {/* STRIX Documentation Modal - Root Level */}
-            {showDocsModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDocsModal(false)}>
-                    <div className={`w-full max-w-5xl h-[85vh] rounded-2xl shadow-xl flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-                            <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STRIX Technical Documentation</h2>
-                            <button
-                                onClick={() => setShowDocsModal(false)}
-                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Content Area */}
-                        <div className="flex flex-1 overflow-hidden">
-                            {/* Left Sidebar Navigation */}
-                            <div className={`w-64 border-r overflow-y-auto ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
-                                <div className="p-4 space-y-1">
-                                    {[
-                                        { id: 'intro', label: 'Intro to STRIX' },
-                                        { id: 'how-it-works', label: 'How It Works' },
-                                        { id: 'getting-started', label: 'Getting Started' },
-                                        { id: 'checklist-editor', label: 'Checklist Editor' },
-                                        { id: 'evidence-gallery', label: 'Evidence Gallery' },
-                                        { id: 'reports', label: 'Reports' },
-                                        { id: 'tools', label: 'Tools & Utilities' },
-                                        { id: 'technical', label: 'Technical Details' },
-                                        { id: 'troubleshooting', label: 'Troubleshooting' },
-                                        { id: 'faq', label: 'FAQ' },
-                                    ].map((section) => (
-                                        <button
-                                            key={section.id}
-                                            onClick={() => setSelectedDocSection(section.id)}
-                                            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-colors ${selectedDocSection === section.id
-                                                ? (darkMode ? 'bg-gray-700 text-white font-medium' : 'bg-white text-gray-900 font-medium shadow-sm')
-                                                : (darkMode ? 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200' : 'text-gray-600 hover:bg-white hover:text-gray-900')
-                                                }`}
-                                        >
-                                            {section.label}
-                                        </button>
-                                    ))}
-                                </div>
+            {
+                showDocsModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowDocsModal(false)}>
+                        <div className={`w-full max-w-5xl h-[85vh] rounded-2xl shadow-xl flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STRIX Technical Documentation</h2>
+                                <button
+                                    onClick={() => setShowDocsModal(false)}
+                                    className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                                >
+                                    <X size={20} />
+                                </button>
                             </div>
 
-                            {/* Right Content Area */}
-                            <div className="flex-1 overflow-y-auto p-8">
-                                <div className="max-w-3xl mx-auto space-y-6">
-                                    {selectedDocSection === 'intro' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Introduction to STRIX</h3>
-                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STRIX is a comprehensive tool designed to help security professionals manage, analyze, and document STIG (Security Technical Implementation Guide) compliance. Built with modern web technologies, STRIX provides an intuitive interface for creating checklists, capturing evidence, generating reports, and analyzing compliance data.
-                                            </p>
-                                            <div className="space-y-3">
-                                                <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Core Philosophy</h4>
+                            {/* Content Area */}
+                            <div className="flex flex-1 overflow-hidden">
+                                {/* Left Sidebar Navigation */}
+                                <div className={`w-64 border-r overflow-y-auto ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+                                    <div className="p-4 space-y-1">
+                                        {[
+                                            { id: 'intro', label: 'Intro to STRIX' },
+                                            { id: 'how-it-works', label: 'How It Works' },
+                                            { id: 'getting-started', label: 'Getting Started' },
+                                            { id: 'checklist-editor', label: 'Checklist Editor' },
+                                            { id: 'evidence-gallery', label: 'Evidence Gallery' },
+                                            { id: 'reports', label: 'Reports' },
+                                            { id: 'tools', label: 'Tools & Utilities' },
+                                            { id: 'technical', label: 'Technical Details' },
+                                            { id: 'troubleshooting', label: 'Troubleshooting' },
+                                            { id: 'faq', label: 'FAQ' },
+                                        ].map((section) => (
+                                            <button
+                                                key={section.id}
+                                                onClick={() => setSelectedDocSection(section.id)}
+                                                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm transition-colors ${selectedDocSection === section.id
+                                                    ? (darkMode ? 'bg-gray-700 text-white font-medium' : 'bg-white text-gray-900 font-medium shadow-sm')
+                                                    : (darkMode ? 'text-gray-400 hover:bg-gray-700/50 hover:text-gray-200' : 'text-gray-600 hover:bg-white hover:text-gray-900')
+                                                    }`}
+                                            >
+                                                {section.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Right Content Area */}
+                                <div className="flex-1 overflow-y-auto p-8">
+                                    <div className="max-w-3xl mx-auto space-y-6">
+                                        {selectedDocSection === 'intro' && (
+                                            <div className="space-y-4">
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Introduction to STRIX</h3>
                                                 <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    STRIX emphasizes privacy, local processing, and user control. All data processing is performed locally on your machine—no files are uploaded to any server or database. This ensures maximum security and compliance with sensitive government and enterprise data requirements.
+                                                    STRIX is a comprehensive tool designed to help security professionals manage, analyze, and document STIG (Security Technical Implementation Guide) compliance. Built with modern web technologies, STRIX provides an intuitive interface for creating checklists, capturing evidence, generating reports, and analyzing compliance data.
                                                 </p>
-                                            </div>
-                                            <div className="space-y-3">
-                                                <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Key Characteristics</h4>
-                                                <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                    <li>Privacy-First Design: All processing happens locally</li>
-                                                    <li>Comprehensive STIG Support: Works with multiple STIG formats (CKL, CKLB, XML, JSON)</li>
-                                                    <li>Evidence Management: Built-in gallery for organizing compliance evidence</li>
-                                                    <li>Advanced Reporting: Generate detailed compliance reports and POA&M documents</li>
-                                                    <li>Risk Analysis: Visualize compliance risk with heatmaps and analytics</li>
-                                                    <li>Cross-Platform: Available as both web application and Electron desktop app</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedDocSection === 'how-it-works' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How It Works</h3>
-                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STRIX operates on a local-first architecture where all data processing occurs on your device.
-                                            </p>
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>1. STIG Selection</h4>
+                                                <div className="space-y-3">
+                                                    <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Core Philosophy</h4>
                                                     <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Start by selecting a STIG checklist from the main dashboard. STRIX supports Windows 11, Windows Server 2019, SQL Server, IIS, Edge, Defender, and more.
+                                                        STRIX emphasizes privacy, local processing, and user control. All data processing is performed locally on your machine—no files are uploaded to any server or database. This ensures maximum security and compliance with sensitive government and enterprise data requirements.
                                                     </p>
                                                 </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>2. Checklist Management</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Use the Checklist Editor to review, update, and manage STIG findings. Mark rules as Pass, Fail, Not Applicable, or Not Reviewed, and add comments and evidence references.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>3. Evidence Capture</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Capture screenshots, command outputs, and other evidence directly within the application. The Evidence Gallery helps organize and reference evidence across multiple checklists.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>4. Reporting</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Generate comprehensive reports including compliance summaries, POA&M documents, and detailed findings. Export to various formats for documentation and audit purposes.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedDocSection === 'getting-started' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Getting Started</h3>
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 1: Select a STIG</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        From the main dashboard, choose the STIG that matches your system. Click the "CSV" or "CKLB" button to download the checklist format you prefer.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 2: Load Your Checklist</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Navigate to the Checklist Editor and upload your checklist file. STRIX supports .ckl, .cklb, .json, and .xml formats.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 3: Review Findings</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Review each STIG rule, update statuses, and add comments. Use filters to focus on specific severity levels or statuses.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 4: Capture Evidence</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        For each finding, capture screenshots or command outputs as evidence. Organize evidence in the Evidence Gallery for easy reference.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 5: Generate Reports</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Once your checklist is complete, generate reports and POA&M documents from the Reports section.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedDocSection === 'checklist-editor' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Editor</h3>
-                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                The Checklist Editor is the core of STRIX, allowing you to manage and update STIG compliance findings.
-                                            </p>
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Features</h4>
+                                                <div className="space-y-3">
+                                                    <h4 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Key Characteristics</h4>
                                                     <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li>Upload and manage multiple checklists simultaneously</li>
-                                                        <li>Filter by severity (CAT I, CAT II, CAT III) and status</li>
-                                                        <li>Search for specific rules by ID or title</li>
-                                                        <li>Bulk update statuses for multiple findings</li>
-                                                        <li>Add comments and evidence references</li>
-                                                        <li>Export updated checklists in multiple formats</li>
-                                                    </ul>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Status Types</h4>
-                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li><strong>Pass:</strong> The system complies with the STIG requirement</li>
-                                                        <li><strong>Fail:</strong> The system does not comply with the requirement</li>
-                                                        <li><strong>Not Applicable:</strong> The requirement does not apply to this system</li>
-                                                        <li><strong>Not Reviewed:</strong> The requirement has not yet been evaluated</li>
+                                                        <li>Privacy-First Design: All processing happens locally</li>
+                                                        <li>Comprehensive STIG Support: Works with multiple STIG formats (CKL, CKLB, XML, JSON)</li>
+                                                        <li>Evidence Management: Built-in gallery for organizing compliance evidence</li>
+                                                        <li>Advanced Reporting: Generate detailed compliance reports and POA&M documents</li>
+                                                        <li>Risk Analysis: Visualize compliance risk with heatmaps and analytics</li>
+                                                        <li>Cross-Platform: Available as both web application and Electron desktop app</li>
                                                     </ul>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {selectedDocSection === 'evidence-gallery' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evidence Gallery</h3>
-                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                The Evidence Gallery helps you organize and manage compliance evidence across all your checklists.
-                                            </p>
+                                        {selectedDocSection === 'how-it-works' && (
                                             <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Capturing Evidence</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Evidence can be captured in several ways:
-                                                    </p>
-                                                    <ul className={`list-disc list-inside space-y-2 mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li>Screenshots: Capture full screen or specific windows</li>
-                                                        <li>Command Outputs: Copy and paste command results</li>
-                                                        <li>File Uploads: Attach configuration files or logs</li>
-                                                        <li>Virtual Evidence: Capture registry editor views and other virtual tools</li>
-                                                    </ul>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Organization</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Evidence is organized by folder and can be tagged with rule IDs, hostnames, and custom metadata. Use the gallery to quickly find and reference evidence when updating checklists or generating reports.
-                                                    </p>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How It Works</h3>
+                                                <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    STRIX operates on a local-first architecture where all data processing occurs on your device.
+                                                </p>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>1. STIG Selection</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Start by selecting a STIG checklist from the main dashboard. STRIX supports Windows 11, Windows Server 2019, SQL Server, IIS, Edge, Defender, and more.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>2. Checklist Management</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Use the Checklist Editor to review, update, and manage STIG findings. Mark rules as Pass, Fail, Not Applicable, or Not Reviewed, and add comments and evidence references.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>3. Evidence Capture</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Capture screenshots, command outputs, and other evidence directly within the application. The Evidence Gallery helps organize and reference evidence across multiple checklists.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>4. Reporting</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Generate comprehensive reports including compliance summaries, POA&M documents, and detailed findings. Export to various formats for documentation and audit purposes.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {selectedDocSection === 'reports' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reports</h3>
-                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STRIX provides comprehensive reporting capabilities to document compliance status and generate required documentation.
-                                            </p>
+                                        {selectedDocSection === 'getting-started' && (
                                             <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Report Types</h4>
-                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li><strong>Compliance Summary:</strong> High-level overview of compliance status</li>
-                                                        <li><strong>Detailed Findings:</strong> Complete list of all findings with status and comments</li>
-                                                        <li><strong>POA&M:</strong> Plan of Action and Milestones document for tracking remediation</li>
-                                                        <li><strong>Risk Heatmap:</strong> Visual representation of compliance risk by control family</li>
-                                                    </ul>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Export Formats</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Reports can be exported as PDF, Excel, CSV, or HTML formats for sharing with stakeholders and auditors.
-                                                    </p>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Getting Started</h3>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 1: Select a STIG</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            From the main dashboard, choose the STIG that matches your system. Click the "CSV" or "CKLB" button to download the checklist format you prefer.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 2: Load Your Checklist</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Navigate to the Checklist Editor and upload your checklist file. STRIX supports .ckl, .cklb, .json, and .xml formats.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 3: Review Findings</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Review each STIG rule, update statuses, and add comments. Use filters to focus on specific severity levels or statuses.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 4: Capture Evidence</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            For each finding, capture screenshots or command outputs as evidence. Organize evidence in the Evidence Gallery for easy reference.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 5: Generate Reports</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Once your checklist is complete, generate reports and POA&M documents from the Reports section.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {selectedDocSection === 'tools' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tools & Utilities</h3>
-                                            <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                STRIX includes several utility tools to help streamline your compliance workflow.
-                                            </p>
+                                        {selectedDocSection === 'checklist-editor' && (
                                             <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Bulk File Renamer</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Add prefixes or suffixes to multiple files at once. Useful for organizing checklist files with consistent naming conventions.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Risk Heatmap</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Upload multiple checklists to generate a visual heatmap showing compliance risk by NIST control family. Identify areas of concern at a glance.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STIG Analyzer</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Compare old and new STIG versions to migrate statuses and comments. Automatically maps findings between versions when possible.
-                                                    </p>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Editor</h3>
+                                                <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    The Checklist Editor is the core of STRIX, allowing you to manage and update STIG compliance findings.
+                                                </p>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Features</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li>Upload and manage multiple checklists simultaneously</li>
+                                                            <li>Filter by severity (CAT I, CAT II, CAT III) and status</li>
+                                                            <li>Search for specific rules by ID or title</li>
+                                                            <li>Bulk update statuses for multiple findings</li>
+                                                            <li>Add comments and evidence references</li>
+                                                            <li>Export updated checklists in multiple formats</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Status Types</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li><strong>Pass:</strong> The system complies with the STIG requirement</li>
+                                                            <li><strong>Fail:</strong> The system does not comply with the requirement</li>
+                                                            <li><strong>Not Applicable:</strong> The requirement does not apply to this system</li>
+                                                            <li><strong>Not Reviewed:</strong> The requirement has not yet been evaluated</li>
+                                                        </ul>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {selectedDocSection === 'technical' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Technical Details</h3>
+                                        {selectedDocSection === 'evidence-gallery' && (
                                             <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Architecture</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        STRIX is built with React and TypeScript, providing a modern, responsive user interface. The application can run as a web application in any modern browser or as a desktop application using Electron.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Data Storage</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        All data is stored locally in your browser's IndexedDB (web version) or local file system (Electron version). No data is transmitted to external servers.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Supported Formats</h4>
-                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li>STIG Checklist (.ckl, .cklb)</li>
-                                                        <li>STIG XML (.xml)</li>
-                                                        <li>JSON exports (.json)</li>
-                                                        <li>CSV exports (.csv)</li>
-                                                    </ul>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Browser Requirements</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        STRIX requires a modern browser with support for ES6+, IndexedDB, and File API. Recommended browsers include Chrome, Firefox, Edge, and Safari (latest versions).
-                                                    </p>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evidence Gallery</h3>
+                                                <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    The Evidence Gallery helps you organize and manage compliance evidence across all your checklists.
+                                                </p>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Capturing Evidence</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Evidence can be captured in several ways:
+                                                        </p>
+                                                        <ul className={`list-disc list-inside space-y-2 mt-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li>Screenshots: Capture full screen or specific windows</li>
+                                                            <li>Command Outputs: Copy and paste command results</li>
+                                                            <li>File Uploads: Attach configuration files or logs</li>
+                                                            <li>Virtual Evidence: Capture registry editor views and other virtual tools</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Organization</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Evidence is organized by folder and can be tagged with rule IDs, hostnames, and custom metadata. Use the gallery to quickly find and reference evidence when updating checklists or generating reports.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {selectedDocSection === 'troubleshooting' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Troubleshooting</h3>
+                                        {selectedDocSection === 'reports' && (
                                             <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Won't Load</h4>
-                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li>Verify the file format is supported (.ckl, .cklb, .xml, .json)</li>
-                                                        <li>Check that the file is not corrupted</li>
-                                                        <li>Try opening the file in a text editor to verify it's valid XML/JSON</li>
-                                                        <li>Clear browser cache and try again</li>
-                                                    </ul>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evidence Not Saving</h4>
-                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li>Check browser storage permissions</li>
-                                                        <li>Verify you have sufficient disk space</li>
-                                                        <li>Try clearing browser storage and reloading</li>
-                                                        <li>In Electron version, check file system permissions</li>
-                                                    </ul>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Performance Issues</h4>
-                                                    <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        <li>Large checklists may take time to load - be patient</li>
-                                                        <li>Close other browser tabs to free up memory</li>
-                                                        <li>Consider splitting very large checklists into smaller files</li>
-                                                        <li>Clear old evidence and checklists if storage is full</li>
-                                                    </ul>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Reports</h3>
+                                                <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    STRIX provides comprehensive reporting capabilities to document compliance status and generate required documentation.
+                                                </p>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Report Types</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li><strong>Compliance Summary:</strong> High-level overview of compliance status</li>
+                                                            <li><strong>Detailed Findings:</strong> Complete list of all findings with status and comments</li>
+                                                            <li><strong>POA&M:</strong> Plan of Action and Milestones document for tracking remediation</li>
+                                                            <li><strong>Risk Heatmap:</strong> Visual representation of compliance risk by control family</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Export Formats</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Reports can be exported as PDF, Excel, CSV, or HTML formats for sharing with stakeholders and auditors.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
 
-                                    {selectedDocSection === 'faq' && (
-                                        <div className="space-y-4">
-                                            <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Frequently Asked Questions</h3>
+                                        {selectedDocSection === 'tools' && (
                                             <div className="space-y-4">
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Is my data secure?</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Yes. All data processing happens locally on your device. No files or data are uploaded to any server. Your checklists and evidence remain completely private.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I use STRIX offline?</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Yes. Once loaded, STRIX works completely offline. The Electron desktop version is fully offline-capable.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How do I backup my data?</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        Export your checklists regularly using the export functions. Evidence can be downloaded from the Evidence Gallery. In Electron version, data is stored in local files that can be backed up.
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I import data from other STIG tools?</h4>
-                                                    <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                                        STRIX supports standard STIG formats (.ckl, .cklb, .xml) that are compatible with most STIG tools. You can import checklists created in other tools.
-                                                    </p>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Tools & Utilities</h3>
+                                                <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                    STRIX includes several utility tools to help streamline your compliance workflow.
+                                                </p>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Bulk File Renamer</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Add prefixes or suffixes to multiple files at once. Useful for organizing checklist files with consistent naming conventions.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Risk Heatmap</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Upload multiple checklists to generate a visual heatmap showing compliance risk by NIST control family. Identify areas of concern at a glance.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>STIG Analyzer</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Compare old and new STIG versions to migrate statuses and comments. Automatically maps findings between versions when possible.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+
+                                        {selectedDocSection === 'technical' && (
+                                            <div className="space-y-4">
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Technical Details</h3>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Architecture</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            STRIX is built with React and TypeScript, providing a modern, responsive user interface. The application can run as a web application in any modern browser or as a desktop application using Electron.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Data Storage</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            All data is stored locally in your browser's IndexedDB (web version) or local file system (Electron version). No data is transmitted to external servers.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Supported Formats</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li>STIG Checklist (.ckl, .cklb)</li>
+                                                            <li>STIG XML (.xml)</li>
+                                                            <li>JSON exports (.json)</li>
+                                                            <li>CSV exports (.csv)</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Browser Requirements</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            STRIX requires a modern browser with support for ES6+, IndexedDB, and File API. Recommended browsers include Chrome, Firefox, Edge, and Safari (latest versions).
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {selectedDocSection === 'troubleshooting' && (
+                                            <div className="space-y-4">
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Troubleshooting</h3>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Checklist Won't Load</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li>Verify the file format is supported (.ckl, .cklb, .xml, .json)</li>
+                                                            <li>Check that the file is not corrupted</li>
+                                                            <li>Try opening the file in a text editor to verify it's valid XML/JSON</li>
+                                                            <li>Clear browser cache and try again</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Evidence Not Saving</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li>Check browser storage permissions</li>
+                                                            <li>Verify you have sufficient disk space</li>
+                                                            <li>Try clearing browser storage and reloading</li>
+                                                            <li>In Electron version, check file system permissions</li>
+                                                        </ul>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Performance Issues</h4>
+                                                        <ul className={`list-disc list-inside space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            <li>Large checklists may take time to load - be patient</li>
+                                                            <li>Close other browser tabs to free up memory</li>
+                                                            <li>Consider splitting very large checklists into smaller files</li>
+                                                            <li>Clear old evidence and checklists if storage is full</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {selectedDocSection === 'faq' && (
+                                            <div className="space-y-4">
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Frequently Asked Questions</h3>
+                                                <div className="space-y-4">
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Is my data secure?</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Yes. All data processing happens locally on your device. No files or data are uploaded to any server. Your checklists and evidence remain completely private.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I use STRIX offline?</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Yes. Once loaded, STRIX works completely offline. The Electron desktop version is fully offline-capable.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>How do I backup my data?</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            Export your checklists regularly using the export functions. Evidence can be downloaded from the Evidence Gallery. In Electron version, data is stored in local files that can be backed up.
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Can I import data from other STIG tools?</h4>
+                                                        <p className={`text-base leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                                            STRIX supports standard STIG formats (.ckl, .cklb, .xml) that are compatible with most STIG tools. You can import checklists created in other tools.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
         </div >
     );
