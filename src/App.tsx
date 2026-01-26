@@ -43,7 +43,7 @@ function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'network' | 'webscan' | 'blockchain'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -7040,7 +7040,7 @@ function App() {
                                                                 setMasterCopyTarget((prev: any) => {
                                                                     if (!prev) return null;
                                                                     let count = 0;
-                                                                    const newFindings = prev.findings.map(f => {
+                                                                    const newFindings = prev.findings.map((f: any) => {
                                                                         let changed = false;
                                                                         let details = f.findingDetails || '';
                                                                         let comments = f.comments || '';
@@ -7103,7 +7103,7 @@ function App() {
                                                                             if (!confirm(`Copy Status & Details for ${masterCopySelectedIds.size} items?`)) return;
                                                                             setMasterCopyTarget((prev: any) => {
                                                                                 if (!prev) return null;
-                                                                                const newFindings = prev.findings.map(f => {
+                                                                                const newFindings = prev.findings.map((f: any) => {
                                                                                     if (masterCopySelectedIds.has(f.vulnId)) {
                                                                                         const match = masterCopyData.notReviewed.find(nr => nr.vulnId === f.vulnId);
                                                                                         if (match) {
@@ -7249,7 +7249,7 @@ function App() {
                                                                                 onChange={(e) => {
                                                                                     setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
-                                                                                        const updated = prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, severity: e.target.value } : f);
+                                                                                        const updated = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, severity: e.target.value } : f);
                                                                                         return { ...prev, findings: updated };
                                                                                     });
                                                                                 }}
@@ -7273,7 +7273,7 @@ function App() {
 
                                                                                     setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
-                                                                                        const updated = prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, status: val } : f);
+                                                                                        const updated = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: val } : f);
                                                                                         return { ...prev, findings: updated };
                                                                                     });
                                                                                 }}
@@ -7303,7 +7303,7 @@ function App() {
                                                                                         onClick={() => {
                                                                                             setMasterCopyTarget((prev: any) => {
                                                                                                 if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
+                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
                                                                                             });
                                                                                         }}
                                                                                         className="text-xs text-blue-600 hover:text-blue-800 text-left"
@@ -7314,7 +7314,7 @@ function App() {
                                                                                         onClick={() => {
                                                                                             setMasterCopyTarget((prev: any) => {
                                                                                                 if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
+                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
                                                                                             });
                                                                                         }}
                                                                                         className="text-xs text-blue-600 hover:text-blue-800 text-left"
@@ -7336,7 +7336,7 @@ function App() {
                                                                                 onChange={(e) => {
                                                                                     setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
-                                                                                        return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
+                                                                                        return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
                                                                                     });
                                                                                 }}
                                                                             />
@@ -7349,7 +7349,7 @@ function App() {
                                                                                 onChange={(e) => {
                                                                                     setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
-                                                                                        return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
+                                                                                        return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
                                                                                     });
                                                                                 }}
                                                                             />
