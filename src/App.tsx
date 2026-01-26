@@ -43,7 +43,7 @@ function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'scan' | 'evidence' | 'checklist' | 'review' | 'results' | 'report' | 'poam' | 'controls' | 'compare' | 'copy' | 'tools' | 'network' | 'blockchain' | 'webscan'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -2371,13 +2371,13 @@ function App() {
 
         if (newChecklists.length > 0) {
             if (activeTab === 'controls') {
-                setUploadedChecklists(prev => [...prev, ...newChecklists]);
+                setUploadedChecklists(prev => [...prev, ...newChecklists as any]);
             } else {
-                setPoamChecklists(prev => [...prev, ...newChecklists]);
+                setPoamChecklists(prev => [...prev, ...newChecklists as any]);
             }
         }
         if (newAcasRows.length > 0) {
-            setAcasData(prev => [...prev, ...newAcasRows]);
+            setAcasData(prev => [...prev, ...newAcasRows as any]);
         }
 
         if (stigCount > 0 || acasCount > 0) {
@@ -3022,6 +3022,16 @@ function App() {
                                 >
                                     <div className="size-1 rounded-full bg-current opacity-50" />
                                     STIG Analyzer
+                                </button>
+                                <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('master_copy'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'master_copy'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Master Copy
                                 </button>
                                 <button
                                     onClick={() => { setActiveTab('tools'); setToolsMode('extractor'); }}
@@ -5981,7 +5991,7 @@ function App() {
                                                                 onClick={() => { setAnalyzerTab('reviewed'); setAnalyzerSelectedIds(new Set()); }}
                                                                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${analyzerTab === 'reviewed' ? 'bg-white shadow text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
                                                             >
-                                                                Reviewed ({analyzerShowAllReviewed ? (analyzerNewChecklist?.findings.filter((f: any) => f.status !== 'Not_Reviewed').length || 0) : analyzerEditedIds.size})
+                                                                Reviewed ({analyzerShowAllReviewed ? (analyzerNewChecklist?.findings.filter(f => f.status !== 'Not_Reviewed').length || 0) : analyzerEditedIds.size})
                                                             </button>
                                                             <button
                                                                 onClick={() => { setAnalyzerTab('newids'); setAnalyzerSelectedIds(new Set()); }}
@@ -6978,18 +6988,20 @@ function App() {
                                                         <label className="cursor-pointer">
                                                             <div className="size-8 mx-auto bg-gray-100 text-gray-400 rounded-lg flex items-center justify-center mb-2"><FolderOpen size={16} /></div>
                                                             <span className="text-xs text-gray-500">Upload Folder (Raw)</span>
-                                                            <input type="file" className="hidden" multiple webkitdirectory="" directory="" onChange={async (e) => {
-                                                                const files = Array.from(e.target.files || []);
-                                                                const valid = [];
-                                                                for (const f of files) {
-                                                                    if (f.name.match(/\.(ckl|cklb|json|xml)$/i)) {
-                                                                        const p = await parseCklFile(f);
-                                                                        if (p) valid.push(p as any);
+                                                            <input type="file" className="hidden" multiple
+                                                                // @ts-ignore
+                                                                webkitdirectory="" directory="" onChange={async (e) => {
+                                                                    const files = Array.from(e.target.files || []);
+                                                                    const valid = [];
+                                                                    for (const f of files) {
+                                                                        if (f.name.match(/\.(ckl|cklb|json|xml)$/i)) {
+                                                                            const p = await parseCklFile(f);
+                                                                            if (p) valid.push(p as any);
+                                                                        }
                                                                     }
-                                                                }
-                                                                setMasterCopyBatchFiles(valid);
-                                                                e.target.value = '';
-                                                            }} />
+                                                                    setMasterCopyBatchFiles(valid);
+                                                                    e.target.value = '';
+                                                                }} />
                                                         </label>
                                                     )}
                                                 </div>
@@ -7025,7 +7037,7 @@ function App() {
                                                                 if (!masterCopySearch) return;
                                                                 if (!confirm(`Replace instances of "${masterCopySearch}" with "${masterCopyReplace}" across ALL findings in the Master Checklist?`)) return;
 
-                                                                setMasterCopyTarget(prev => {
+                                                                setMasterCopyTarget((prev: any) => {
                                                                     if (!prev) return null;
                                                                     let count = 0;
                                                                     const newFindings = prev.findings.map(f => {
@@ -7089,7 +7101,7 @@ function App() {
                                                                     <button
                                                                         onClick={() => {
                                                                             if (!confirm(`Copy Status & Details for ${masterCopySelectedIds.size} items?`)) return;
-                                                                            setMasterCopyTarget(prev => {
+                                                                            setMasterCopyTarget((prev: any) => {
                                                                                 if (!prev) return null;
                                                                                 const newFindings = prev.findings.map(f => {
                                                                                     if (masterCopySelectedIds.has(f.vulnId)) {
@@ -7235,7 +7247,7 @@ function App() {
                                                                             <select
                                                                                 value={finding.severity?.toLowerCase() || 'low'}
                                                                                 onChange={(e) => {
-                                                                                    setMasterCopyTarget(prev => {
+                                                                                    setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
                                                                                         const updated = prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, severity: e.target.value } : f);
                                                                                         return { ...prev, findings: updated };
@@ -7259,7 +7271,7 @@ function App() {
                                                                                     if (val === 'notapplicable') val = 'Not_Applicable';
                                                                                     if (val === 'notreviewed') val = 'Not_Reviewed';
 
-                                                                                    setMasterCopyTarget(prev => {
+                                                                                    setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
                                                                                         const updated = prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, status: val } : f);
                                                                                         return { ...prev, findings: updated };
@@ -7289,7 +7301,7 @@ function App() {
                                                                                 <div className="flex flex-col justify-center gap-2">
                                                                                     <button
                                                                                         onClick={() => {
-                                                                                            setMasterCopyTarget(prev => {
+                                                                                            setMasterCopyTarget((prev: any) => {
                                                                                                 if (!prev) return null;
                                                                                                 return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, status: old.status } : f) };
                                                                                             });
@@ -7300,7 +7312,7 @@ function App() {
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => {
-                                                                                            setMasterCopyTarget(prev => {
+                                                                                            setMasterCopyTarget((prev: any) => {
                                                                                                 if (!prev) return null;
                                                                                                 return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, findingDetails: old.findingDetails || old.comments, comments: old.comments || old.findingDetails } : f) };
                                                                                             });
@@ -7322,7 +7334,7 @@ function App() {
                                                                                 className="w-full text-xs p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-20 focus:ring-1 ring-indigo-500 outline-none"
                                                                                 value={finding.findingDetails || ''}
                                                                                 onChange={(e) => {
-                                                                                    setMasterCopyTarget(prev => {
+                                                                                    setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
                                                                                         return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
                                                                                     });
@@ -7335,7 +7347,7 @@ function App() {
                                                                                 className="w-full text-xs p-2 rounded border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 h-12 focus:ring-1 ring-indigo-500 outline-none"
                                                                                 value={finding.comments || ''}
                                                                                 onChange={(e) => {
-                                                                                    setMasterCopyTarget(prev => {
+                                                                                    setMasterCopyTarget((prev: any) => {
                                                                                         if (!prev) return null;
                                                                                         return { ...prev, findings: prev.findings.map(f => f.vulnId === row.vulnId ? { ...f, comments: e.target.value } : f) };
                                                                                     });
