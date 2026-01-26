@@ -7085,28 +7085,31 @@ function App() {
                                                                 setMasterCopyTarget((prev: any) => {
                                                                     if (!prev) return null;
                                                                     let count = 0;
+                                                                    const changedIds: string[] = [];
                                                                     const newFindings = prev.findings.map((f: any) => {
                                                                         let changed = false;
                                                                         let details = f.findingDetails || '';
-                                                                        let comments = f.comments || '';
 
-                                                                        // Simple global replace
                                                                         if (details.includes(masterCopySearch)) {
                                                                             details = details.replaceAll(masterCopySearch, masterCopyReplace);
-                                                                            changed = true;
-                                                                        }
-                                                                        if (comments.includes(masterCopySearch)) {
-                                                                            comments = comments.replaceAll(masterCopySearch, masterCopyReplace);
                                                                             changed = true;
                                                                         }
 
                                                                         if (changed) {
                                                                             count++;
-                                                                            return { ...f, findingDetails: details, comments: comments };
+                                                                            changedIds.push(f.vulnId);
+                                                                            return { ...f, findingDetails: details };
                                                                         }
                                                                         return f;
                                                                     });
-                                                                    alert(`Replaced text in ${count} findings.`);
+                                                                    console.log(`[Master Search/Replace] Replaced text in ${count} findings.`);
+                                                                    if (changedIds.length > 0) {
+                                                                        setMasterCopyDoneIds(prevIds => {
+                                                                            const next = new Set(prevIds);
+                                                                            changedIds.forEach(id => next.add(id));
+                                                                            return next;
+                                                                        });
+                                                                    }
                                                                     return { ...prev, findings: newFindings };
                                                                 });
                                                             }}
@@ -7161,8 +7164,7 @@ function App() {
                                                                                             return {
                                                                                                 ...f,
                                                                                                 status: match.oldFinding.status,
-                                                                                                findingDetails: finalDetails,
-                                                                                                comments: match.oldFinding.comments || match.oldFinding.findingDetails
+                                                                                                findingDetails: finalDetails
                                                                                             };
                                                                                         }
                                                                                     }
@@ -7187,182 +7189,185 @@ function App() {
                                                         </div>
                                                         <div className="flex gap-2">
                                                             {masterCopyBatchFiles.length > 0 && (
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        if (!confirm(`Apply changes from Master Checklist to ${masterCopyBatchFiles.length} batch files? This will generate a ZIP download.`)) return;
+                                                                <>
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (!confirm(`Apply changes from Master Checklist to ${masterCopyBatchFiles.length} batch files? This will generate a ZIP download.`)) return;
 
-                                                                        try {
-                                                                            const zip = new JSZip();
-                                                                            const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+                                                                            try {
+                                                                                const zip = new JSZip();
+                                                                                const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
 
-                                                                            let processedCount = 0;
+                                                                                let processedCount = 0;
 
-                                                                            for (const file of masterCopyBatchFiles) {
-                                                                                console.log('[Batch Export] Processing file:', file.filename);
-                                                                                // Clone the original raw structure to preserve all STIG metadata
-                                                                                const exportData = JSON.parse(JSON.stringify(file.rawJson || { stigs: [{ rules: [] }] }));
+                                                                                for (const file of masterCopyBatchFiles) {
+                                                                                    console.log('[Batch Export] Processing file:', file.filename);
+                                                                                    // Clone the original raw structure to preserve all STIG metadata
+                                                                                    const exportData = JSON.parse(JSON.stringify(file.rawJson || { stigs: [{ rules: [] }] }));
 
-                                                                                const mapStatus = (s: string) => {
-                                                                                    const raw = (s || '').toLowerCase().replace(/[^a-z]/g, '');
-                                                                                    if (raw.includes('open')) return 'open';
-                                                                                    if (raw.includes('notafinding')) return 'not_a_finding';
-                                                                                    if (raw.includes('notapplicable')) return 'not_applicable';
-                                                                                    return 'not_reviewed';
-                                                                                };
+                                                                                    const mapStatus = (s: string) => {
+                                                                                        const raw = (s || '').toLowerCase().replace(/[^a-z]/g, '');
+                                                                                        if (raw.includes('open')) return 'open';
+                                                                                        if (raw.includes('notafinding')) return 'not_a_finding';
+                                                                                        if (raw.includes('notapplicable')) return 'not_applicable';
+                                                                                        return 'not_reviewed';
+                                                                                    };
 
-                                                                                // Process nested structure (typical for CKLB/STIG Viewer 3)
-                                                                                if (exportData.stigs) {
-                                                                                    console.log('[Batch Export] Found STIGs array in:', file.filename);
-                                                                                    exportData.stigs = exportData.stigs.map((stig: any) => ({
-                                                                                        ...stig,
-                                                                                        uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
-                                                                                        rules: stig.rules?.map((rule: any) => {
-                                                                                            // Match by Vuln ID or Rule ID
-                                                                                            const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
+                                                                                    // Process nested structure (typical for CKLB/STIG Viewer 3)
+                                                                                    if (exportData.stigs) {
+                                                                                        console.log('[Batch Export] Found STIGs array in:', file.filename);
+                                                                                        exportData.stigs = exportData.stigs.map((stig: any) => ({
+                                                                                            ...stig,
+                                                                                            uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                            rules: stig.rules?.map((rule: any) => {
+                                                                                                // Match by Vuln ID or Rule ID
+                                                                                                const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
+                                                                                                if (finding) {
+                                                                                                    const newStatus = mapStatus(finding.status);
+                                                                                                    console.log(`[Batch Export] ${file.filename} - Rule ${rule.rule_id}: Mapping status ${finding.status} -> ${newStatus}`);
+                                                                                                    return {
+                                                                                                        ...rule,
+                                                                                                        uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                                        status: newStatus,
+                                                                                                        finding_details: finding.findingDetails || rule.finding_details,
+                                                                                                        comments: ""
+                                                                                                    };
+                                                                                                }
+                                                                                                return { ...rule, uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()) };
+                                                                                            })
+                                                                                        }));
+                                                                                        if (exportData.target_data) {
+                                                                                            exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
+                                                                                        }
+                                                                                    } else if (exportData.findings) {
+                                                                                        console.log('[Batch Export] Found flat findings array in:', file.filename);
+                                                                                        exportData.findings = exportData.findings.map((f: any) => {
+                                                                                            const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
                                                                                             if (finding) {
-                                                                                                const newStatus = mapStatus(finding.status);
-                                                                                                console.log(`[Batch Export] ${file.filename} - Rule ${rule.rule_id}: Mapping status ${finding.status} -> ${newStatus}`);
                                                                                                 return {
-                                                                                                    ...rule,
-                                                                                                    uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
-                                                                                                    status: newStatus,
-                                                                                                    finding_details: finding.findingDetails || rule.finding_details,
-                                                                                                    comments: finding.comments || rule.comments
+                                                                                                    ...f,
+                                                                                                    status: mapStatus(finding.status),
+                                                                                                    finding_details: finding.findingDetails || f.finding_details,
+                                                                                                    comments: ""
                                                                                                 };
                                                                                             }
-                                                                                            return { ...rule, uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()) };
-                                                                                        })
-                                                                                    }));
-                                                                                    if (exportData.target_data) {
-                                                                                        exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
+                                                                                            return f;
+                                                                                        });
                                                                                     }
-                                                                                } else if (exportData.findings) {
-                                                                                    console.log('[Batch Export] Found flat findings array in:', file.filename);
-                                                                                    exportData.findings = exportData.findings.map((f: any) => {
-                                                                                        const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
+
+                                                                                    // Ensure file extension is .cklb
+                                                                                    let filename = file.filename;
+                                                                                    if (filename.toLowerCase().endsWith('.ckl')) {
+                                                                                        filename = filename.replace(/\.ckl$/i, '.cklb');
+                                                                                    } else if (!filename.toLowerCase().endsWith('.cklb')) {
+                                                                                        filename += '.cklb';
+                                                                                    }
+
+                                                                                    zip.file(filename, JSON.stringify(exportData, null, 2));
+                                                                                    processedCount++;
+                                                                                }
+
+                                                                                const content = await zip.generateAsync({ type: "blob" });
+                                                                                const url = URL.createObjectURL(content);
+                                                                                const a = document.createElement('a');
+                                                                                a.href = url;
+                                                                                a.download = `master_batch_export_${new Date().toISOString().split('T')[0]}.zip`;
+                                                                                a.click();
+
+                                                                                alert(`Successfully processed ${processedCount} files.`);
+                                                                            } catch (e) {
+                                                                                console.error('[Batch Export] ERROR:', e);
+                                                                                alert('Error generating batch export. Check console.');
+                                                                            }
+                                                                        }}
+                                                                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2"
+                                                                    >
+                                                                        <Copy size={14} /> Apply to Batch & Download
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            // Simple CKLB export of Master (Analyzer-style for STIG Viewer 3 compatibility)
+                                                                            if (!masterCopyTarget) {
+                                                                                console.error('[Master Export] No target data found.');
+                                                                                return;
+                                                                            }
+                                                                            console.log('[Master Export] Starting export for:', masterCopyTarget.filename);
+                                                                            console.log('[Master Export] Raw JSON structure:', masterCopyTarget.rawJson);
+
+                                                                            const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
+                                                                            const exportData = JSON.parse(JSON.stringify(masterCopyTarget.rawJson || { stigs: [{ rules: [] }] }));
+
+                                                                            const mapStatus = (s: string) => {
+                                                                                const raw = (s || '').toLowerCase().replace(/[^a-z]/g, '');
+                                                                                if (raw.includes('open')) return 'open';
+                                                                                if (raw.includes('notafinding')) return 'not_a_finding';
+                                                                                if (raw.includes('notapplicable')) return 'not_applicable';
+                                                                                return 'not_reviewed';
+                                                                            };
+
+                                                                            if (exportData.stigs) {
+                                                                                console.log('[Master Export] Found STIGs array.');
+                                                                                exportData.stigs = exportData.stigs.map((stig: any) => ({
+                                                                                    ...stig,
+                                                                                    uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                    rules: stig.rules?.map((rule: any) => {
+                                                                                        const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
                                                                                         if (finding) {
+                                                                                            const newStatus = mapStatus(finding.status);
+                                                                                            console.log(`[Master Export] Rule ${rule.rule_id}: Mapping status ${finding.status} -> ${newStatus}`);
                                                                                             return {
-                                                                                                ...f,
-                                                                                                status: mapStatus(finding.status),
-                                                                                                finding_details: finding.findingDetails || f.finding_details,
-                                                                                                comments: finding.comments || f.comments
+                                                                                                ...rule,
+                                                                                                uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
+                                                                                                status: newStatus,
+                                                                                                finding_details: finding.findingDetails || rule.finding_details,
+                                                                                                comments: ""
                                                                                             };
                                                                                         }
-                                                                                        return f;
-                                                                                    });
+                                                                                        return { ...rule, uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()) };
+                                                                                    })
+                                                                                }));
+                                                                                if (exportData.target_data) {
+                                                                                    exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
                                                                                 }
-
-                                                                                // Ensure file extension is .cklb
-                                                                                let filename = file.filename;
-                                                                                if (filename.toLowerCase().endsWith('.ckl')) {
-                                                                                    filename = filename.replace(/\.ckl$/i, '.cklb');
-                                                                                } else if (!filename.toLowerCase().endsWith('.cklb')) {
-                                                                                    filename += '.cklb';
-                                                                                }
-
-                                                                                zip.file(filename, JSON.stringify(exportData, null, 2));
-                                                                                processedCount++;
+                                                                            } else if (exportData.findings) {
+                                                                                console.log('[Master Export] Found flat findings array.');
+                                                                                exportData.findings = exportData.findings.map((f: any) => {
+                                                                                    const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
+                                                                                    if (finding) {
+                                                                                        return {
+                                                                                            ...f,
+                                                                                            status: mapStatus(finding.status),
+                                                                                            finding_details: finding.findingDetails || f.finding_details,
+                                                                                            comments: ""
+                                                                                        };
+                                                                                    }
+                                                                                    return f;
+                                                                                });
                                                                             }
 
-                                                                            const content = await zip.generateAsync({ type: "blob" });
-                                                                            const url = URL.createObjectURL(content);
+                                                                            console.log('[Master Export] Final mapped data:', exportData);
+                                                                            const data = JSON.stringify(exportData, null, 2);
+                                                                            const blob = new Blob([data], { type: 'application/json' });
+                                                                            const url = URL.createObjectURL(blob);
                                                                             const a = document.createElement('a');
                                                                             a.href = url;
-                                                                            a.download = `master_batch_export_${new Date().toISOString().split('T')[0]}.zip`;
-                                                                            a.click();
 
-                                                                            alert(`Successfully processed ${processedCount} files.`);
-                                                                        } catch (e) {
-                                                                            console.error('[Batch Export] ERROR:', e);
-                                                                            alert('Error generating batch export. Check console.');
-                                                                        }
-                                                                    }}
-                                                                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2"
-                                                                >
-                                                                    <Copy size={14} /> Apply to Batch & Download
-                                                                </button>
-                                                                                                                        <button
-                                                                onClick={() => {
-                                                                    // Simple CKLB export of Master (Analyzer-style for STIG Viewer 3 compatibility)
-                                                                    if (!masterCopyTarget) {
-                                                                        console.error('[Master Export] No target data found.');
-                                                                        return;
-                                                                    }
-                                                                    console.log('[Master Export] Starting export for:', masterCopyTarget.filename);
-                                                                    console.log('[Master Export] Raw JSON structure:', masterCopyTarget.rawJson);
-
-                                                                    const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
-                                                                    const exportData = JSON.parse(JSON.stringify(masterCopyTarget.rawJson || { stigs: [{ rules: [] }] }));
-
-                                                                    const mapStatus = (s: string) => {
-                                                                        const raw = (s || '').toLowerCase().replace(/[^a-z]/g, '');
-                                                                        if (raw.includes('open')) return 'open';
-                                                                        if (raw.includes('notafinding')) return 'not_a_finding';
-                                                                        if (raw.includes('notapplicable')) return 'not_applicable';
-                                                                        return 'not_reviewed';
-                                                                    };
-
-                                                                    if (exportData.stigs) {
-                                                                        console.log('[Master Export] Found STIGs array.');
-                                                                        exportData.stigs = exportData.stigs.map((stig: any) => ({
-                                                                            ...stig,
-                                                                            uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
-                                                                            rules: stig.rules?.map((rule: any) => {
-                                                                                const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
-                                                                                if (finding) {
-                                                                                    const newStatus = mapStatus(finding.status);
-                                                                                    console.log(`[Master Export] Rule ${rule.rule_id}: Mapping status ${finding.status} -> ${newStatus}`);
-                                                                                    return {
-                                                                                        ...rule,
-                                                                                        uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
-                                                                                        status: newStatus,
-                                                                                        finding_details: finding.findingDetails || rule.finding_details,
-                                                                                        comments: finding.comments || rule.comments
-                                                                                    };
-                                                                                }
-                                                                                return { ...rule, uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()) };
-                                                                            })
-                                                                        }));
-                                                                        if (exportData.target_data) {
-                                                                            exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
-                                                                        }
-                                                                    } else if (exportData.findings) {
-                                                                        console.log('[Master Export] Found flat findings array.');
-                                                                        exportData.findings = exportData.findings.map((f: any) => {
-                                                                            const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
-                                                                            if (finding) {
-                                                                                return {
-                                                                                    ...f,
-                                                                                    status: mapStatus(finding.status),
-                                                                                    finding_details: finding.findingDetails || f.finding_details,
-                                                                                    comments: finding.comments || f.comments
-                                                                                };
+                                                                            let filename = masterCopyTarget.filename;
+                                                                            if (filename.toLowerCase().endsWith('.ckl')) {
+                                                                                filename = filename.replace(/\.ckl$/i, '.cklb');
+                                                                            } else if (!filename.toLowerCase().endsWith('.cklb')) {
+                                                                                filename += '.cklb';
                                                                             }
-                                                                            return f;
-                                                                        });
-                                                                    }
-
-                                                                    console.log('[Master Export] Final mapped data:', exportData);
-                                                                    const data = JSON.stringify(exportData, null, 2);
-                                                                    const blob = new Blob([data], { type: 'application/json' });
-                                                                    const url = URL.createObjectURL(blob);
-                                                                    const a = document.createElement('a');
-                                                                    a.href = url;
-
-                                                                    let filename = masterCopyTarget.filename;
-                                                                    if (filename.toLowerCase().endsWith('.ckl')) {
-                                                                        filename = filename.replace(/\.ckl$/i, '.cklb');
-                                                                    } else if (!filename.toLowerCase().endsWith('.cklb')) {
-                                                                        filename += '.cklb';
-                                                                    }
-                                                                    a.download = filename;
-                                                                    a.click();
-                                                                    console.log('[Master Export] Export complete.');
-                                                                }}
-                                                                className="px-3 py-1.5 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-100"
-                                                            >
-                                                                Export Master CKLB
-                                                            </button>
+                                                                            a.download = filename;
+                                                                            a.click();
+                                                                            console.log('[Master Export] Download initiated for:', filename);
+                                                                        }}
+                                                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2"
+                                                                    >
+                                                                        Export Master CKLB
+                                                                    </button>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -7447,6 +7452,7 @@ function App() {
                                                                                         const updated = prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, status: val } : f);
                                                                                         return { ...prev, findings: updated };
                                                                                     });
+                                                                                    setMasterCopyDoneIds(prev => new Set(prev).add(row.vulnId));
                                                                                 }}
                                                                                 className={`text-xs border rounded p-1 font-bold ${(finding.status || '').toLowerCase().includes('open') ? 'text-red-600 bg-red-50' :
                                                                                     (finding.status || '').toLowerCase().includes('notafinding') ? 'text-green-600 bg-green-50' : 'text-gray-600'
@@ -7507,8 +7513,7 @@ function App() {
                                                                                                                 const finalDetails = sourceDetails + (sourceDetails && currentDetails ? "\n\n" : "") + currentDetails;
                                                                                                                 return {
                                                                                                                     ...f,
-                                                                                                                    findingDetails: finalDetails,
-                                                                                                                    comments: old.comments || old.findingDetails
+                                                                                                                    findingDetails: finalDetails
                                                                                                                 };
                                                                                                             }
                                                                                                             return f;
@@ -7565,8 +7570,9 @@ function App() {
                                                                                         onChange={(e) => {
                                                                                             setMasterCopyTarget((prev: any) => {
                                                                                                 if (!prev) return null;
-                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value, comments: e.target.value } : f) };
+                                                                                                return { ...prev, findings: prev.findings.map((f: any) => f.vulnId === row.vulnId ? { ...f, findingDetails: e.target.value } : f) };
                                                                                             });
+                                                                                            setMasterCopyDoneIds(prev => new Set(prev).add(row.vulnId));
                                                                                         }}
                                                                                     />
                                                                                 </div>
