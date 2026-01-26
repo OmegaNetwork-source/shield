@@ -6115,38 +6115,50 @@ function App() {
                                                                 }
                                                             };
                                                             const handleExportCKLB = () => {
-                                                                if (!analyzerNewChecklist) return;
+                                                                if (!analyzerNewChecklist) {
+                                                                    console.error('[Analyzer Export] No checklist data found.');
+                                                                    return;
+                                                                }
+                                                                console.log('[Analyzer Export] Starting export for:', analyzerNewChecklist.filename);
+                                                                console.log('[Analyzer Export] Raw JSON structure:', analyzerNewChecklist.rawJson);
+
                                                                 const exportData = {
                                                                     ...analyzerNewChecklist.rawJson,
-                                                                    stigs: analyzerNewChecklist.rawJson?.stigs?.map((stig: any) => ({
-                                                                        ...stig,
-                                                                        uuid: stig.uuid || self.crypto.randomUUID(),
-                                                                        rules: stig.rules?.map((rule: any) => {
-                                                                            const finding = analyzerNewChecklist.findings.find(f => f.vulnId === rule.group_id || f.ruleId === rule.rule_id);
-                                                                            if (finding) {
-                                                                                const { reviews, ...rest } = rule;
-                                                                                return {
-                                                                                    ...rest,
-                                                                                    uuid: rest.uuid || self.crypto.randomUUID(),
-                                                                                    status: (() => {
+                                                                    stigs: analyzerNewChecklist.rawJson?.stigs?.map((stig: any) => {
+                                                                        console.log('[Analyzer Export] Processing STIG:', stig.stig_id || stig.uuid);
+                                                                        return {
+                                                                            ...stig,
+                                                                            uuid: stig.uuid || self.crypto.randomUUID(),
+                                                                            rules: stig.rules?.map((rule: any) => {
+                                                                                const finding = analyzerNewChecklist.findings.find(f => f.vulnId === rule.group_id || f.ruleId === rule.rule_id);
+                                                                                if (finding) {
+                                                                                    const { reviews, ...rest } = rule;
+                                                                                    const newStatus = (() => {
                                                                                         const s = (finding.status || '').toLowerCase().replace(/[^a-z]/g, '');
                                                                                         if (s.includes('open')) return 'open';
                                                                                         if (s.includes('notafinding')) return 'not_a_finding';
                                                                                         if (s.includes('notapplicable')) return 'not_applicable';
                                                                                         return 'not_reviewed';
-                                                                                    })(),
-                                                                                    finding_details: finding.findingDetails || rule.finding_details,
-                                                                                    comments: finding.comments || rule.comments
-                                                                                };
-                                                                            }
-                                                                            return { ...rule, uuid: rule.uuid || self.crypto.randomUUID() };
-                                                                        })
-                                                                    })),
+                                                                                    })();
+                                                                                    console.log(`[Analyzer Export] Rule ${rule.rule_id}: Status ${finding.status} -> ${newStatus}`);
+                                                                                    return {
+                                                                                        ...rest,
+                                                                                        uuid: rest.uuid || self.crypto.randomUUID(),
+                                                                                        status: newStatus,
+                                                                                        finding_details: finding.findingDetails || rule.finding_details,
+                                                                                        comments: finding.comments || rule.comments
+                                                                                    };
+                                                                                }
+                                                                                return { ...rule, uuid: rule.uuid || self.crypto.randomUUID() };
+                                                                            })
+                                                                        };
+                                                                    }),
                                                                     target_data: {
                                                                         ...analyzerNewChecklist.rawJson?.target_data,
                                                                         uuid: analyzerNewChecklist.rawJson?.target_data?.uuid || self.crypto.randomUUID()
                                                                     }
                                                                 };
+                                                                console.log('[Analyzer Export] Final mapped data:', exportData);
                                                                 const cklbData = JSON.stringify(exportData, null, 2);
                                                                 const blob = new Blob([cklbData], { type: 'application/json' });
                                                                 const url = URL.createObjectURL(blob);
@@ -6157,6 +6169,7 @@ function App() {
                                                                 a.click();
                                                                 document.body.removeChild(a);
                                                                 URL.revokeObjectURL(url);
+                                                                console.log('[Analyzer Export] Export complete.');
                                                             };
                                                             return (
                                                                 <>
@@ -7134,7 +7147,7 @@ function App() {
                                                                 <>
                                                                     <button
                                                                         onClick={() => {
-                                                                            if (!confirm(`Copy Status and Prepend Details for ${masterCopySelectedIds.size} items?`)) return;
+                                                                            if (!confirm(`Copy Status and Prepend Details for ${masterCopySelectedIds.size} items? These will move to the DONE tab.`)) return;
                                                                             setMasterCopyTarget((prev: any) => {
                                                                                 if (!prev) return null;
                                                                                 const newFindings = prev.findings.map((f: any) => {
@@ -7157,6 +7170,12 @@ function App() {
                                                                                 });
                                                                                 return { ...prev, findings: newFindings };
                                                                             });
+                                                                            setMasterCopyDoneIds(prev => {
+                                                                                const next = new Set(prev);
+                                                                                masterCopySelectedIds.forEach(id => next.add(id));
+                                                                                return next;
+                                                                            });
+                                                                            setMasterCopyTab('done');
                                                                             setMasterCopySelectedIds(new Set());
                                                                         }}
                                                                         className="px-3 py-1.5 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700"
@@ -7179,6 +7198,7 @@ function App() {
                                                                             let processedCount = 0;
 
                                                                             for (const file of masterCopyBatchFiles) {
+                                                                                console.log('[Batch Export] Processing file:', file.filename);
                                                                                 // Clone the original raw structure to preserve all STIG metadata
                                                                                 const exportData = JSON.parse(JSON.stringify(file.rawJson || { stigs: [{ rules: [] }] }));
 
@@ -7192,6 +7212,7 @@ function App() {
 
                                                                                 // Process nested structure (typical for CKLB/STIG Viewer 3)
                                                                                 if (exportData.stigs) {
+                                                                                    console.log('[Batch Export] Found STIGs array in:', file.filename);
                                                                                     exportData.stigs = exportData.stigs.map((stig: any) => ({
                                                                                         ...stig,
                                                                                         uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
@@ -7199,10 +7220,12 @@ function App() {
                                                                                             // Match by Vuln ID or Rule ID
                                                                                             const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
                                                                                             if (finding) {
+                                                                                                const newStatus = mapStatus(finding.status);
+                                                                                                console.log(`[Batch Export] ${file.filename} - Rule ${rule.rule_id}: Mapping status ${finding.status} -> ${newStatus}`);
                                                                                                 return {
                                                                                                     ...rule,
                                                                                                     uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
-                                                                                                    status: mapStatus(finding.status),
+                                                                                                    status: newStatus,
                                                                                                     finding_details: finding.findingDetails || rule.finding_details,
                                                                                                     comments: finding.comments || rule.comments
                                                                                                 };
@@ -7214,7 +7237,7 @@ function App() {
                                                                                         exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
                                                                                     }
                                                                                 } else if (exportData.findings) {
-                                                                                    // Handle flat format if present
+                                                                                    console.log('[Batch Export] Found flat findings array in:', file.filename);
                                                                                     exportData.findings = exportData.findings.map((f: any) => {
                                                                                         const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
                                                                                         if (finding) {
@@ -7250,18 +7273,24 @@ function App() {
 
                                                                             alert(`Successfully processed ${processedCount} files.`);
                                                                         } catch (e) {
-                                                                            console.error(e);
-                                                                            alert('Error generating batch export.');
+                                                                            console.error('[Batch Export] ERROR:', e);
+                                                                            alert('Error generating batch export. Check console.');
                                                                         }
                                                                     }}
                                                                     className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2"
                                                                 >
                                                                     <Copy size={14} /> Apply to Batch & Download
                                                                 </button>
-                                                            )}
-                                                            <button
+                                                                                                                        <button
                                                                 onClick={() => {
                                                                     // Simple CKLB export of Master (Analyzer-style for STIG Viewer 3 compatibility)
+                                                                    if (!masterCopyTarget) {
+                                                                        console.error('[Master Export] No target data found.');
+                                                                        return;
+                                                                    }
+                                                                    console.log('[Master Export] Starting export for:', masterCopyTarget.filename);
+                                                                    console.log('[Master Export] Raw JSON structure:', masterCopyTarget.rawJson);
+
                                                                     const masterMap = new Map(masterCopyTarget.findings.map(f => [f.vulnId, f]));
                                                                     const exportData = JSON.parse(JSON.stringify(masterCopyTarget.rawJson || { stigs: [{ rules: [] }] }));
 
@@ -7274,16 +7303,19 @@ function App() {
                                                                     };
 
                                                                     if (exportData.stigs) {
+                                                                        console.log('[Master Export] Found STIGs array.');
                                                                         exportData.stigs = exportData.stigs.map((stig: any) => ({
                                                                             ...stig,
                                                                             uuid: stig.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
                                                                             rules: stig.rules?.map((rule: any) => {
                                                                                 const finding = masterMap.get(rule.group_id || rule.vulnId || rule.rule_id);
                                                                                 if (finding) {
+                                                                                    const newStatus = mapStatus(finding.status);
+                                                                                    console.log(`[Master Export] Rule ${rule.rule_id}: Mapping status ${finding.status} -> ${newStatus}`);
                                                                                     return {
                                                                                         ...rule,
                                                                                         uuid: rule.uuid || (window.crypto?.randomUUID() || Math.random().toString()),
-                                                                                        status: mapStatus(finding.status),
+                                                                                        status: newStatus,
                                                                                         finding_details: finding.findingDetails || rule.finding_details,
                                                                                         comments: finding.comments || rule.comments
                                                                                     };
@@ -7295,6 +7327,7 @@ function App() {
                                                                             exportData.target_data.uuid = exportData.target_data.uuid || (window.crypto?.randomUUID() || Math.random().toString());
                                                                         }
                                                                     } else if (exportData.findings) {
+                                                                        console.log('[Master Export] Found flat findings array.');
                                                                         exportData.findings = exportData.findings.map((f: any) => {
                                                                             const finding = masterMap.get(f.vulnId || f.groupId || f.ruleId);
                                                                             if (finding) {
@@ -7309,6 +7342,7 @@ function App() {
                                                                         });
                                                                     }
 
+                                                                    console.log('[Master Export] Final mapped data:', exportData);
                                                                     const data = JSON.stringify(exportData, null, 2);
                                                                     const blob = new Blob([data], { type: 'application/json' });
                                                                     const url = URL.createObjectURL(blob);
@@ -7323,6 +7357,7 @@ function App() {
                                                                     }
                                                                     a.download = filename;
                                                                     a.click();
+                                                                    console.log('[Master Export] Export complete.');
                                                                 }}
                                                                 className="px-3 py-1.5 border border-gray-300 rounded text-xs font-semibold hover:bg-gray-100"
                                                             >
