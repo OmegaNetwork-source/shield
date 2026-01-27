@@ -2327,7 +2327,58 @@ function App() {
                     { wch: 40 }  // Discussion
                 ];
 
-                XLSX.utils.book_append_sheet(workbookOpen, openSheet, 'OPEN FINDINGS');
+                XLSX.utils.book_append_sheet(workbookOpen, openSheet, 'ALL OPEN FINDINGS');
+
+                // 3. Create Detail Sheets for each STIG Group (Open Findings Only)
+                stigGroups.forEach((checklists, stigName) => {
+                    const stigOpenFindings = [['Hostname', 'Vuln ID', 'Rule ID', 'STIG ID', 'Severity', 'Classification', 'Status', 'Title', 'Comments', 'CCIs', 'Fix Text', 'Discussion']];
+                    let hasOpen = false;
+
+                    checklists.forEach(ckl => {
+                        ckl.findings.forEach(f => {
+                            const s = (f.status || '').toLowerCase().replace(/[\s_]/g, '');
+                            if (s === 'open' || s === 'fail' || s === 'failed') {
+                                hasOpen = true;
+                                let sev = f.severity?.toLowerCase() || '';
+                                if (sev === 'high') sev = 'CAT I';
+                                else if (sev === 'medium') sev = 'CAT II';
+                                else if (sev === 'low') sev = 'CAT III';
+
+                                stigOpenFindings.push([
+                                    ckl.hostname,
+                                    f.vulnId,
+                                    f.ruleId || 'N/A',
+                                    ckl.stigName,
+                                    sev,
+                                    f.classification || 'UNCLASSIFIED',
+                                    f.status,
+                                    f.title,
+                                    f.comments,
+                                    (f.ccis || []).join(', '),
+                                    f.fixText || '',
+                                    f.description || ''
+                                ]);
+                            }
+                        });
+                    });
+
+                    if (hasOpen) {
+                        const safeName = stigName.replace(/[\[\]*?\/\\:]/g, '').substring(0, 31);
+                        let uniqueSheetName = safeName;
+                        let counter = 1;
+                        while (workbookOpen.Sheets[uniqueSheetName]) {
+                            uniqueSheetName = safeName.substring(0, 28) + ` (${counter++})`;
+                        }
+
+                        const sheet = XLSX.utils.aoa_to_sheet(stigOpenFindings);
+                        sheet['!cols'] = [
+                            { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 8 },
+                            { wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 40 }, { wch: 20 },
+                            { wch: 40 }, { wch: 40 }
+                        ];
+                        XLSX.utils.book_append_sheet(workbookOpen, sheet, uniqueSheetName);
+                    }
+                });
 
                 XLSX.writeFile(workbookOpen, `STIG_Values_Open_Findings_${new Date().toISOString().split('T')[0]}.xlsx`);
 
