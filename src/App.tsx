@@ -2258,6 +2258,84 @@ function App() {
 
             XLSX.writeFile(workbook, `STIG_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
 
+            // --- Generate Second Report: Open Findings Only ---
+            try {
+                const workbookOpen = XLSX.utils.book_new();
+
+                // 1. Add Same Summary Sheet
+                const summarySheetOpen = XLSX.utils.aoa_to_sheet([summaryHeader1, summaryHeader2, ...summaryRows]);
+
+                // Set Column Widths (Same as original)
+                summarySheetOpen['!cols'] = [
+                    { wch: 40 }, // STIG
+                    { wch: 15 }, // Instances
+                    { wch: 15 }, // Total Controls
+                    // CAT I
+                    { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 },
+                    // CAT II
+                    { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 },
+                    // CAT III
+                    { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 8 }
+                ];
+
+                XLSX.utils.book_append_sheet(workbookOpen, summarySheetOpen, 'CURRENT ENVIRONMENT');
+
+                // 2. Build Open Findings Data (Aggregate all open findings)
+                const openFindingsData = [['Hostname', 'Vuln ID', 'Rule ID', 'STIG ID', 'Severity', 'Classification', 'Status', 'Title', 'Comments', 'CCIs', 'Fix Text', 'Discussion']];
+
+                uploadedChecklists.forEach(ckl => {
+                    ckl.findings.forEach(f => {
+                        const s = (f.status || '').toLowerCase().replace(/[\s_]/g, '');
+                        // Check for Open or Fail status
+                        if (s === 'open' || s === 'fail' || s === 'failed') {
+                            let sev = f.severity?.toLowerCase() || '';
+                            if (sev === 'high') sev = 'CAT I';
+                            else if (sev === 'medium') sev = 'CAT II';
+                            else if (sev === 'low') sev = 'CAT III';
+
+                            openFindingsData.push([
+                                ckl.hostname,
+                                f.vulnId,           // Group ID (V-XXXX)
+                                f.ruleId || 'N/A',  // Rule ID (SV-XXXX)
+                                ckl.stigName,
+                                sev,
+                                f.classification || 'UNCLASSIFIED',
+                                f.status,
+                                f.title,
+                                f.comments,
+                                (f.ccis || []).join(', '),
+                                f.fixText || '',
+                                f.description || ''
+                            ]);
+                        }
+                    });
+                });
+
+                const openSheet = XLSX.utils.aoa_to_sheet(openFindingsData);
+                openSheet['!cols'] = [
+                    { wch: 20 }, // Hostname
+                    { wch: 15 }, // Vuln ID
+                    { wch: 15 }, // Rule ID
+                    { wch: 30 }, // STIG ID
+                    { wch: 8 },  // Severity
+                    { wch: 15 }, // Classification
+                    { wch: 15 }, // Status
+                    { wch: 40 }, // Title
+                    { wch: 40 }, // Comments
+                    { wch: 20 }, // CCIs
+                    { wch: 40 }, // Fix Text
+                    { wch: 40 }  // Discussion
+                ];
+
+                XLSX.utils.book_append_sheet(workbookOpen, openSheet, 'OPEN FINDINGS');
+
+                XLSX.writeFile(workbookOpen, `STIG_Values_Open_Findings_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+            } catch (e) {
+                console.error("Error generating Open Findings report:", e);
+                // Don't block the main flow if this optional report fails, but logging is good.
+            }
+
         } catch (error) {
             console.error('Report Generation Error:', error);
             alert('Failed to generate report. Check console.');
