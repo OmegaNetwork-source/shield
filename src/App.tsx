@@ -8209,7 +8209,14 @@ function App() {
                                                             <div className="flex flex-wrap items-center gap-2 mt-2">
                                                                 <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 transition-colors">
                                                                     <FolderOpen size={12} /> Add folder
-                                                                    <input type="file" className="hidden" webkitdirectory="" directory="" accept=".ckl,.cklb" onChange={(e) => { const files = Array.from(e.target.files || []); const stig = files.filter(f => /\.(ckl|cklb)$/i.test(f.name)); setMiscChecklistFiles(prev => [...prev, ...stig]); setMiscResult(null); e.target.value = ''; }} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                                                                    <input
+                                                                        type="file"
+                                                                        className="hidden"
+                                                                        accept=".ckl,.cklb"
+                                                                        {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
+                                                                        onChange={(e) => { const files = Array.from(e.target.files || []); const stig = files.filter(f => /\.(ckl|cklb)$/i.test(f.name)); setMiscChecklistFiles(prev => [...prev, ...stig]); setMiscResult(null); e.target.value = ''; }}
+                                                                        onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                                                                    />
                                                                 </label>
                                                                 <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 transition-colors">
                                                                     <Upload size={12} /> Add files
@@ -8226,10 +8233,8 @@ function App() {
                                                                 <input
                                                                     type="file"
                                                                     className="hidden"
-                                                                    // @ts-ignore - webkitdirectory is supported for folder picker
-                                                                    webkitdirectory=""
-                                                                    directory=""
                                                                     accept=".ckl,.cklb"
+                                                                    {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
                                                                     onChange={(e) => {
                                                                         const files = Array.from(e.target.files || []);
                                                                         const stigFiles = files.filter(f => f.name.toLowerCase().endsWith('.ckl') || f.name.toLowerCase().endsWith('.cklb'));
