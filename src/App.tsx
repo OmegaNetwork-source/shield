@@ -8200,20 +8200,66 @@ function App() {
                                             {/* Step 1: Bulk checklists (optional) */}
                                             <div className="mb-6">
                                                 <h3 className="text-sm font-semibold uppercase text-gray-500 mb-2">1. Bulk upload checklists (optional)</h3>
-                                                <p className="text-xs text-gray-500 mb-2">CKL/CKLB files. Used to map SV- IDs to the correct STIG and rule info. If omitted, mapping uses built-in STIG XMLs.</p>
+                                                <p className="text-xs text-gray-500 mb-2">CKL/CKLB files. Used to map SV- IDs to the correct STIG, status (Open, Not_Reviewed, etc.), and rule info. If omitted, mapping uses built-in STIG XMLs.</p>
                                                 <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${miscChecklistFiles.length > 0 ? 'border-green-500 bg-green-50 dark:bg-green-900/20 dark:border-green-600' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
                                                     {miscChecklistFiles.length > 0 ? (
                                                         <div>
                                                             <div className="text-sm font-medium">{miscChecklistFiles.length} checklist(s) loaded</div>
                                                             <div className="text-xs text-gray-500 max-h-24 overflow-y-auto mt-1">{miscChecklistFiles.map((f, i) => <div key={i} className="truncate">{f.name}</div>)}</div>
-                                                            <button type="button" onClick={() => { setMiscChecklistFiles([]); setMiscResult(null); }} className="text-xs text-red-500 hover:underline mt-1">Clear</button>
+                                                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                                <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 transition-colors">
+                                                                    <FolderOpen size={12} /> Add folder
+                                                                    <input type="file" className="hidden" webkitdirectory="" directory="" accept=".ckl,.cklb" onChange={(e) => { const files = Array.from(e.target.files || []); const stig = files.filter(f => /\.(ckl|cklb)$/i.test(f.name)); setMiscChecklistFiles(prev => [...prev, ...stig]); setMiscResult(null); e.target.value = ''; }} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                                                                </label>
+                                                                <label className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-700 dark:text-slate-200 transition-colors">
+                                                                    <Upload size={12} /> Add files
+                                                                    <input type="file" className="hidden" accept=".ckl,.cklb" multiple onChange={(e) => { const f = Array.from(e.target.files || []); setMiscChecklistFiles(prev => [...prev, ...f]); setMiscResult(null); e.target.value = ''; }} onClick={(e) => { (e.target as HTMLInputElement).value = ''; }} />
+                                                                </label>
+                                                                <button type="button" onClick={() => { setMiscChecklistFiles([]); setMiscResult(null); }} className="text-xs text-red-500 hover:underline">Clear</button>
+                                                            </div>
                                                         </div>
                                                     ) : (
-                                                        <label className="cursor-pointer block">
-                                                            <div className="size-10 mx-auto bg-gray-100 dark:bg-gray-700 text-gray-400 rounded-xl flex items-center justify-center mb-2"><FolderOpen size={20} /></div>
-                                                            <span className="text-sm text-gray-500">Select .ckl / .cklb files</span>
-                                                            <input type="file" className="hidden" accept=".ckl,.cklb" multiple onChange={(e) => { const f = Array.from(e.target.files || []); setMiscChecklistFiles(f); setMiscResult(null); e.target.value = ''; }} />
-                                                        </label>
+                                                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                                                            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">
+                                                                <FolderOpen size={18} />
+                                                                Select folder
+                                                                <input
+                                                                    type="file"
+                                                                    className="hidden"
+                                                                    // @ts-ignore - webkitdirectory is supported for folder picker
+                                                                    webkitdirectory=""
+                                                                    directory=""
+                                                                    accept=".ckl,.cklb"
+                                                                    onChange={(e) => {
+                                                                        const files = Array.from(e.target.files || []);
+                                                                        const stigFiles = files.filter(f => f.name.toLowerCase().endsWith('.ckl') || f.name.toLowerCase().endsWith('.cklb'));
+                                                                        setMiscChecklistFiles(stigFiles);
+                                                                        setMiscResult(null);
+                                                                        if (stigFiles.length === 0 && files.length > 0) alert('No .ckl or .cklb files found in the selected folder.');
+                                                                        e.target.value = '';
+                                                                    }}
+                                                                    onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                                                                />
+                                                            </label>
+                                                            <span className="text-xs text-gray-400">or</span>
+                                                            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 text-sm font-medium transition-colors">
+                                                                <Upload size={18} />
+                                                                Select files
+                                                                <input
+                                                                    type="file"
+                                                                    className="hidden"
+                                                                    accept=".ckl,.cklb"
+                                                                    multiple
+                                                                    onChange={(e) => {
+                                                                        const f = Array.from(e.target.files || []);
+                                                                        setMiscChecklistFiles(f);
+                                                                        setMiscResult(null);
+                                                                        e.target.value = '';
+                                                                    }}
+                                                                    onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                                                                />
+                                                            </label>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>

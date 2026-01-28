@@ -11,15 +11,17 @@ import { parseStigXML, parseCklFile, type ParsedChecklist } from './stig-parser'
 export interface RuleIndexEntry {
     ruleId: string;       // SV-253260
     groupId: string;       // V-253260 (Group/Vuln ID)
-    stigKey?: string;      // e.g. 'win11' (only from XML index)
-    stigName: string;      // e.g. 'Windows 11 STIG V2R5'
-    stigId: string;        // e.g. WN11-00-000031
+    stigKey?: string;     // e.g. 'win11' (only from XML index)
+    stigName: string;     // e.g. 'Windows 11 STIG V2R5'
+    stigId: string;       // e.g. WN11-00-000031
     title: string;
     severity: string;
     description: string;
     checkContent: string;
     fixContent: string;
     ccis: string[];
+    /** Status from checklist when built from CKL/CKLB (Open, Not_Reviewed, NotAFinding, etc.) */
+    status?: string;
 }
 
 /** Normalize Rule ID to base form SV-XXXX (strip revision suffix like r1117271_rule) */
@@ -100,6 +102,7 @@ export function buildRuleIndexFromChecklists(
                 checkContent: f.checkText || '',
                 fixContent: f.fixText || '',
                 ccis: f.ccis || [],
+                status: f.status || '',
             });
         }
     }

@@ -96,7 +96,7 @@ export function enrichMatches(
             'Fix Text': info?.fixContent ?? '',
             Severity: info?.severity ?? '',
             CCIs: info?.ccis?.join('; ') ?? '',
-            Status: '',
+            Status: info?.status ?? '',
         };
     });
 }
