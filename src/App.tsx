@@ -5,6 +5,8 @@ import {
     Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
+import { buildRuleIndexFromChecklistFiles } from './utils/stig-rule-index';
+import { mapExcelFileToStigInfo } from './utils/excel-sv-mapper';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
@@ -89,7 +91,7 @@ function App() {
     }, [showEvidenceModal, evidenceModalRule]);
 
     // Tools State
-    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor' | 'reportanalyzer' | 'master_copy'>('rename');
+    const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor' | 'reportanalyzer' | 'master_copy' | 'misc'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
     const [showDocsModal, setShowDocsModal] = useState(false);
     const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
@@ -168,6 +170,12 @@ function App() {
     }> | null>(null);
     const [reportProcessing, setReportProcessing] = useState(false);
     const [reportFilterSeverityChange, setReportFilterSeverityChange] = useState(false);
+
+    // Misc tool: SV- Rule ID → STIG mapper (bulk checklists + Excel)
+    const [miscChecklistFiles, setMiscChecklistFiles] = useState<File[]>([]);
+    const [miscExcelFile, setMiscExcelFile] = useState<File | null>(null);
+    const [miscResult, setMiscResult] = useState<{ workbook: XLSX.WorkBook; rows: Array<Record<string, string>>; matchCount: number } | null>(null);
+    const [miscLoading, setMiscLoading] = useState(false);
 
     // Analyzer State
     const [analyzerOldChecklist, setAnalyzerOldChecklist] = useState<typeof uploadedChecklists[0] | null>(null);
@@ -3207,6 +3215,16 @@ function App() {
                                     Report Analyzer
                                 </button>
                                 <button
+                                    onClick={() => { setActiveTab('tools'); setToolsMode('misc'); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'misc'
+                                        ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm')
+                                        : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')
+                                        }`}
+                                >
+                                    <div className="size-1 rounded-full bg-current opacity-50" />
+                                    Misc
+                                </button>
+                                <button
                                     onClick={() => setShowDocsModal(true)}
                                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'}`}
                                 >
@@ -5776,6 +5794,15 @@ function App() {
                                             <FileWarning size={18} />
                                             <div className="font-medium">Report Analyzer</div>
                                         </button>
+                                        <button
+                                            onClick={() => setToolsMode('misc')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${(toolsMode as string) === 'misc'
+                                                ? (darkMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-black text-white shadow-lg')
+                                                : (darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600')}`}
+                                        >
+                                            <Settings size={18} />
+                                            <div className="font-medium">Misc</div>
+                                        </button>
                                     </div>
                                 )}
 
@@ -8154,6 +8181,110 @@ function App() {
                                                     <p className="text-sm mt-2">The CSV should contain Group IDs. We'll look them up in your CKLB files to compare severities.</p>
                                                 </div>
                                             )}
+                                        </div>
+                                    )}
+
+                                    {/* Misc: SV- Rule ID → STIG mapper */}
+                                    {toolsMode === 'misc' && (
+                                        <div className={`p-6 rounded-2xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-100 dark:border-gray-700">
+                                                <div className="p-3 bg-slate-100 text-slate-600 rounded-xl dark:bg-slate-700 dark:text-slate-300">
+                                                    <Settings size={24} />
+                                                </div>
+                                                <div>
+                                                    <h2 className="text-xl font-semibold">SV- Rule ID → STIG Mapper</h2>
+                                                    <p className="text-sm text-gray-500">Upload checklists (optional) and an Excel sheet with SV- Rule IDs; get back a mapped sheet with STIG name, Group ID, title, discussion, check/fix text, and more.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Step 1: Bulk checklists (optional) */}
+                                            <div className="mb-6">
+                                                <h3 className="text-sm font-semibold uppercase text-gray-500 mb-2">1. Bulk upload checklists (optional)</h3>
+                                                <p className="text-xs text-gray-500 mb-2">CKL/CKLB files. Used to map SV- IDs to the correct STIG and rule info. If omitted, mapping uses built-in STIG XMLs.</p>
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${miscChecklistFiles.length > 0 ? 'border-green-500 bg-green-50 dark:bg-green-900/20 dark:border-green-600' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    {miscChecklistFiles.length > 0 ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium">{miscChecklistFiles.length} checklist(s) loaded</div>
+                                                            <div className="text-xs text-gray-500 max-h-24 overflow-y-auto mt-1">{miscChecklistFiles.map((f, i) => <div key={i} className="truncate">{f.name}</div>)}</div>
+                                                            <button type="button" onClick={() => { setMiscChecklistFiles([]); setMiscResult(null); }} className="text-xs text-red-500 hover:underline mt-1">Clear</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer block">
+                                                            <div className="size-10 mx-auto bg-gray-100 dark:bg-gray-700 text-gray-400 rounded-xl flex items-center justify-center mb-2"><FolderOpen size={20} /></div>
+                                                            <span className="text-sm text-gray-500">Select .ckl / .cklb files</span>
+                                                            <input type="file" className="hidden" accept=".ckl,.cklb" multiple onChange={(e) => { const f = Array.from(e.target.files || []); setMiscChecklistFiles(f); setMiscResult(null); e.target.value = ''; }} />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Step 2: Excel with SV- IDs */}
+                                            <div className="mb-6">
+                                                <h3 className="text-sm font-semibold uppercase text-gray-500 mb-2">2. Excel with SV- Rule IDs</h3>
+                                                <div className={`p-4 rounded-xl border-2 border-dashed text-center transition-colors ${miscExcelFile ? 'border-green-500 bg-green-50 dark:bg-green-900/20 dark:border-green-600' : (darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50')}`}>
+                                                    {miscExcelFile ? (
+                                                        <div>
+                                                            <div className="text-sm font-medium truncate">{miscExcelFile.name}</div>
+                                                            <button type="button" onClick={() => { setMiscExcelFile(null); setMiscResult(null); }} className="text-xs text-red-500 hover:underline mt-1">Remove</button>
+                                                        </div>
+                                                    ) : (
+                                                        <label className="cursor-pointer block">
+                                                            <div className="size-10 mx-auto bg-gray-100 dark:bg-gray-700 text-gray-400 rounded-xl flex items-center justify-center mb-2"><FileSpreadsheet size={20} /></div>
+                                                            <span className="text-sm text-gray-500">Select .xlsx / .xls file</span>
+                                                            <input type="file" className="hidden" accept=".xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setMiscExcelFile(f); setMiscResult(null); } e.target.value = ''; }} />
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Run & Download */}
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <button
+                                                    type="button"
+                                                    disabled={!miscExcelFile || miscLoading}
+                                                    onClick={async () => {
+                                                        if (!miscExcelFile) return;
+                                                        setMiscLoading(true);
+                                                        setMiscResult(null);
+                                                        try {
+                                                            let checklistMap: Map<string, import('./utils/stig-rule-index').RuleIndexEntry> | undefined;
+                                                            if (miscChecklistFiles.length > 0) {
+                                                                checklistMap = await buildRuleIndexFromChecklistFiles(miscChecklistFiles);
+                                                            }
+                                                            const { workbook, rows, matchCount } = await mapExcelFileToStigInfo(miscExcelFile, {
+                                                                checklistMap,
+                                                                fallbackToXml: true,
+                                                                baseUrl: '/STIGs/',
+                                                            });
+                                                            setMiscResult({ workbook, rows, matchCount });
+                                                        } catch (err) {
+                                                            console.error('Misc mapper error:', err);
+                                                            alert('Mapping failed. Check console for details.');
+                                                        } finally {
+                                                            setMiscLoading(false);
+                                                        }
+                                                    }}
+                                                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${miscExcelFile && !miscLoading ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'}`}
+                                                >
+                                                    {miscLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                                                    Map SV- IDs
+                                                </button>
+                                                {miscResult && (
+                                                    <>
+                                                        <span className="text-sm text-gray-500">{miscResult.matchCount} SV- ID(s) mapped</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                XLSX.writeFile(miscResult!.workbook, `SV-Mapped_${new Date().toISOString().split('T')[0]}.xlsx`);
+                                                            }}
+                                                            className="px-4 py-2 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 flex items-center gap-2"
+                                                        >
+                                                            <Download size={16} />
+                                                            Download mapped Excel
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>

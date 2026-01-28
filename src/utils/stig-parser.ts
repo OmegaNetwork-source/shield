@@ -2,7 +2,8 @@
 // Parses DISA STIG XML files and extracts rules with automated checks
 
 export interface ParsedStigRule {
-    vulnId: string;         // V-253260
+    ruleId?: string;        // SV-253260 (Rule ID from Rule id="SV-...")
+    vulnId: string;         // V-253260 (Group ID)
     stigId: string;         // WN11-00-000031
     title: string;
     severity: 'high' | 'medium' | 'low';
@@ -195,27 +196,33 @@ function parsePowershellCheck(checkContent: string): ParsedStigRule['automatedCh
 export function parseStigXML(xmlContent: string): ParsedStigRule[] {
     const rules: ParsedStigRule[] = [];
 
-    // Match all Group elements containing Rules
-    const groupRegex = /<Group id="(V-\d+)"[^>]*>[\s\S]*?<\/Group>/g;
+    // Match all Group elements (plain or xccdf:Group); capture V-XXXX from id
+    const groupRegex = /<\w*Group\s+id="[^"]*?(V-\d+)[^"]*"[^>]*>[\s\S]*?<\/\w*Group>/gi;
     let groupMatch;
 
     while ((groupMatch = groupRegex.exec(xmlContent)) !== null) {
         const vulnId = groupMatch[1];
         const groupContent = groupMatch[0];
 
-        // Extract rule details
-        const ruleMatch = groupContent.match(/<Rule[^>]*severity="(high|medium|low)"[^>]*>[\s\S]*?<\/Rule>/i);
+        // Extract rule details (Rule or xccdf:Rule)
+        const ruleMatch = groupContent.match(/<\w*Rule[^>]*severity="(high|medium|low)"[^>]*>[\s\S]*?<\/\w*Rule>/i);
         if (!ruleMatch) continue;
 
         const ruleContent = ruleMatch[0];
         const severity = ruleMatch[1] as 'high' | 'medium' | 'low';
 
-        // Extract version (STIG ID)
-        const versionMatch = ruleContent.match(/<version>([^<]+)<\/version>/) || ruleContent.match(/<Rule_ID>([^<]+)<\/Rule_ID>/);
+        // Extract Rule ID (SV-XXXX) from Rule id="SV-253255r1117271_rule" or "xccdf_..._SV-213426r961197_rule"
+        const ruleIdMatch =
+            groupContent.match(/<\w*Rule[^>]*\s+id="(SV-\d+)[^"]*"/) ||
+            groupContent.match(/<\w*Rule[^>]*\s+id="[^"]*?(SV-\d+)[^"]*"/);
+        const ruleId = ruleIdMatch ? ruleIdMatch[1] : '';
+
+        // Extract version (STIG ID); support optional namespace prefix (xccdf:version)
+        const versionMatch = ruleContent.match(/<\w*version>([^<]+)<\/\w*version>/) || ruleContent.match(/<Rule_ID>([^<]+)<\/Rule_ID>/);
         const stigId = versionMatch ? versionMatch[1] : '';
 
-        // Extract title
-        const titleMatch = ruleContent.match(/<title>([\s\S]*?)<\/title>/);
+        // Extract title (title or xccdf:title)
+        const titleMatch = ruleContent.match(/<\w*title>([\s\S]*?)<\/\w*title>/);
         const title = titleMatch ? titleMatch[1].trim() : '';
 
         // Extract description (VulnDiscussion)
@@ -223,19 +230,19 @@ export function parseStigXML(xmlContent: string): ParsedStigRule[] {
         let description = vulnDiscMatch ? vulnDiscMatch[1] : '';
         description = description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-        // Extract check content
-        const checkMatch = ruleContent.match(/<check-content>([\s\S]*?)<\/check-content>/);
+        // Extract check content (check-content or xccdf:check-content; Defender may use check-content-ref only)
+        const checkMatch = ruleContent.match(/<\w*check-content>([\s\S]*?)<\/\w*check-content>/);
         let checkContent = checkMatch ? checkMatch[1] : '';
         // Decode HTML entities
         checkContent = checkContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-        // Extract fix content
-        const fixMatch = ruleContent.match(/<fixtext[^>]*>([\s\S]*?)<\/fixtext>/);
+        // Extract fix content (fixtext or xccdf:fixtext)
+        const fixMatch = ruleContent.match(/<\w*fixtext[^>]*>([\s\S]*?)<\/\w*fixtext>/);
         let fixContent = fixMatch ? fixMatch[1] : '';
         fixContent = fixContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-        // Extract CCIs
-        const cciMatches = [...ruleContent.matchAll(/<ident[^>]*>(CCI-[^<]+)<\/ident>/g)];
+        // Extract CCIs (ident or xccdf:ident)
+        const cciMatches = [...ruleContent.matchAll(/<\w*ident[^>]*>(CCI-[^<]+)<\/\w*ident>/g)];
         const ccis = cciMatches.map(m => m[1]);
 
         // Try parse automated check
@@ -251,6 +258,7 @@ export function parseStigXML(xmlContent: string): ParsedStigRule[] {
         }
 
         rules.push({
+            ...(ruleId ? { ruleId } : {}),
             vulnId,
             stigId,
             title,
