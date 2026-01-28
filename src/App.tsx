@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import { buildRuleIndexFromChecklistFiles } from './utils/stig-rule-index';
-import { mapExcelFileToStigInfo } from './utils/excel-sv-mapper';
+import { mapExcelFileToStigInfo, type EnrichedRow } from './utils/excel-sv-mapper';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
@@ -174,7 +174,7 @@ function App() {
     // Misc tool: SV- Rule ID → STIG mapper (bulk checklists + Excel)
     const [miscChecklistFiles, setMiscChecklistFiles] = useState<File[]>([]);
     const [miscExcelFile, setMiscExcelFile] = useState<File | null>(null);
-    const [miscResult, setMiscResult] = useState<{ workbook: XLSX.WorkBook; rows: Array<Record<string, string>>; matchCount: number } | null>(null);
+    const [miscResult, setMiscResult] = useState<{ workbook: XLSX.WorkBook; rows: EnrichedRow[]; matchCount: number } | null>(null);
     const [miscLoading, setMiscLoading] = useState(false);
 
     // Analyzer State

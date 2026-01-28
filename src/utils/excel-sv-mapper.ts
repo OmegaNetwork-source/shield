@@ -62,8 +62,11 @@ export function parseExcelForRuleIds(
                 const n = normalizeRuleId(id);
                 if (n) normalized.add(n);
             }
+            const safeCellValue: string | number = (raw === undefined || raw === null)
+                ? ''
+                : (typeof raw === 'boolean' || raw instanceof Date ? String(raw) : raw);
             for (const ruleId of normalized) {
-                matches.push({ sheetName, address: ref, cellValue: raw ?? '', ruleId });
+                matches.push({ sheetName, address: ref, cellValue: safeCellValue, ruleId });
             }
         }
     }
