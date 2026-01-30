@@ -5623,10 +5623,13 @@ function App() {
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                             <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                 <div className={`px-4 py-3 border-b font-semibold flex items-center gap-2 ${darkMode ? 'border-gray-700 text-green-400' : 'border-gray-200 text-green-700'}`}>
-                                                    <Check size={18} /> New findings ({poamComparison.newFindings.length})
+                                                    <Check size={18} /> New findings ({poamComparison.newFindingsUniqueCount})
+                                                    {poamComparison.newFindingsUniqueCount > 0 && (
+                                                        <span className="text-xs font-normal opacity-80">({poamComparison.newFindings.length} rows)</span>
+                                                    )}
                                                 </div>
                                                 <div className="overflow-auto max-h-64">
-                                                    {poamComparison.newFindings.length === 0 ? (
+                                                    {poamComparison.newFindingsUniqueCount === 0 ? (
                                                         <p className={`p-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>None — all new POA&M items exist in base.</p>
                                                     ) : (
                                                         <table className="w-full text-left text-sm">
@@ -5638,7 +5641,7 @@ function App() {
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {poamComparison.newFindings.slice(0, 50).map((row, i) => {
+                                                                {(poamComparison.newFindingsSummary ?? poamComparison.newFindings).slice(0, 50).map((row, i) => {
                                                                     const sec = Object.keys(row).find(k => /security\s*checks/i.test(k));
                                                                     const ctrl = Object.keys(row).find(k => /controls?\s*\/\s*aps?/i.test(k));
                                                                     const desc = Object.keys(row).find(k => /description|vulnerability/i.test(k));
@@ -5653,17 +5656,20 @@ function App() {
                                                             </tbody>
                                                         </table>
                                                     )}
-                                                    {poamComparison.newFindings.length > 50 && (
-                                                        <p className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {poamComparison.newFindings.length - 50} more</p>
+                                                    {(poamComparison.newFindingsSummary ?? poamComparison.newFindings).length > 50 && (
+                                                        <p className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {(poamComparison.newFindingsSummary ?? poamComparison.newFindings).length - 50} more findings</p>
                                                     )}
                                                 </div>
                                             </div>
                                             <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                                                 <div className={`px-4 py-3 border-b font-semibold flex items-center gap-2 ${darkMode ? 'border-gray-700 text-amber-400' : 'border-gray-200 text-amber-700'}`}>
-                                                    <XCircle size={18} /> Dropped findings ({poamComparison.droppedFindings.length})
+                                                    <XCircle size={18} /> Dropped findings ({poamComparison.droppedFindingsUniqueCount})
+                                                    {poamComparison.droppedFindingsUniqueCount > 0 && (
+                                                        <span className="text-xs font-normal opacity-80">({poamComparison.droppedFindings.length} rows)</span>
+                                                    )}
                                                 </div>
                                                 <div className="overflow-auto max-h-64">
-                                                    {poamComparison.droppedFindings.length === 0 ? (
+                                                    {poamComparison.droppedFindingsUniqueCount === 0 ? (
                                                         <p className={`p-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>None — no base items removed.</p>
                                                     ) : (
                                                         <table className="w-full text-left text-sm">
@@ -5675,7 +5681,7 @@ function App() {
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {poamComparison.droppedFindings.slice(0, 50).map((row, i) => {
+                                                                {(poamComparison.droppedFindingsSummary ?? poamComparison.droppedFindings).slice(0, 50).map((row, i) => {
                                                                     const sec = Object.keys(row).find(k => /security\s*checks/i.test(k));
                                                                     const ctrl = Object.keys(row).find(k => /controls?\s*\/\s*aps?/i.test(k));
                                                                     const desc = Object.keys(row).find(k => /description|vulnerability/i.test(k));
@@ -5690,8 +5696,8 @@ function App() {
                                                             </tbody>
                                                         </table>
                                                     )}
-                                                    {poamComparison.droppedFindings.length > 50 && (
-                                                        <p className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {poamComparison.droppedFindings.length - 50} more</p>
+                                                    {(poamComparison.droppedFindingsSummary ?? poamComparison.droppedFindings).length > 50 && (
+                                                        <p className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {(poamComparison.droppedFindingsSummary ?? poamComparison.droppedFindings).length - 50} more findings</p>
                                                     )}
                                                 </div>
                                             </div>

@@ -226,6 +226,11 @@ function getMaxDaysForSeverity(severity: string): number {
 export interface PoamComparison {
   newFindings: Record<string, string>[];
   droppedFindings: Record<string, string>[];
+  /** One row per unique finding (1 finding = 4 rows in data); for UI count and table. */
+  newFindingsSummary: Record<string, string>[];
+  droppedFindingsSummary: Record<string, string>[];
+  newFindingsUniqueCount: number;
+  droppedFindingsUniqueCount: number;
   baseKeys: Set<string>;
   newKeys: Set<string>;
 }
@@ -273,7 +278,32 @@ export function comparePoam(base: BasePoamParsed, newPoam: NewPoamParsed): PoamC
     if (!hasMatch) droppedFindings.push(row);
   });
 
-  return { newFindings, droppedFindings, baseKeys, newKeys };
+  // Group by Security Check so 1 finding = 4 rows; take first row per group for summary/count
+  const newGroups = new Map<string, Record<string, string>>();
+  newFindings.forEach(row => {
+    const key = getSecurityCheckGroupKey(row, newSecCol);
+    if (!newGroups.has(key)) newGroups.set(key, row);
+  });
+  const newFindingsSummary = Array.from(newGroups.values());
+
+  const droppedGroups = new Map<string, Record<string, string>>();
+  droppedFindings.forEach(row => {
+    const keys = normalizeSecurityCheck(row[baseSecCol]);
+    const key = keys[0] ?? String(row[baseSecCol] ?? '');
+    if (!droppedGroups.has(key)) droppedGroups.set(key, row);
+  });
+  const droppedFindingsSummary = Array.from(droppedGroups.values());
+
+  return {
+    newFindings,
+    droppedFindings,
+    newFindingsSummary,
+    droppedFindingsSummary,
+    newFindingsUniqueCount: newFindingsSummary.length,
+    droppedFindingsUniqueCount: droppedFindingsSummary.length,
+    baseKeys,
+    newKeys
+  };
 }
 
 /** Map new row to base column order (by header name). */
@@ -357,12 +387,24 @@ function expandNewFindingsToFourRows(
       formatDate(addDays(m1, maxDays))
     ];
     for (let i = 0; i < 4; i++) {
-      const overrides: Partial<Record<string, string | number>> = {
-        [milestoneIdCol]: i + 1,
-        [milestoneDatesCol]: `${MILESTONE_TEXTS[i]} ${dates[i]}`,
-        [schedCol]: dates[3]
-      };
-      rows.push(mapNewFindingRow(template, base, newPoam, overrides));
+      if (i === 0) {
+        // Row 1: full details (like POA&M generator) + Milestone 1 and its text
+        const overrides: Partial<Record<string, string | number>> = {
+          [milestoneIdCol]: 1,
+          [milestoneDatesCol]: `${MILESTONE_TEXTS[0]} ${dates[0]}`,
+          [schedCol]: dates[3]
+        };
+        rows.push(mapNewFindingRow(template, base, newPoam, overrides));
+      } else {
+        // Rows 2, 3, 4: only Milestone ID and Milestone with Completion Dates (all other fields blank)
+        const blankRow: (string | number)[] = [''];
+        base.headers.forEach(h => {
+          if (h === milestoneIdCol) blankRow.push(i + 1);
+          else if (h === milestoneDatesCol) blankRow.push(`${MILESTONE_TEXTS[i]} ${dates[i]}`);
+          else blankRow.push('');
+        });
+        rows.push(blankRow);
+      }
     }
   });
   return rows;
