@@ -185,6 +185,44 @@ function findColumnHeader(headers: string[], ...names: string[]): string | null 
   return null;
 }
 
+/** Devices Affected: newline-separated, deduplicated (no comma, no repeated names). */
+export function normalizeDevicesAffected(value: unknown): string {
+  if (value == null || value === '') return '';
+  const parts = String(value).split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const p of parts) {
+    if (!seen.has(p)) { seen.add(p); unique.push(p); }
+  }
+  return unique.join('\n');
+}
+
+/** Milestone texts for new findings (4 rows per finding). */
+const MILESTONE_TEXTS = [
+  'The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.',
+  'The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.',
+  'The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.',
+  'Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.'
+];
+
+const NEW_FINDING_MILESTONE1 = new Date(2026, 0, 29); // 1/29/2026
+const formatDate = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+
+/** Key for grouping rows by finding (first SV- or V- from Security Checks). */
+function getSecurityCheckGroupKey(row: Record<string, string>, secCol: string): string {
+  const keys = normalizeSecurityCheck(row[secCol] ?? '');
+  return keys[0] ?? JSON.stringify(row[secCol] ?? '');
+}
+
+/** Severity -> milestone 4 offset (days): High 30, Medium 60, Low 90. */
+function getMaxDaysForSeverity(severity: string): number {
+  const s = String(severity || '').toLowerCase();
+  if (s.includes('high') || s.includes('cat i') || s === 'i' || s === '1') return 30;
+  if (s.includes('medium') || s.includes('cat ii') || s === 'ii' || s === '2') return 60;
+  return 90;
+}
+
 export interface PoamComparison {
   newFindings: Record<string, string>[];
   droppedFindings: Record<string, string>[];
@@ -263,6 +301,73 @@ function buildSheetAoa(
   return aoa;
 }
 
+/** Map one new finding row to base columns, with optional overrides and Devices Affected normalized. */
+function mapNewFindingRow(
+  template: Record<string, string>,
+  base: BasePoamParsed,
+  newPoam: NewPoamParsed,
+  overrides: Partial<Record<string, string | number>>
+): (string | number)[] {
+  const devicesCol = findColumnHeader(base.headers, 'Devices Affected') || 'Devices Affected';
+  const mapped: (string | number)[] = [''];
+  base.headers.forEach(baseH => {
+    if (overrides[baseH] !== undefined) {
+      mapped.push(overrides[baseH] as string | number);
+      return;
+    }
+    const newH = newPoam.headers.find(nh => nh.trim().toLowerCase() === baseH.trim().toLowerCase());
+    let val = newH != null ? (template[newH] ?? '') : '';
+    if (baseH === devicesCol || (typeof baseH === 'string' && baseH.toLowerCase().includes('devices affected'))) {
+      val = normalizeDevicesAffected(val);
+    }
+    mapped.push(val);
+  });
+  return mapped;
+}
+
+/** Group new findings by Security Check and expand to 4 rows per finding (milestones 1-4) with text and dates. */
+function expandNewFindingsToFourRows(
+  newFindings: Record<string, string>[],
+  base: BasePoamParsed,
+  newPoam: NewPoamParsed
+): (string | number)[][] {
+  const newSecCol = findColumnHeader(newPoam.headers, 'Security Checks') || newPoam.headers[4] || '';
+  const severityCol = findColumnHeader(newPoam.headers, 'Severity') || findColumnHeader(newPoam.headers, 'Raw Severity') || 'Severity';
+  const milestoneIdCol = findColumnHeader(base.headers, 'Milestone ID') || 'Milestone ID';
+  const milestoneDatesCol = findColumnHeader(base.headers, 'Milestone with Completion Dates') || 'Milestone with Completion Dates';
+  const schedCol = findColumnHeader(base.headers, 'Scheduled Completion Date') || 'Scheduled Completion Date';
+
+  const groups = new Map<string, Record<string, string>[]>();
+  newFindings.forEach(row => {
+    const key = getSecurityCheckGroupKey(row, newSecCol);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  });
+
+  const rows: (string | number)[][] = [];
+  groups.forEach((groupRows) => {
+    const template = groupRows[0];
+    const severity = template[severityCol] ?? template['Severity'] ?? template['Raw Severity'] ?? '';
+    const maxDays = getMaxDaysForSeverity(severity);
+    const m1 = NEW_FINDING_MILESTONE1;
+    const dates = [
+      formatDate(m1),
+      formatDate(addDays(m1, 14)),
+      formatDate(addDays(m1, 21)),
+      formatDate(addDays(m1, maxDays))
+    ];
+    for (let i = 0; i < 4; i++) {
+      const overrides: Partial<Record<string, string | number>> = {
+        [milestoneIdCol]: i + 1,
+        [milestoneDatesCol]: `${MILESTONE_TEXTS[i]} ${dates[i]}`,
+        [schedCol]: dates[3]
+      };
+      rows.push(mapNewFindingRow(template, base, newPoam, overrides));
+    }
+  });
+  return rows;
+}
+
 /** Export: POA&M (merged) + New findings + Dropped findings tabs; eMASS green header on rows 1-6. */
 export function exportMergedPoam(
   base: BasePoamParsed,
@@ -282,35 +387,33 @@ export function exportMergedPoam(
   base.dataRows.forEach(row => {
     if (!droppedSet.has(row)) mergedRows.push(['', ...base.headers.map(h => row[h] ?? '')]);
   });
-  comparison.newFindings.forEach(row => {
-    const mapped: (string | number)[] = [''];
-    base.headers.forEach(baseH => {
-      const newH = newPoam.headers.find(nh => nh.trim().toLowerCase() === baseH.trim().toLowerCase());
-      mapped.push(newH != null ? (row[newH] ?? '') : '');
-    });
-    mergedRows.push(mapped);
-  });
+  const newFindingRows = expandNewFindingsToFourRows(comparison.newFindings, base, newPoam);
+  newFindingRows.forEach(row => mergedRows.push(row));
   const wsMerged = XLSXStyle.utils.aoa_to_sheet(mergedRows);
   applyEmassHeaderStyle(wsMerged, numCols);
   XLSXStyle.utils.book_append_sheet(wb, wsMerged, POAM_SHEET_NAME);
 
-  // Sheet 2: New findings
-  const newAoa = buildSheetAoa(base, comparison.newFindings, row => {
-    const mapped: (string | number)[] = [''];
-    base.headers.forEach(baseH => {
-      const newH = newPoam.headers.find(nh => nh.trim().toLowerCase() === baseH.trim().toLowerCase());
-      mapped.push(newH != null ? (row[newH] ?? '') : '');
-    });
-    return mapped;
-  });
+  // Sheet 2: New findings (4 rows per finding, Devices Affected normalized)
+  const newAoa: (string | number)[][] = [];
+  for (let r = 0; r < base.headerBlock.length; r++) {
+    newAoa.push(base.headerBlock[r].map(c => c));
+  }
+  newAoa.push(['', ...base.headers]);
+  expandNewFindingsToFourRows(comparison.newFindings, base, newPoam).forEach(row => newAoa.push(row));
   const wsNew = XLSXStyle.utils.aoa_to_sheet(newAoa);
   applyEmassHeaderStyle(wsNew, numCols);
   XLSXStyle.utils.book_append_sheet(wb, wsNew, NEW_FINDINGS_SHEET);
 
-  // Sheet 3: Dropped findings
-  const droppedAoa = buildSheetAoa(base, comparison.droppedFindings, row =>
-    ['', ...base.headers.map(h => row[h] ?? '')]
-  );
+  // Sheet 3: Dropped findings (base rows as-is; normalize Devices Affected for consistency)
+  const devicesCol = findColumnHeader(base.headers, 'Devices Affected');
+  const droppedAoa = buildSheetAoa(base, comparison.droppedFindings, row => {
+    const arr = ['', ...base.headers.map(h => {
+      const val = row[h] ?? '';
+      if (devicesCol && h === devicesCol) return normalizeDevicesAffected(val);
+      return val;
+    })];
+    return arr;
+  });
   const wsDropped = XLSXStyle.utils.aoa_to_sheet(droppedAoa);
   applyEmassHeaderStyle(wsDropped, numCols);
   XLSXStyle.utils.book_append_sheet(wb, wsDropped, DROPPED_FINDINGS_SHEET);
