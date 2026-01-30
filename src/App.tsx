@@ -2,17 +2,27 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity
+    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, BookOpen, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity,     Crosshair, Mail
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import { buildRuleIndexFromChecklistFiles } from './utils/stig-rule-index';
 import { mapExcelFileToStigInfo, type EnrichedRow } from './utils/excel-sv-mapper';
+import {
+    parseBasePoam,
+    parseNewPoam,
+    comparePoam,
+    exportMergedPoam,
+    type BasePoamParsed,
+    type NewPoamParsed,
+    type PoamComparison,
+} from './utils/poam-analyzer';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 import NetworkDiagram from './components/NetworkDiagram';
 import WebScanner from './components/WebScanner';
 import CodeScanner from './components/CodeScanner';
+import PentestHub from './components/PentestHub';
 import { analyzeContract, validateAddress, decodeFunctionSelector, parseABI, formatWei, chainInfo, attackVectors, VulnerabilityResult, ContractAnalysis } from './blockchain';
 
 // --- Configuration ---
@@ -22,9 +32,8 @@ import cciMapRaw from './data/cci2nist.json';
 
 const cciMap = cciMapRaw as Record<string, string>;
 
-// Feature Flag: Check if running in Electron
-// @ts-ignore
-const isElectron = window.ipcRenderer !== undefined;
+// Feature Flag: Check if running in Electron (safe for SSR / preload timing)
+const isElectron = typeof window !== 'undefined' && !!(window as any).ipcRenderer;
 
 interface CheckResult {
     ruleId: string;
@@ -45,7 +54,7 @@ function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'network' | 'webscan' | 'blockchain'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'network' | 'webscan' | 'blockchain' | 'pentest'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -93,6 +102,11 @@ function App() {
     // Tools State
     const [toolsMode, setToolsMode] = useState<'rename' | 'heatmap' | 'analyzer' | 'extractor' | 'reportanalyzer' | 'master_copy' | 'misc'>('rename');
     const [isToolsOpen, setIsToolsOpen] = useState(false);
+    const [rmfSectionOpen, setRmfSectionOpen] = useState(false);
+    const [scannersSectionOpen, setScannersSectionOpen] = useState(false);
+    const [networkDiagramSectionOpen, setNetworkDiagramSectionOpen] = useState(false);
+    const [pentestSectionOpen, setPentestSectionOpen] = useState(false);
+    const [pentestSubTab, setPentestSubTab] = useState<'start' | 'quick' | 'shells' | 'msfvenom' | 'exploits' | 'active-exploits' | 'payloads' | 'recon' | 'web' | 'mobile' | 'pe' | 'oscp' | 'phishing' | 'monitor'>('start');
     const [showDocsModal, setShowDocsModal] = useState(false);
     const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
     const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
@@ -143,6 +157,11 @@ function App() {
     const [attackLabMode, setAttackLabMode] = useState<'learn' | 'scan'>('learn');
     const [scannerCode, setScannerCode] = useState('');
     const [scanResults, setScanResults] = useState<ContractAnalysis | null>(null);
+    // Scan severity counts from Web/Code scanners (for sidebar Current Status box)
+    const [webScanSeverityCounts, setWebScanSeverityCounts] = useState<{ critical: number; high: number; medium: number; low: number } | null>(null);
+    const [codeScanSeverityCounts, setCodeScanSeverityCounts] = useState<{ critical: number; high: number; medium: number; low: number } | null>(null);
+    const [webScannerInitialUrl, setWebScannerInitialUrl] = useState<string | null>(null);
+    const [webScannerOpenedFromPentest, setWebScannerOpenedFromPentest] = useState(false);
 
     // Report Analyzer State
     const [reportBaseData, setReportBaseData] = useState<{
@@ -300,30 +319,35 @@ function App() {
     const [batchScope, setBatchScope] = useState<'selected' | 'filtered'>('filtered');
 
     // POA&M State
+    const [poamMode, setPoamMode] = useState<'generator' | 'analyzer'>('generator');
     const [acasData, setAcasData] = useState<any[]>([]);
     const [poamActiveCat, setPoamActiveCat] = useState<'cat1' | 'cat2' | 'cat3'>('cat1');
+    // POA&M Analyzer: base (eMASS) vs new (generator)
+    const [basePoamFile, setBasePoamFile] = useState<{ name: string; parsed: BasePoamParsed } | null>(null);
+    const [newPoamFile, setNewPoamFile] = useState<{ name: string; parsed: NewPoamParsed } | null>(null);
+    const [poamComparison, setPoamComparison] = useState<PoamComparison | null>(null);
     const [poamConfig, setPoamConfig] = useState({
-        officeOrg: "USACE CMP",
-        resourcesRequired: "Man Hours",
-        status: "Ongoing",
+        officeOrg: "",
+        resourcesRequired: "",
+        status: "",
         milestones: {
             cat1: [
-                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.", date: "" },
-                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.", date: "" },
-                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.", date: "" },
-                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.", date: "" }
+                { id: 1, text: "", date: "" },
+                { id: 2, text: "", date: "" },
+                { id: 3, text: "", date: "" },
+                { id: 4, text: "", date: "" }
             ],
             cat2: [
-                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.", date: "" },
-                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.", date: "" },
-                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.", date: "" },
-                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.", date: "" }
+                { id: 1, text: "", date: "" },
+                { id: 2, text: "", date: "" },
+                { id: 3, text: "", date: "" },
+                { id: 4, text: "", date: "" }
             ],
             cat3: [
-                { id: 1, text: "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.", date: "" },
-                { id: 2, text: "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.", date: "" },
-                { id: 3, text: "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.", date: "" },
-                { id: 4, text: "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.", date: "" }
+                { id: 1, text: "", date: "" },
+                { id: 2, text: "", date: "" },
+                { id: 3, text: "", date: "" },
+                { id: 4, text: "", date: "" }
             ]
         }
     });
@@ -2732,6 +2756,23 @@ function App() {
 
     const { high: highCount, medium: mediumCount, low: lowCount } = severityCounts;
 
+    // Scan-mode severity for sidebar (Critical/High/Medium/Low) when on scan tabs with results
+    const scanSeverityForSidebar = useMemo(() => {
+        if (activeTab === 'blockchain') {
+            const vulns = (contractAnalysis ?? scanResults)?.vulnerabilities ?? [];
+            if (vulns.length === 0) return null;
+            return {
+                critical: vulns.filter(v => (v.severity || '').toLowerCase() === 'critical').length,
+                high: vulns.filter(v => (v.severity || '').toLowerCase() === 'high').length,
+                medium: vulns.filter(v => (v.severity || '').toLowerCase() === 'medium').length,
+                low: vulns.filter(v => (v.severity || '').toLowerCase() === 'low').length
+            };
+        }
+        if (activeTab === 'webscan' && webScanSeverityCounts) return webScanSeverityCounts;
+        if (activeTab === 'codescan' && codeScanSeverityCounts) return codeScanSeverityCounts;
+        return null;
+    }, [activeTab, contractAnalysis, scanResults, webScanSeverityCounts, codeScanSeverityCounts]);
+
     const getSeverityIcon = (sev: string) => {
         switch (sev) {
             case 'high': return <AlertTriangle className="size-4 text-red-500" />;
@@ -3002,6 +3043,59 @@ function App() {
         XLSX.writeFile(wb, "POA&M_Generated.xlsx");
     };
 
+    // POA&M Analyzer: base (eMASS) and new (generator) file handlers
+    const handleBasePoamFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const data = await file.arrayBuffer();
+            const wb = XLSX.read(data, { type: 'array' });
+            const parsed = parseBasePoam(wb);
+            if (!parsed) {
+                alert('Could not find a "POA&M" sheet in the base file.');
+                return;
+            }
+            setBasePoamFile({ name: file.name, parsed });
+            setPoamComparison(null);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to read base POA&M file. Ensure it is a valid Excel file with a POA&M tab.');
+        }
+        e.target.value = '';
+    };
+
+    const handleNewPoamFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const data = await file.arrayBuffer();
+            const wb = XLSX.read(data, { type: 'array' });
+            const parsed = parseNewPoam(wb);
+            if (!parsed) {
+                alert('Could not find a "POA&M" sheet in the new file.');
+                return;
+            }
+            setNewPoamFile({ name: file.name, parsed });
+            setPoamComparison(null);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to read new POA&M file. Ensure it is a valid Excel file with a POA&M tab.');
+        }
+        e.target.value = '';
+    };
+
+    const runPoamCompare = () => {
+        if (!basePoamFile?.parsed || !newPoamFile?.parsed) return;
+        const comparison = comparePoam(basePoamFile.parsed, newPoamFile.parsed);
+        setPoamComparison(comparison);
+    };
+
+    const exportMergedPoamFile = () => {
+        if (!basePoamFile?.parsed || !newPoamFile?.parsed || !poamComparison) return;
+        const wb = exportMergedPoam(basePoamFile.parsed, newPoamFile.parsed, poamComparison);
+        XLSX.writeFile(wb, `POAM_Merged_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const files = Array.from(e.target.files);
@@ -3125,18 +3219,123 @@ function App() {
                     {isElectron && (
                         <SidebarItem icon={<LayoutGrid size={18} />} label="Dashboard" active={activeTab === 'scan'} onClick={() => setActiveTab('scan')} darkMode={darkMode} />
                     )}
-                    <SidebarItem icon={<FileEdit size={18} />} label="Checklist Editor" active={activeTab === 'copy'} onClick={() => setActiveTab('copy')} darkMode={darkMode} />
-                    <SidebarItem icon={<FolderOpen size={18} />} label="Evidence Gallery" active={activeTab === 'evidence'} onClick={() => { setActiveTab('evidence'); loadEvidence(); }} darkMode={darkMode} />
-                    <SidebarItem icon={<FileSpreadsheet size={18} />} label="Reports" active={activeTab === 'report'} onClick={() => setActiveTab('report')} darkMode={darkMode} />
-                    <SidebarItem icon={<GitCompare size={18} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
-                    <SidebarItem icon={<FileWarning size={18} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
-                    <SidebarItem icon={<Shield size={18} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
-                    <SidebarItem icon={<Network size={18} />} label="Network Diagram" active={activeTab === 'network'} onClick={() => setActiveTab('network')} darkMode={darkMode} />
-                    <SidebarItem icon={<Globe size={18} />} label="Web Scanner" active={activeTab === 'webscan'} onClick={() => setActiveTab('webscan')} darkMode={darkMode} />
-                    <SidebarItem icon={<Code size={18} />} label="Code Scanner" active={activeTab === 'codescan'} onClick={() => setActiveTab('codescan')} darkMode={darkMode} />
+
+                    {/* RMF Section */}
+                    <div className="mb-1">
+                        <button
+                            onClick={() => setRmfSectionOpen(!rmfSectionOpen)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all mb-0.5 group ${rmfSectionOpen
+                                ? (darkMode ? 'bg-gray-800/50 text-white' : 'bg-gray-100/50 text-gray-900')
+                                : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200' : 'text-gray-500 hover:bg-white/60 hover:text-gray-900')
+                                }`}
+                        >
+                            <ShieldCheck size={18} className={darkMode ? 'text-cyan-400' : 'text-cyan-600'} />
+                            <span className="text-sm font-medium">RMF</span>
+                            <ChevronDown size={14} className={`ml-auto transition-transform text-gray-400 ${rmfSectionOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {rmfSectionOpen && (
+                            <div className="pl-4 space-y-0.5 mt-1">
+                                <SidebarItem icon={<FileEdit size={16} />} label="Checklist Editor" active={activeTab === 'copy'} onClick={() => setActiveTab('copy')} darkMode={darkMode} />
+                                <SidebarItem icon={<FolderOpen size={16} />} label="Evidence Gallery" active={activeTab === 'evidence'} onClick={() => { setActiveTab('evidence'); loadEvidence(); }} darkMode={darkMode} />
+                                <SidebarItem icon={<FileSpreadsheet size={16} />} label="Reports" active={activeTab === 'report'} onClick={() => setActiveTab('report')} darkMode={darkMode} />
+                                <SidebarItem icon={<GitCompare size={16} />} label="Compare" active={activeTab === 'compare'} onClick={() => setActiveTab('compare')} darkMode={darkMode} />
+                                <SidebarItem icon={<FileWarning size={16} />} label="POA&M" active={activeTab === 'poam'} onClick={() => setActiveTab('poam')} darkMode={darkMode} />
+                                <SidebarItem icon={<Shield size={16} />} label="Controls" active={activeTab === 'controls'} onClick={() => setActiveTab('controls')} darkMode={darkMode} />
+                                <button onClick={() => { setActiveTab('tools'); setToolsMode('heatmap'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'heatmap' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <PieChart size={16} /> Risk Heatmap
+                                </button>
+                                <button onClick={() => { setActiveTab('tools'); setToolsMode('analyzer'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'analyzer' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <GitCompare size={16} /> STIG Analyzer
+                                </button>
+                                <button onClick={() => { setActiveTab('tools'); setToolsMode('master_copy'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'master_copy' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <Copy size={16} /> Master Copy
+                                </button>
+                                <button onClick={() => { setActiveTab('tools'); setToolsMode('extractor'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'extractor' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <FileText size={16} /> Extractor
+                                </button>
+                                <button onClick={() => { setActiveTab('tools'); setToolsMode('reportanalyzer'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'reportanalyzer' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <FileSpreadsheet size={16} /> Report Analyzer
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Scanners Section */}
+                    <div className="mb-1">
+                        <button
+                            onClick={() => setScannersSectionOpen(!scannersSectionOpen)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all mb-0.5 group ${scannersSectionOpen
+                                ? (darkMode ? 'bg-gray-800/50 text-white' : 'bg-gray-100/50 text-gray-900')
+                                : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200' : 'text-gray-500 hover:bg-white/60 hover:text-gray-900')
+                                }`}
+                        >
+                            <Target size={18} className={darkMode ? 'text-cyan-400' : 'text-cyan-600'} />
+                            <span className="text-sm font-medium">Scanners</span>
+                            <ChevronDown size={14} className={`ml-auto transition-transform text-gray-400 ${scannersSectionOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {scannersSectionOpen && (
+                            <div className="pl-4 space-y-0.5 mt-1">
+                                <SidebarItem icon={<Globe size={16} />} label="Web Scanner" active={activeTab === 'webscan'} onClick={() => { setWebScannerOpenedFromPentest(false); setActiveTab('webscan'); }} darkMode={darkMode} />
+                                <SidebarItem icon={<Code size={16} />} label="Code Scanner" active={activeTab === 'codescan'} onClick={() => setActiveTab('codescan')} darkMode={darkMode} />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Network Diagram Section */}
+                    <div className="mb-1">
+                        <button
+                            onClick={() => setNetworkDiagramSectionOpen(!networkDiagramSectionOpen)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all mb-0.5 group ${networkDiagramSectionOpen
+                                ? (darkMode ? 'bg-gray-800/50 text-white' : 'bg-gray-100/50 text-gray-900')
+                                : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200' : 'text-gray-500 hover:bg-white/60 hover:text-gray-900')
+                                }`}
+                        >
+                            <Network size={18} className={darkMode ? 'text-cyan-400' : 'text-cyan-600'} />
+                            <span className="text-sm font-medium">Network Diagram</span>
+                            <ChevronDown size={14} className={`ml-auto transition-transform text-gray-400 ${networkDiagramSectionOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {networkDiagramSectionOpen && (
+                            <div className="pl-4 space-y-0.5 mt-1">
+                                <SidebarItem icon={<Network size={16} />} label="Network Diagram" active={activeTab === 'network'} onClick={() => setActiveTab('network')} darkMode={darkMode} />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Blockchain */}
                     <SidebarItem icon={<Link size={18} />} label="Blockchain" active={activeTab === 'blockchain'} onClick={() => setActiveTab('blockchain')} darkMode={darkMode} />
 
-                    {/* Tools Dropdown */}
+                    {/* Penetration Testing */}
+                    <div className="mb-1">
+                        <button
+                            onClick={() => {
+                                setPentestSectionOpen(!pentestSectionOpen);
+                                if (!pentestSectionOpen) {
+                                    setActiveTab('pentest');
+                                    setPentestSubTab('start');
+                                }
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all mb-0.5 group ${pentestSectionOpen
+                                ? (darkMode ? 'bg-gray-800/50 text-white' : 'bg-gray-100/50 text-gray-900')
+                                : (darkMode ? 'text-gray-400 hover:bg-gray-800 hover:text-gray-200' : 'text-gray-500 hover:bg-white/60 hover:text-gray-900')
+                                }`}
+                        >
+                            <Crosshair size={18} className={darkMode ? 'text-cyan-400' : 'text-cyan-600'} />
+                            <span className="text-sm font-medium">Penetration Testing</span>
+                            <ChevronDown size={14} className={`ml-auto transition-transform text-gray-400 ${pentestSectionOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {pentestSectionOpen && (
+                            <div className="pl-4 space-y-0.5 mt-1">
+                                <button onClick={() => { setActiveTab('pentest'); setPentestSubTab('start'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'pentest' && pentestSubTab === 'start' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <BookOpen size={16} /> Start here
+                                </button>
+                                <button onClick={() => { setActiveTab('pentest'); setPentestSubTab('monitor'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'pentest' && pentestSubTab === 'monitor' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
+                                    <Activity size={16} /> Network Monitor
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Tools */}
                     <div className="mb-1">
                         <button
                             onClick={() => setIsToolsOpen(!isToolsOpen)}
@@ -3303,43 +3502,73 @@ function App() {
                     </div>
                 </nav>
 
-                {/* CLICKABLE Stats Card */}
+                {/* Current Status: checklist (Pass/Fail/Manual/Pending) or scan (Critical/High/Medium/Low) */}
                 <div className={`p-4 rounded-xl border shadow-sm space-y-3 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-100'}`}>
-                    <div className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>Current Status</div>
-                    <div className="grid grid-cols-4 gap-1.5 text-center">
-                        <button
-                            onClick={() => { setSelectedStatus(selectedStatus === 'pass' ? null : 'pass'); setSelectedSeverity(null); }}
-                            className={`bg-green-50 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-green-300 ${selectedStatus === 'pass' ? 'ring-2 ring-green-500' : ''}`}
-                        >
-                            <div className="text-lg font-bold text-green-600">{passed}</div>
-                            <div className="text-[9px] text-green-600/70 uppercase">Pass</div>
-                        </button>
-                        <button
-                            onClick={() => { setSelectedStatus(selectedStatus === 'fail' ? null : 'fail'); setSelectedSeverity(null); }}
-                            className={`bg-red-50 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-red-300 ${selectedStatus === 'fail' ? 'ring-2 ring-red-500' : ''}`}
-                        >
-                            <div className="text-lg font-bold text-red-500">{failed}</div>
-                            <div className="text-[9px] text-red-500/70 uppercase">Fail</div>
-                        </button>
-                        <button
-                            onClick={() => { setSelectedStatus(selectedStatus === 'manual' ? null : 'manual'); setSelectedSeverity(null); }}
-                            className={`bg-gray-50 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-gray-300 ${selectedStatus === 'manual' ? 'ring-2 ring-gray-500' : ''}`}
-                        >
-                            <div className="text-lg font-bold text-gray-500">{manual}</div>
-                            <div className="text-[9px] text-gray-500 uppercase">Manual</div>
-                        </button>
-                        <button
-                            onClick={() => { setSelectedStatus(selectedStatus === 'pending' ? null : 'pending'); setSelectedSeverity(null); }}
-                            className={`bg-blue-50 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-blue-300 ${selectedStatus === 'pending' ? 'ring-2 ring-blue-500' : ''}`}
-                        >
-                            <div className="text-lg font-bold text-blue-600">{pending}</div>
-                            <div className="text-[9px] text-blue-500 uppercase">Pending</div>
-                        </button>
+                    <div className={`text-xs font-semibold uppercase tracking-wide ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>
+                        {scanSeverityForSidebar ? 'Scan Findings' : 'Current Status'}
                     </div>
-                    <div className={`h-1.5 w-full rounded-full overflow-hidden ${darkMode ? 'bg-gray-600' : 'bg-gray-100'}`}>
-                        <div className={`h-full rounded-full transition-all duration-500 ${darkMode ? 'bg-blue-500' : 'bg-black'}`} style={{ width: `${(scanned / total) * 100}%` }} />
-                    </div>
-                    <div className={`text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{scanned} of {total} checked</div>
+                    {scanSeverityForSidebar ? (
+                        <>
+                            <div className="grid grid-cols-4 gap-1.5 text-center">
+                                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-1.5">
+                                    <div className="text-lg font-bold text-red-600 dark:text-red-400">{scanSeverityForSidebar.critical}</div>
+                                    <div className="text-[9px] text-red-600/70 dark:text-red-400/70 uppercase">Critical</div>
+                                </div>
+                                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-1.5">
+                                    <div className="text-lg font-bold text-orange-600 dark:text-orange-400">{scanSeverityForSidebar.high}</div>
+                                    <div className="text-[9px] text-orange-600/70 dark:text-orange-400/70 uppercase">High</div>
+                                </div>
+                                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-1.5">
+                                    <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{scanSeverityForSidebar.medium}</div>
+                                    <div className="text-[9px] text-amber-600/70 dark:text-amber-400/70 uppercase">Medium</div>
+                                </div>
+                                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-1.5">
+                                    <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{scanSeverityForSidebar.low}</div>
+                                    <div className="text-[9px] text-blue-600/70 dark:text-blue-400/70 uppercase">Low</div>
+                                </div>
+                            </div>
+                            <div className={`text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {scanSeverityForSidebar.critical + scanSeverityForSidebar.high + scanSeverityForSidebar.medium + scanSeverityForSidebar.low} findings
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-4 gap-1.5 text-center">
+                                <button
+                                    onClick={() => { setSelectedStatus(selectedStatus === 'pass' ? null : 'pass'); setSelectedSeverity(null); }}
+                                    className={`bg-green-50 dark:bg-green-900/20 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-green-300 ${selectedStatus === 'pass' ? 'ring-2 ring-green-500' : ''}`}
+                                >
+                                    <div className="text-lg font-bold text-green-600 dark:text-green-400">{passed}</div>
+                                    <div className="text-[9px] text-green-600/70 dark:text-green-400/70 uppercase">Pass</div>
+                                </button>
+                                <button
+                                    onClick={() => { setSelectedStatus(selectedStatus === 'fail' ? null : 'fail'); setSelectedSeverity(null); }}
+                                    className={`bg-red-50 dark:bg-red-900/20 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-red-300 ${selectedStatus === 'fail' ? 'ring-2 ring-red-500' : ''}`}
+                                >
+                                    <div className="text-lg font-bold text-red-500 dark:text-red-400">{failed}</div>
+                                    <div className="text-[9px] text-red-500/70 dark:text-red-400/70 uppercase">Fail</div>
+                                </button>
+                                <button
+                                    onClick={() => { setSelectedStatus(selectedStatus === 'manual' ? null : 'manual'); setSelectedSeverity(null); }}
+                                    className={`bg-gray-50 dark:bg-gray-600/30 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-gray-300 ${selectedStatus === 'manual' ? 'ring-2 ring-gray-500' : ''}`}
+                                >
+                                    <div className="text-lg font-bold text-gray-600 dark:text-gray-400">{manual}</div>
+                                    <div className="text-[9px] text-gray-500 dark:text-gray-400 uppercase">Manual</div>
+                                </button>
+                                <button
+                                    onClick={() => { setSelectedStatus(selectedStatus === 'pending' ? null : 'pending'); setSelectedSeverity(null); }}
+                                    className={`bg-blue-50 dark:bg-blue-900/20 rounded-lg p-1.5 transition-all hover:ring-2 hover:ring-blue-300 ${selectedStatus === 'pending' ? 'ring-2 ring-blue-500' : ''}`}
+                                >
+                                    <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{pending}</div>
+                                    <div className="text-[9px] text-blue-500 dark:text-blue-400/70 uppercase">Pending</div>
+                                </button>
+                            </div>
+                            <div className={`h-1.5 w-full rounded-full overflow-hidden ${darkMode ? 'bg-gray-600' : 'bg-gray-100'}`}>
+                                <div className={`h-full rounded-full transition-all duration-500 ${darkMode ? 'bg-blue-500' : 'bg-black'}`} style={{ width: `${total ? (scanned / total) * 100 : 0}%` }} />
+                            </div>
+                            <div className={`text-xs text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{scanned} of {total} checked</div>
+                        </>
+                    )}
                 </div>
             </aside>
 
@@ -3353,7 +3582,7 @@ function App() {
                     </p>
                 </div>
 
-                <div className={`${activeTab === 'copy' || (activeTab === 'tools' && toolsMode === 'analyzer') ? 'w-full px-6' : 'max-w-5xl mx-auto'} p-10`}>
+                <div className={`${activeTab === 'copy' || (activeTab === 'tools' && toolsMode === 'analyzer') || activeTab === 'network' ? 'w-full px-4' : 'max-w-5xl mx-auto'} ${activeTab === 'network' ? 'py-0' : 'p-10'}`}>
 
                     {activeTab === 'scan' ? (
                         <>
@@ -5291,12 +5520,175 @@ function App() {
                             )}
                         </div>
                     ) : activeTab === 'poam' ? (
-                        <div className="space-y-8 max-w-2xl mx-auto">
+                        <div className="space-y-8 max-w-4xl mx-auto">
                             <div className="text-center">
-                                <h1 className="text-3xl font-semibold tracking-tight mb-2">POA&M Generator</h1>
-                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Generate a Plan of Action and Milestones (POA&M) document from multiple STIG checklists.</p>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-2">POA&M</h1>
+                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                                    {poamMode === 'generator' ? 'Generate a Plan of Action and Milestones from STIG checklists.' : 'Compare base (eMASS) and new (generator) POA&M and export merged file.'}
+                                </p>
+                                <div className="flex justify-center gap-1 mt-4 p-1 rounded-lg bg-gray-100 dark:bg-gray-800 inline-flex">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPoamMode('generator')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${poamMode === 'generator' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+                                    >
+                                        Generator
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPoamMode('analyzer')}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${poamMode === 'analyzer' ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+                                    >
+                                        POA&M Analyzer
+                                    </button>
+                                </div>
                             </div>
 
+                            {poamMode === 'analyzer' ? (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <h3 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                                <FileSpreadsheet size={18} /> Base POA&M (eMASS)
+                                            </h3>
+                                            <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Starts column B, headers row 7. Green header rows 1–6.</p>
+                                            {basePoamFile ? (
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-sm truncate text-green-600 dark:text-green-400 font-medium">{basePoamFile.name}</span>
+                                                    <span className="text-xs shrink-0">{basePoamFile.parsed.dataRows.length} rows</span>
+                                                    <button type="button" onClick={() => { setBasePoamFile(null); setPoamComparison(null); }} className="text-red-500 hover:text-red-600 text-xs font-medium">Clear</button>
+                                                </div>
+                                            ) : (
+                                                <label className={`cursor-pointer flex flex-col items-center justify-center py-4 px-3 rounded-lg border-2 border-dashed ${darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'}`}>
+                                                    <Upload size={24} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                                                    <span className="text-sm mt-1">Upload .xlsx</span>
+                                                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBasePoamFile} />
+                                                </label>
+                                            )}
+                                        </div>
+                                        <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <h3 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                                <FileSpreadsheet size={18} /> New POA&M (Generator)
+                                            </h3>
+                                            <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Starts column A, headers row 1.</p>
+                                            {newPoamFile ? (
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-sm truncate text-green-600 dark:text-green-400 font-medium">{newPoamFile.name}</span>
+                                                    <span className="text-xs shrink-0">{newPoamFile.parsed.dataRows.length} rows</span>
+                                                    <button type="button" onClick={() => { setNewPoamFile(null); setPoamComparison(null); }} className="text-red-500 hover:text-red-600 text-xs font-medium">Clear</button>
+                                                </div>
+                                            ) : (
+                                                <label className={`cursor-pointer flex flex-col items-center justify-center py-4 px-3 rounded-lg border-2 border-dashed ${darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'}`}>
+                                                    <Upload size={24} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
+                                                    <span className="text-sm mt-1">Upload .xlsx</span>
+                                                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleNewPoamFile} />
+                                                </label>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <button
+                                            type="button"
+                                            disabled={!basePoamFile || !newPoamFile}
+                                            onClick={runPoamCompare}
+                                            className={`px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 ${basePoamFile && newPoamFile ? (darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white') : 'bg-gray-300 dark:bg-gray-600 text-gray-500 cursor-not-allowed'}`}
+                                        >
+                                            <GitCompare size={18} /> Compare
+                                        </button>
+                                        {poamComparison && (
+                                            <button
+                                                type="button"
+                                                onClick={exportMergedPoamFile}
+                                                className={`px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 ${darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                                            >
+                                                <Download size={18} /> Export Merged POA&M
+                                            </button>
+                                        )}
+                                    </div>
+                                    {poamComparison && (
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <div className={`px-4 py-3 border-b font-semibold flex items-center gap-2 ${darkMode ? 'border-gray-700 text-green-400' : 'border-gray-200 text-green-700'}`}>
+                                                    <Check size={18} /> New findings ({poamComparison.newFindings.length})
+                                                </div>
+                                                <div className="overflow-auto max-h-64">
+                                                    {poamComparison.newFindings.length === 0 ? (
+                                                        <p className={`p-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>None — all new POA&M items exist in base.</p>
+                                                    ) : (
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className={darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-50 text-gray-700'}>
+                                                                <tr>
+                                                                    <th className="px-3 py-2 font-medium">Security Checks</th>
+                                                                    <th className="px-3 py-2 font-medium">Controls / APs</th>
+                                                                    <th className="px-3 py-2 font-medium max-w-[200px] truncate">Description</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {poamComparison.newFindings.slice(0, 50).map((row, i) => {
+                                                                    const sec = Object.keys(row).find(k => /security\s*checks/i.test(k));
+                                                                    const ctrl = Object.keys(row).find(k => /controls?\s*\/\s*aps?/i.test(k));
+                                                                    const desc = Object.keys(row).find(k => /description|vulnerability/i.test(k));
+                                                                    return (
+                                                                        <tr key={i} className={darkMode ? 'border-gray-700' : 'border-gray-100'} style={{ borderBottomWidth: 1 }}>
+                                                                            <td className="px-3 py-2 font-mono text-xs">{row[sec || ''] || '—'}</td>
+                                                                            <td className="px-3 py-2">{row[ctrl || ''] || '—'}</td>
+                                                                            <td className="px-3 py-2 max-w-[200px] truncate" title={row[desc || '']}>{row[desc || ''] || '—'}</td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    )}
+                                                    {poamComparison.newFindings.length > 50 && (
+                                                        <p className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {poamComparison.newFindings.length - 50} more</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className={`rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                                <div className={`px-4 py-3 border-b font-semibold flex items-center gap-2 ${darkMode ? 'border-gray-700 text-amber-400' : 'border-gray-200 text-amber-700'}`}>
+                                                    <XCircle size={18} /> Dropped findings ({poamComparison.droppedFindings.length})
+                                                </div>
+                                                <div className="overflow-auto max-h-64">
+                                                    {poamComparison.droppedFindings.length === 0 ? (
+                                                        <p className={`p-4 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>None — no base items removed.</p>
+                                                    ) : (
+                                                        <table className="w-full text-left text-sm">
+                                                            <thead className={darkMode ? 'bg-gray-700/50 text-gray-300' : 'bg-gray-50 text-gray-700'}>
+                                                                <tr>
+                                                                    <th className="px-3 py-2 font-medium">Security Checks</th>
+                                                                    <th className="px-3 py-2 font-medium">Controls / APs</th>
+                                                                    <th className="px-3 py-2 font-medium max-w-[200px] truncate">Description</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {poamComparison.droppedFindings.slice(0, 50).map((row, i) => {
+                                                                    const sec = Object.keys(row).find(k => /security\s*checks/i.test(k));
+                                                                    const ctrl = Object.keys(row).find(k => /controls?\s*\/\s*aps?/i.test(k));
+                                                                    const desc = Object.keys(row).find(k => /description|vulnerability/i.test(k));
+                                                                    return (
+                                                                        <tr key={i} className={darkMode ? 'border-gray-700' : 'border-gray-100'} style={{ borderBottomWidth: 1 }}>
+                                                                            <td className="px-3 py-2 font-mono text-xs">{row[sec || ''] || '—'}</td>
+                                                                            <td className="px-3 py-2">{row[ctrl || ''] || '—'}</td>
+                                                                            <td className="px-3 py-2 max-w-[200px] truncate" title={row[desc || '']}>{row[desc || ''] || '—'}</td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    )}
+                                                    {poamComparison.droppedFindings.length > 50 && (
+                                                        <p className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>+ {poamComparison.droppedFindings.length - 50} more</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className={`p-4 rounded-xl border text-sm ${darkMode ? 'bg-gray-800/50 border-gray-700 text-gray-400' : 'bg-blue-50/50 border-blue-100 text-blue-800'}`}>
+                                        <strong>Matching:</strong> Base and new are matched by <strong>Security Checks</strong> (SV-/V- numbers; base <code className="px-1 rounded bg-black/10">_rule</code> suffix is normalized) and <strong>Controls / APs</strong>. Export uses the base template (rows 1–6 header, column B start) and outputs base rows minus dropped, plus new findings.
+                                    </div>
+                                </div>
+                            ) : (
+                            <>
                             <div className="flex justify-center -mt-2">
                                 <label className={`cursor-pointer px-6 py-3 rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-3 border ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400' : 'bg-black hover:bg-black/80 text-white border-gray-800'} active:scale-95`}>
                                     <FolderTree size={20} /> Bulk Folder Upload
@@ -5502,6 +5894,8 @@ function App() {
                                     <li>Outputs a formatted Excel file ready for submission or review.</li>
                                 </ul>
                             </div>
+                            </>
+                            )}
                         </div>
                     ) : activeTab === 'controls' ? (
                         <div className="space-y-8 max-w-6xl mx-auto h-full flex flex-col">
@@ -8345,13 +8739,26 @@ function App() {
                         <div className="h-[calc(100vh-100px)] w-full">
                             <NetworkDiagram darkMode={darkMode} />
                         </div>
+                    ) : activeTab === 'pentest' ? (
+                        <div className="h-[calc(100vh-100px)] w-full overflow-auto">
+                            <PentestHub darkMode={darkMode} mode={pentestSubTab} onNavigateTo={setPentestSubTab} onOpenWebScanner={(url) => { setWebScannerInitialUrl(url); setWebScannerOpenedFromPentest(true); setActiveTab('webscan'); }} />
+                        </div>
                     ) : activeTab === 'webscan' ? (
-                        <div className="h-[calc(100vh-100px)] w-full">
-                            <WebScanner darkMode={darkMode} />
+                        <div className="h-[calc(100vh-100px)] w-full flex flex-col">
+                            {webScannerOpenedFromPentest && (
+                                <div className={`flex items-center gap-3 px-4 py-2 border-b shrink-0 ${darkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
+                                    <button type="button" onClick={() => { setActiveTab('pentest'); setPentestSubTab('start'); setWebScannerOpenedFromPentest(false); }} className={`flex items-center gap-2 text-sm font-medium ${darkMode ? 'text-cyan-400 hover:text-cyan-300' : 'text-cyan-600 hover:text-cyan-700'}`}>
+                                        <ChevronLeft size={18} /> Back to Penetration Testing (Start here)
+                                    </button>
+                                </div>
+                            )}
+                            <div className="flex-1 min-h-0">
+                                <WebScanner darkMode={darkMode} onScanResultsChange={setWebScanSeverityCounts} initialUrl={webScannerInitialUrl} />
+                            </div>
                         </div>
                     ) : activeTab === 'codescan' ? (
                         <div className="h-[calc(100vh-100px)] w-full overflow-auto">
-                            <CodeScanner darkMode={darkMode} />
+                            <CodeScanner darkMode={darkMode} onScanResultsChange={setCodeScanSeverityCounts} />
                         </div>
                     ) : activeTab === 'blockchain' ? (
                         <div className="space-y-6">

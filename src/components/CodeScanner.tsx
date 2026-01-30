@@ -1,7 +1,7 @@
 // STRIX Code Scanner Component
 // SAST and GitHub Secret Scanner UI
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
     Code, Shield, AlertTriangle, CheckCircle2, XCircle,
     Play, Loader2, FileText, FolderOpen, Github,
@@ -88,11 +88,14 @@ const CATEGORY_ICONS: Record<VulnerabilityCategory, React.ReactNode> = {
 
 type ScanTab = 'local' | 'paste' | 'github';
 
+export type ScanSeverityCounts = { critical: number; high: number; medium: number; low: number };
+
 interface CodeScannerProps {
     darkMode?: boolean;
+    onScanResultsChange?: (counts: ScanSeverityCounts | null) => void;
 }
 
-export function CodeScanner({ darkMode = true }: CodeScannerProps) {
+export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScannerProps) {
     const [activeTab, setActiveTab] = useState<ScanTab>('paste');
     const [isScanning, setIsScanning] = useState(false);
     const [progress, setProgress] = useState<ScanProgress | GitHubSearchProgress | null>(null);
@@ -133,6 +136,28 @@ export function CodeScanner({ darkMode = true }: CodeScannerProps) {
     const [onlyShowWithBalance, setOnlyShowWithBalance] = useState(false);
     const [isFilteringByBalance, setIsFilteringByBalance] = useState(false);
     const [balanceFilterProgress, setBalanceFilterProgress] = useState<{ checked: number; total: number; funded: number } | null>(null);
+
+    // Notify parent of scan severity counts for sidebar status box
+    useEffect(() => {
+        if (!onScanResultsChange) return;
+        const allFindings: { severity: string }[] = [
+            ...(localResult?.findings ?? []),
+            ...pasteFindings,
+            ...(githubResult?.findings ?? []),
+            ...liveFindings
+        ];
+        if (allFindings.length === 0) {
+            onScanResultsChange(null);
+            return;
+        }
+        const sev = (s: string) => (s || '').toLowerCase();
+        onScanResultsChange({
+            critical: allFindings.filter(f => sev(f.severity) === 'critical').length,
+            high: allFindings.filter(f => sev(f.severity) === 'high').length,
+            medium: allFindings.filter(f => sev(f.severity) === 'medium').length,
+            low: allFindings.filter(f => sev(f.severity) === 'low' || sev(f.severity) === 'info').length
+        });
+    }, [localResult, pasteFindings, githubResult, liveFindings, onScanResultsChange]);
     const [fundedFindingIds, setFundedFindingIds] = useState<Set<string>>(new Set());
     const [balanceInfoCache, setBalanceInfoCache] = useState<Record<string, { address: string; type: string; balances: string[] }>>({});
 

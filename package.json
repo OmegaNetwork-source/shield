@@ -25,6 +25,7 @@
         "jszip": "^3.10.1",
         "lucide-react": "^0.309.0",
         "msgpack-lite": "^0.1.26",
+        "nodemailer": "^6.10.1",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-markdown": "^10.1.0",
@@ -37,6 +38,7 @@
         "@types/crypto-js": "^4.2.2",
         "@types/jszip": "^3.4.0",
         "@types/msgpack-lite": "^0.1.12",
+        "@types/nodemailer": "^6.4.22",
         "@types/react": "^18.2.43",
         "@types/react-dom": "^18.2.17",
         "@vitejs/plugin-react": "^4.2.1",
@@ -56,6 +58,9 @@
         "directories": {
             "output": "release"
         },
+        "extraResources": [
+            { "from": "build/capture", "to": "capture", "filter": ["**/*"] }
+        ],
         "win": {
             "target": "nsis",
             "requestedExecutionLevel": "requireAdministrator",

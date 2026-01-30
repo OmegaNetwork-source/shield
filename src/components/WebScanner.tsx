@@ -1,7 +1,7 @@
 // STRIX Web Scanner Component
 // Unified vulnerability scanner UI with API Key Exploit Verification
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
     Globe, Shield, AlertTriangle, CheckCircle2, XCircle,
     Play, Loader2, FileText, Link2, Code, Wallet,
@@ -360,8 +360,13 @@ interface ApiKeyTestResult {
 // @ts-ignore
 const isElectron = typeof window !== 'undefined' && window.ipcRenderer !== undefined;
 
+export type ScanSeverityCounts = { critical: number; high: number; medium: number; low: number };
+
 interface WebScannerProps {
     darkMode?: boolean;
+    onScanResultsChange?: (counts: ScanSeverityCounts | null) => void;
+    /** Pre-fill target URL (e.g. from Penetration Testing workflow). */
+    initialUrl?: string | null;
 }
 
 const severityColors = {
@@ -386,7 +391,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
     'infrastructure': <Server className="size-4" />
 };
 
-export default function WebScanner({ darkMode = true }: WebScannerProps) {
+export default function WebScanner({ darkMode = true, onScanResultsChange, initialUrl }: WebScannerProps) {
     const [targetUrl, setTargetUrl] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const [progress, setProgress] = useState<ScanProgress | null>(null);
@@ -418,6 +423,29 @@ export default function WebScanner({ darkMode = true }: WebScannerProps) {
 
     // API Key exploit test state
     const [apiKeyTests, setApiKeyTests] = useState<Map<string, ApiKeyTestResult>>(new Map());
+
+    // Notify parent of scan severity counts for sidebar status box
+    useEffect(() => {
+        if (!onScanResultsChange) return;
+        if (!result?.vulnerabilities?.length) {
+            onScanResultsChange(null);
+            return;
+        }
+        const vulns = result.vulnerabilities;
+        onScanResultsChange({
+            critical: vulns.filter(v => (v.severity || '').toLowerCase() === 'critical').length,
+            high: vulns.filter(v => (v.severity || '').toLowerCase() === 'high').length,
+            medium: vulns.filter(v => (v.severity || '').toLowerCase() === 'medium').length,
+            low: vulns.filter(v => (v.severity || '').toLowerCase() === 'low').length
+        });
+    }, [result, onScanResultsChange]);
+
+    // Pre-fill target URL when opened from Penetration Testing workflow
+    useEffect(() => {
+        if (initialUrl && initialUrl.trim()) {
+            setTargetUrl(initialUrl.trim());
+        }
+    }, [initialUrl]);
 
     // PDF Report generation state
     const [showReportOptions, setShowReportOptions] = useState(false);

@@ -187,12 +187,22 @@ function EditableNode({ data, id, type, children, selected, onDelete }: { data: 
                     </div>
                 )}
             </div>
-            <Handle type="target" position={Position.Top} />
-            <Handle type="source" position={Position.Bottom} />
-            <Handle type="target" position={Position.Left} />
-            <Handle type="source" position={Position.Right} />
+            <Handle id="top" type="target" position={Position.Top} />
+            <Handle id="bottom" type="source" position={Position.Bottom} />
+            <Handle id="left" type="target" position={Position.Left} />
+            <Handle id="right" type="source" position={Position.Right} />
         </div>
     );
+}
+
+// Format software for display in device nodes (Desktop, Laptop, Server)
+function formatSoftwareDisplay(data: any): string {
+    if (!data?.software || !Array.isArray(data.software) || data.software.length === 0) return '';
+    const names = data.software.map((s: { name?: string } | string) => typeof s === 'string' ? s : (s?.name || ''));
+    const text = names.filter(Boolean).join(', ');
+    const manual = data.manualSoftwareInfo?.trim();
+    if (manual) return text ? `${text} • ${manual}` : manual;
+    return text;
 }
 
 // Server Node Component
@@ -201,6 +211,7 @@ function ServerNode({ data, id, selected }: { data: any; id: string; selected?: 
     const handleDelete = () => {
         deleteElements({ nodes: [{ id }] });
     };
+    const softwareLabel = formatSoftwareDisplay(data);
     return (
         <EditableNode data={data} id={id} type="Server" selected={selected} onDelete={handleDelete}>
             <div className="px-4 py-3 bg-blue-50 border-2 border-blue-300 rounded-lg shadow-md w-full h-full flex flex-col">
@@ -208,6 +219,7 @@ function ServerNode({ data, id, selected }: { data: any; id: string; selected?: 
                     <Server size={16} className="text-blue-600" />
                     <span className="font-semibold text-blue-900 text-sm">Server</span>
                 </div>
+                {softwareLabel ? <div className="text-xs text-blue-700 mt-0.5 leading-tight">{softwareLabel}</div> : null}
             </div>
         </EditableNode>
     );
@@ -551,10 +563,10 @@ function TextBoxNode({ data, id, selected }: { data: any; id: string; selected?:
                     </div>
                 )}
             </div>
-            <Handle type="target" position={Position.Top} />
-            <Handle type="source" position={Position.Bottom} />
-            <Handle type="target" position={Position.Left} />
-            <Handle type="source" position={Position.Right} />
+            <Handle id="top" type="target" position={Position.Top} />
+            <Handle id="bottom" type="source" position={Position.Bottom} />
+            <Handle id="left" type="target" position={Position.Left} />
+            <Handle id="right" type="source" position={Position.Right} />
         </div>
     );
 }
@@ -565,6 +577,7 @@ function DesktopNode({ data, id, selected }: { data: any; id: string; selected?:
     const handleDelete = () => {
         deleteElements({ nodes: [{ id }] });
     };
+    const softwareLabel = formatSoftwareDisplay(data);
     return (
         <EditableNode data={data} id={id} type="Desktop" selected={selected} onDelete={handleDelete}>
             <div className="px-4 py-3 bg-indigo-50 border-2 border-indigo-300 rounded-lg shadow-md w-full h-full flex flex-col">
@@ -572,6 +585,7 @@ function DesktopNode({ data, id, selected }: { data: any; id: string; selected?:
                     <Monitor size={16} className="text-indigo-600" />
                     <span className="font-semibold text-indigo-900 text-sm">Desktop</span>
                 </div>
+                {softwareLabel ? <div className="text-xs text-indigo-700 mt-0.5 leading-tight">{softwareLabel}</div> : null}
             </div>
         </EditableNode>
     );
@@ -601,6 +615,7 @@ function LaptopNode({ data, id, selected }: { data: any; id: string; selected?: 
     const handleDelete = () => {
         deleteElements({ nodes: [{ id }] });
     };
+    const softwareLabel = formatSoftwareDisplay(data);
     return (
         <EditableNode data={data} id={id} type="Laptop" selected={selected} onDelete={handleDelete}>
             <div className="px-4 py-3 bg-teal-50 border-2 border-teal-300 rounded-lg shadow-md w-full h-full flex flex-col">
@@ -608,6 +623,7 @@ function LaptopNode({ data, id, selected }: { data: any; id: string; selected?: 
                     <Laptop size={16} className="text-teal-600" />
                     <span className="font-semibold text-teal-900 text-sm">Laptop</span>
                 </div>
+                {softwareLabel ? <div className="text-xs text-teal-700 mt-0.5 leading-tight">{softwareLabel}</div> : null}
             </div>
         </EditableNode>
     );

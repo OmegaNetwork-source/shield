@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, dialog, type WebContents, net as electronNet } from 'electron'
 import path from 'node:path'
+import net from 'node:net'
 import { spawn } from 'node:child_process';
 import fs from 'node:fs'
 import os from 'node:os'
@@ -130,6 +131,655 @@ ipcMain.handle('load-stig-file', async (event, stigId: string = 'win11') => {
     }
 
     return { success: false, error: `STIG file not found: ${xccdfFile}` }
+})
+
+// Pentest: Get local IP addresses (for LHOST)
+ipcMain.handle('get-local-ip', async () => {
+    const ifaces = os.networkInterfaces()
+    const ips: string[] = []
+    for (const name of Object.keys(ifaces)) {
+        const addrs = ifaces[name]
+        if (!addrs) continue
+        for (const a of addrs) {
+            if (a.family === 'IPv4' && !a.internal) ips.push(a.address)
+        }
+    }
+    return ips
+})
+
+// Pentest: Run port scan on target (TCP connect to common ports)
+const COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1433, 3306, 3389, 5432, 5900, 6379, 8080, 8443, 27017]
+const PORT_SERVICES: Record<number, string> = {
+    21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS', 80: 'HTTP', 110: 'POP3', 111: 'RPC',
+    135: 'MSRPC', 139: 'NetBIOS', 143: 'IMAP', 443: 'HTTPS', 445: 'SMB', 993: 'IMAPS', 995: 'POP3S',
+    1433: 'MSSQL', 3306: 'MySQL', 3389: 'RDP', 5432: 'PostgreSQL', 5900: 'VNC', 6379: 'Redis',
+    8080: 'HTTP-Alt', 8443: 'HTTPS-Alt', 27017: 'MongoDB'
+}
+ipcMain.handle('run-port-scan', async (event, data: { target: string }) => {
+    const { target } = data
+    const timeout = 2000
+    const results: Array<{ port: number; state: string; service?: string }> = []
+    const scan = (port: number) =>
+        new Promise<{ port: number; open: boolean }>((resolve) => {
+            const socket = new net.Socket()
+            socket.setTimeout(timeout)
+            socket.on('connect', () => {
+                socket.destroy()
+                resolve({ port, open: true })
+            })
+            socket.on('timeout', () => { socket.destroy(); resolve({ port, open: false }) })
+            socket.on('error', () => resolve({ port, open: false }))
+            socket.connect(port, target)
+        })
+    const settled = await Promise.all(COMMON_PORTS.map(scan))
+    for (const { port, open } of settled) {
+        results.push({
+            port,
+            state: open ? 'open' : 'closed',
+            service: open ? (PORT_SERVICES[port] || 'unknown') : undefined
+        })
+    }
+    return {
+        target,
+        openPorts: results.filter(r => r.state === 'open'),
+        allResults: results
+    }
+})
+
+// Pentest: Payload hosting — HTTP server to serve one file (for phishing delivery)
+let payloadHttpServer: http.Server | null = null
+ipcMain.handle('start-payload-server', async (event, data: { port: number; filePath: string; lhost?: string }) => {
+    if (payloadHttpServer) {
+        try { payloadHttpServer.close() } catch { /* ignore */ }
+        payloadHttpServer = null
+    }
+    const { port, filePath, lhost } = data
+    if (!filePath || !fs.existsSync(filePath)) {
+        return { success: false, error: 'File not found', url: null }
+    }
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile()) {
+        return { success: false, error: 'Path is not a file', url: null }
+    }
+    const filename = path.basename(filePath)
+    payloadHttpServer = http.createServer((req, res) => {
+        const stream = fs.createReadStream(filePath)
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+        stream.pipe(res)
+    })
+    return new Promise<{ success: boolean; url: string | null; error?: string }>((resolve) => {
+        payloadHttpServer!.listen(port, lhost || '0.0.0.0', () => {
+            const host = lhost || (() => {
+                const ifaces = os.networkInterfaces()
+                for (const name of Object.keys(ifaces)) {
+                    const addrs = ifaces[name]
+                    if (!addrs) continue
+                    for (const a of addrs) {
+                        if (a.family === 'IPv4' && !a.internal) return a.address
+                    }
+                }
+                return '127.0.0.1'
+            })()
+            resolve({ success: true, url: `http://${host}:${port}/${encodeURIComponent(filename)}` })
+        })
+        payloadHttpServer!.on('error', (err: NodeJS.ErrnoException) => {
+            resolve({ success: false, url: null, error: err.message || 'Server failed to start' })
+        })
+    })
+})
+ipcMain.handle('stop-payload-server', async () => {
+    if (payloadHttpServer) {
+        try { payloadHttpServer.close() } catch { /* ignore */ }
+        payloadHttpServer = null
+    }
+    return { stopped: true }
+})
+
+// Pentest: Open file dialog (choose payload file)
+ipcMain.handle('show-open-dialog', async (event, opts: { title?: string; filters?: { name: string; extensions: string[] }[] }) => {
+    const result = await dialog.showOpenDialog(win!, {
+        title: opts.title || 'Choose file',
+        properties: ['openFile'],
+        filters: opts.filters || [{ name: 'All', extensions: ['*'] }]
+    })
+    return { canceled: result.canceled, filePaths: result.filePaths }
+})
+
+// Pentest: Run Metasploit exploit (write .rc script and launch msfconsole)
+ipcMain.handle('run-msf-exploit', async (event, data: { script: string }) => {
+    const { script } = data
+    if (!script || typeof script !== 'string') {
+        return { success: false, error: 'No script provided' }
+    }
+    const tmpDir = os.tmpdir()
+    const rcPath = path.join(tmpDir, `strix-msf-${Date.now()}.rc`)
+    try {
+        fs.writeFileSync(rcPath, script, 'utf8')
+        const isWin = process.platform === 'win32'
+        if (isWin) {
+            spawn('cmd.exe', ['/c', 'start', 'msfconsole', '-q', '-r', rcPath], { shell: true, detached: true })
+        } else {
+            spawn('msfconsole', ['-q', '-r', rcPath], { detached: true, stdio: 'ignore' }).unref()
+        }
+        return { success: true, path: rcPath }
+    } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : String(e)
+        return { success: false, error: err }
+    }
+})
+
+// Pentest: Create harmless test file for delivery testing (HTML)
+ipcMain.handle('create-test-payload-file', async () => {
+    const tmpDir = os.tmpdir()
+    const filePath = path.join(tmpDir, `strix-test-${Date.now()}.html`)
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Test</title></head><body><h1>Test — you opened the link</h1><p>Delivery test successful. Use this URL to verify email/SMS delivery.</p></body></html>'
+    try {
+        fs.writeFileSync(filePath, html, 'utf8')
+        return { success: true, path: filePath }
+    } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : String(e)
+        return { success: false, error: err, path: null }
+    }
+})
+
+// Pentest: Send SMS via Email-to-SMS (carrier gateway + SMTP, no Twilio)
+ipcMain.handle('send-sms-email', async (event, data: {
+    smtpHost: string; smtpPort: number; smtpSecure?: boolean;
+    smtpUser: string; smtpPass: string;
+    from: string; toAddress: string; subject: string; body: string;
+}) => {
+    const { smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, from, toAddress, subject, body } = data
+    if (!smtpHost || !smtpUser || !smtpPass || !toAddress || !body) {
+        return { success: false, error: 'Missing SMTP host, user, password, To address, or body' }
+    }
+    try {
+        const nodemailer = await import('nodemailer')
+        const transport = nodemailer.default.createTransport({
+            host: smtpHost,
+            port: smtpPort || 587,
+            secure: smtpSecure ?? (smtpPort === 465),
+            auth: { user: smtpUser, pass: smtpPass }
+        })
+        const info = await transport.sendMail({
+            from: from || smtpUser,
+            to: toAddress,
+            subject: subject || 'Message',
+            text: body
+        })
+        return { success: true, messageId: info.messageId }
+    } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : String(e)
+        return { success: false, error: err }
+    }
+})
+
+// Pentest: Send SMS via Twilio (user provides credentials)
+ipcMain.handle('send-sms-twilio', async (event, data: { accountSid: string; authToken: string; from: string; to: string; body: string }) => {
+    const { accountSid, authToken, from, to, body } = data
+    if (!accountSid || !authToken || !from || !to || !body) {
+        return { success: false, error: 'Missing Account SID, Auth Token, From, To, or Body' }
+    }
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+    const params = new URLSearchParams({ To: to, From: from, Body: body })
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+        const json = await res.json()
+        if (json.error_code || json.code >= 400) {
+            return { success: false, error: json.message || json.error_message || JSON.stringify(json) }
+        }
+        return { success: true, sid: json.sid }
+    } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : String(e)
+        return { success: false, error: err }
+    }
+})
+
+// ----------------------------------------------------------------------
+// WiFi profiles: save credentials, connect this PC, then use Live connections / Packet capture
+// Monitoring shows this device's traffic only (not other devices on the WiFi).
+// ----------------------------------------------------------------------
+const WIFI_PROFILES_PATH = path.join(app.getPath('userData'), 'wifi-profiles.json')
+
+function escapeXml(s: string): string {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
+}
+
+ipcMain.handle('wifi-get-profiles', async (): Promise<{ success: boolean; profiles?: Array<{ id: string; name: string; ssid: string }>; error?: string }> => {
+    try {
+        const raw = fs.readFileSync(WIFI_PROFILES_PATH, 'utf-8')
+        const data = JSON.parse(raw) as { profiles?: Array<{ id: string; name: string; ssid: string; password?: string }> }
+        const list = (data.profiles || []).map(p => ({ id: p.id, name: p.name, ssid: p.ssid }))
+        return { success: true, profiles: list }
+    } catch (e: unknown) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { success: true, profiles: [] }
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+ipcMain.handle('wifi-save-profile', async (_e, profile: { id?: string; name: string; ssid: string; password: string; security?: string }) => {
+    try {
+        let data: { profiles: Array<{ id: string; name: string; ssid: string; password: string; security?: string }> } = { profiles: [] }
+        try {
+            const raw = fs.readFileSync(WIFI_PROFILES_PATH, 'utf-8')
+            data = JSON.parse(raw)
+        } catch { /* ignore */ }
+        const id = profile.id || `wifi-${Date.now()}`
+        const existing = data.profiles.findIndex(p => p.id === id)
+        const entry = { id, name: profile.name || profile.ssid, ssid: profile.ssid, password: profile.password, security: profile.security || 'WPA2PSK' }
+        if (existing >= 0) data.profiles[existing] = entry
+        else data.profiles.push(entry)
+        fs.writeFileSync(WIFI_PROFILES_PATH, JSON.stringify(data, null, 2), 'utf-8')
+        return { success: true, id }
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+ipcMain.handle('wifi-delete-profile', async (_e, profileId: string) => {
+    try {
+        let data: { profiles: Array<{ id: string }> } = { profiles: [] }
+        try {
+            const raw = fs.readFileSync(WIFI_PROFILES_PATH, 'utf-8')
+            data = JSON.parse(raw)
+        } catch { return { success: true } }
+        data.profiles = data.profiles.filter(p => p.id !== profileId)
+        fs.writeFileSync(WIFI_PROFILES_PATH, JSON.stringify(data, null, 2), 'utf-8')
+        return { success: true }
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+ipcMain.handle('wifi-connect', async (_e, profileId: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+    if (process.platform !== 'win32') {
+        return { success: false, error: 'WiFi connect is supported on Windows only. Use system settings on other platforms.' }
+    }
+    try {
+        const raw = fs.readFileSync(WIFI_PROFILES_PATH, 'utf-8')
+        const data = JSON.parse(raw) as { profiles?: Array<{ id: string; name: string; ssid: string; password: string }> }
+        const profile = (data.profiles || []).find(p => p.id === profileId)
+        if (!profile) return { success: false, error: 'Profile not found' }
+        const ssidEsc = escapeXml(profile.ssid)
+        const keyEsc = escapeXml(profile.password)
+        const xml = `<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+  <name>${ssidEsc}</name>
+  <SSIDConfig>
+    <SSID>
+      <name>${ssidEsc}</name>
+    </SSID>
+  </SSIDConfig>
+  <connectionType>ESS</connectionType>
+  <connectionMode>auto</connectionMode>
+  <MSM>
+    <security>
+      <authEncryption>
+        <authentication>WPA2PSK</authentication>
+        <encryption>AES</encryption>
+        <useOneX>false</useOneX>
+      </authEncryption>
+      <sharedKey>
+        <keyType>passPhrase</keyType>
+        <protected>false</protected>
+        <keyMaterial>${keyEsc}</keyMaterial>
+      </sharedKey>
+    </security>
+  </MSM>
+</WLANProfile>`
+        const profilePath = path.join(app.getPath('temp'), `strix-wifi-${profileId}.xml`)
+        fs.writeFileSync(profilePath, xml, 'utf-8')
+        const add = spawn('netsh', ['wlan', 'add', 'profile', `filename=${profilePath}`], { stdio: ['ignore', 'pipe', 'pipe'] })
+        await new Promise<void>((res) => {
+            add.on('close', (code) => res())
+        })
+        try { fs.unlinkSync(profilePath) } catch { /* ignore */ }
+        const connect = spawn('netsh', ['wlan', 'connect', `name=${profile.ssid}`], { stdio: ['ignore', 'pipe', 'pipe'] })
+        let err2 = ''
+        connect.stderr?.on('data', (d) => { err2 += d.toString() })
+        await new Promise<void>((res, rej) => {
+            connect.on('close', (code) => {
+                if (code === 0) res()
+                else rej(new Error(err2 || `Connect exit ${code}`))
+            })
+        })
+        return { success: true, message: `Connected to ${profile.ssid}. Use Live connections above to monitor this device's traffic.` }
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+// ----------------------------------------------------------------------
+// Network devices: scan home network (IP + MAC), mark known devices, flag unknown
+// So you can see if any random/new device shows up on your WiFi.
+// ----------------------------------------------------------------------
+const KNOWN_DEVICES_PATH = path.join(app.getPath('userData'), 'known-devices.json')
+
+function parseArpTable(out: string): Array<{ ip: string; mac: string }> {
+    const devices: Array<{ ip: string; mac: string }> = []
+    const ipRe = /^\d+\.\d+\.\d+\.\d+$/
+    const macRe = /^([0-9a-fA-F]{2}[-:]){5}[0-9a-fA-F]{2}$/
+    for (const line of out.split(/\r?\n/)) {
+        const parts = line.trim().split(/\s+/).filter(Boolean)
+        if (parts.length >= 2) {
+            const ip = parts[0]
+            const mac = parts[1].replace(/:/g, '-')
+            if (ipRe.test(ip) && macRe.test(mac)) {
+                if (ip.endsWith('.255')) continue
+                if (mac === 'ff-ff-ff-ff-ff-ff' || mac === '00-00-00-00-00-00') continue
+                devices.push({ ip, mac: mac.toLowerCase() })
+            }
+        }
+    }
+    return devices
+}
+
+ipcMain.handle('get-network-devices', async (): Promise<{ success: boolean; devices?: Array<{ ip: string; mac: string }>; error?: string }> => {
+    if (process.platform !== 'win32') {
+        return { success: false, error: 'Network device scan is supported on Windows (arp -a). Use system tools on other platforms.' }
+    }
+    return new Promise((resolve) => {
+        const child = spawn('arp', ['-a'], { stdio: ['ignore', 'pipe', 'pipe'] })
+        let out = ''
+        child.stdout?.on('data', (d) => { out += d.toString() })
+        child.stderr?.on('data', (d) => { out += d.toString() })
+        child.on('error', (e) => resolve({ success: false, error: e.message }))
+        child.on('close', () => {
+            const devices = parseArpTable(out)
+            resolve({ success: true, devices })
+        })
+    })
+})
+
+ipcMain.handle('get-known-devices', async (): Promise<{ success: boolean; devices?: Array<{ mac: string; ip: string; name: string }>; error?: string }> => {
+    try {
+        const raw = fs.readFileSync(KNOWN_DEVICES_PATH, 'utf-8')
+        const data = JSON.parse(raw) as { devices?: Array<{ mac: string; ip: string; name: string }> }
+        return { success: true, devices: data.devices || [] }
+    } catch (e: unknown) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { success: true, devices: [] }
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+ipcMain.handle('add-known-device', async (_e, device: { mac: string; ip: string; name: string }) => {
+    try {
+        let data: { devices: Array<{ mac: string; ip: string; name: string }> } = { devices: [] }
+        try {
+            const raw = fs.readFileSync(KNOWN_DEVICES_PATH, 'utf-8')
+            data = JSON.parse(raw)
+        } catch { /* ignore */ }
+        const mac = (device.mac || '').toLowerCase().replace(/:/g, '-')
+        const existing = data.devices.findIndex(d => (d.mac || '').toLowerCase() === mac || d.ip === device.ip)
+        const entry = { mac, ip: device.ip || '', name: (device.name || 'My device').trim() || 'My device' }
+        if (existing >= 0) data.devices[existing] = entry
+        else data.devices.push(entry)
+        fs.writeFileSync(KNOWN_DEVICES_PATH, JSON.stringify(data, null, 2), 'utf-8')
+        return { success: true }
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+ipcMain.handle('remove-known-device', async (_e, mac: string) => {
+    try {
+        let data: { devices: Array<{ mac: string }> } = { devices: [] }
+        try {
+            const raw = fs.readFileSync(KNOWN_DEVICES_PATH, 'utf-8')
+            data = JSON.parse(raw)
+        } catch { return { success: true } }
+        const key = (mac || '').toLowerCase().replace(/:/g, '-')
+        data.devices = data.devices.filter(d => (d.mac || '').toLowerCase() !== key)
+        fs.writeFileSync(KNOWN_DEVICES_PATH, JSON.stringify(data, null, 2), 'utf-8')
+        return { success: true }
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+})
+
+// Well-known port → service name for live connections (user-friendly)
+const LIVE_CONN_PORT_SERVICE: Record<number, string> = {
+    21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+    80: 'HTTP', 110: 'POP3', 111: 'RPC', 135: 'MSRPC', 139: 'NetBIOS',
+    143: 'IMAP', 443: 'HTTPS', 445: 'SMB', 465: 'SMTPS', 587: 'SMTP',
+    993: 'IMAPS', 995: 'POP3S', 1433: 'MSSQL', 3306: 'MySQL', 3389: 'RDP',
+    5432: 'PostgreSQL', 6379: 'Redis', 8080: 'HTTP', 8443: 'HTTPS', 27017: 'MongoDB'
+}
+
+function parseForeignAddress(foreign: string): { ip: string; port: number } | null {
+    const trimmed = foreign.trim()
+    if (!trimmed || trimmed === '0.0.0.0' || trimmed === '*') return null
+    const ipv6Match = trimmed.match(/^\[([^\]]+)\]:(\d+)$/)
+    if (ipv6Match) return { ip: ipv6Match[1], port: parseInt(ipv6Match[2], 10) }
+    const ipv4Match = trimmed.match(/^([^:]+):(\d+)$/)
+    if (ipv4Match) return { ip: ipv4Match[1], port: parseInt(ipv4Match[2], 10) }
+    return null
+}
+
+// Pentest: Live network connections (netstat) — with service names and hostname resolution
+ipcMain.handle('get-live-connections', async () => {
+    return new Promise((resolve) => {
+        const isWin = process.platform === 'win32'
+        const cmd = isWin ? 'netstat -an' : 'netstat -tuln 2>/dev/null || ss -tuln'
+        const child = spawn(isWin ? 'cmd.exe' : 'sh', isWin ? ['/c', 'netstat', '-an'] : ['-c', cmd])
+        let out = ''
+        child.stdout?.on('data', (d) => { out += d.toString() })
+        child.stderr?.on('data', (d) => { out += d.toString() })
+        child.on('error', (e) => resolve({ success: false, connections: [], error: e.message }))
+        child.on('close', () => {
+            const lines = out.split(/\r?\n/).filter(Boolean)
+            const raw: { proto: string; local: string; foreign: string; state: string }[] = []
+            if (isWin) {
+                for (const line of lines) {
+                    const parts = line.trim().split(/\s+/).filter(Boolean)
+                    if (parts.length >= 4 && (parts[0] === 'TCP' || parts[0] === 'UDP')) {
+                        raw.push({
+                            proto: parts[0],
+                            local: parts[1] || '',
+                            foreign: parts[2] || '',
+                            state: parts.slice(3).join(' ') || ''
+                        })
+                    }
+                }
+            } else {
+                for (const line of lines) {
+                    const m = line.match(/(tcp|udp)\s+\d+\s+\d+\s+(\S+)\s+(\S+)\s+(\S*)/)
+                    if (m) raw.push({ proto: m[1], local: m[2], foreign: m[3], state: m[4] || '-' })
+                }
+            }
+            void (async () => {
+                const connections: { proto: string; local: string; foreign: string; state: string; service: string; hostname: string }[] = []
+                const hostnameCache = new Map<string, string>()
+                const dns = await import('node:dns').then(m => m.promises).catch((): null => null)
+                const maxLookups = 50
+                let lookups = 0
+                for (const r of raw) {
+                    const parsed = parseForeignAddress(r.foreign)
+                    const port = parsed?.port ?? 0
+                    const service = (port && LIVE_CONN_PORT_SERVICE[port]) ? LIVE_CONN_PORT_SERVICE[port] : (port ? `Port ${port}` : '')
+                    let hostname = ''
+                    if (parsed?.ip && parsed.ip !== '0.0.0.0' && !parsed.ip.startsWith('127.') && lookups < maxLookups && dns) {
+                        const cached = hostnameCache.get(parsed.ip)
+                        if (cached !== undefined) hostname = cached
+                        else {
+                            try {
+                                const names = await dns.reverse(parsed.ip).catch((): string[] => [])
+                                hostname = names && names[0] ? names[0] : ''
+                                hostnameCache.set(parsed.ip, hostname)
+                                lookups++
+                            } catch { hostnameCache.set(parsed.ip, '') }
+                        }
+                    }
+                    connections.push({
+                        proto: r.proto,
+                        local: r.local,
+                        foreign: r.foreign,
+                        state: r.state,
+                        service: service || '—',
+                        hostname: hostname || '—'
+                    })
+                }
+                // SIEM-friendly: show active connections (ESTABLISHED, etc.) first so website traffic is visible
+                const activeFirst = (a: { state: string }, b: { state: string }) => {
+                    const order = (s: string) => {
+                        const u = s.toUpperCase()
+                        if (u.includes('ESTABLISHED')) return 0
+                        if (u.includes('TIME_WAIT') || u.includes('CLOSE_WAIT')) return 1
+                        if (u.includes('LISTENING')) return 2
+                        return 3
+                    }
+                    return order(a.state) - order(b.state)
+                }
+                connections.sort(activeFirst)
+                resolve({ success: true, connections })
+            })()
+        })
+    })
+})
+
+// Pentest: Live packet capture — "see everything on the network"
+let packetCaptureProcess: ReturnType<typeof spawn> | null = null
+let packetCaptureSender: WebContents | null = null
+
+function parseTsharkJsonLine(line: string): { time: string; src: string; dst: string; protocol: string; length: string; info: string } | null {
+    try {
+        const obj = JSON.parse(line) as { _source?: { layers?: Record<string, Record<string, string>> } }
+        const layers = obj._source?.layers
+        if (!layers) return null
+        const frame = layers.frame || {}
+        const ip = layers.ip || {}
+        const tcp = layers.tcp || {}
+        const udp = layers.udp || {}
+        const time = frame['frame.time'] || ''
+        const len = frame['frame.len'] || ''
+        const protos = frame['frame.protocols'] || ''
+        const src = ip['ip.src'] || (layers.eth as Record<string, string>)?.['eth.src'] || '-'
+        const dst = ip['ip.dst'] || (layers.eth as Record<string, string>)?.['eth.dst'] || '-'
+        const info = tcp['tcp.srcport'] ? `${tcp['tcp.srcport']} → ${tcp['tcp.dstport']}` : udp['udp.srcport'] ? `${udp['udp.srcport']} → ${udp['udp.dstport']}` : protos
+        return { time, src, dst, protocol: protos || '—', length: len, info: String(info || '—') }
+    } catch {
+        return null
+    }
+}
+
+const PACKET_CAPTURE_UNAVAILABLE =
+    'Packet capture is unavailable. Install a capture driver (e.g. Npcap) and the capture tool in the default location, or add it to your PATH.'
+
+// Resolve capture binary: bundled first (build/capture or resources/capture), then Windows install path, then PATH
+function getCaptureBinary(): string {
+    const isWin = process.platform === 'win32'
+    const bundledName = isWin ? 'tshark.exe' : 'tshark'
+    const bundledDir = app.isPackaged
+        ? path.join(process.resourcesPath, 'capture')
+        : path.join(__dirname, '..', 'build', 'capture')
+    const bundledPath = path.join(bundledDir, bundledName)
+    try {
+        if (fs.existsSync(bundledPath)) return bundledPath
+    } catch { /* ignore */ }
+    if (!isWin) return 'tshark'
+    const prog = process.env['ProgramFiles'] || 'C:\\Program Files'
+    const alt = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'
+    const candidates = [
+        path.join(prog, 'Wireshark', 'tshark.exe'),
+        path.join(alt, 'Wireshark', 'tshark.exe'),
+    ]
+    for (const c of candidates) {
+        try {
+            if (fs.existsSync(c)) return c
+        } catch { /* ignore */ }
+    }
+    return 'tshark'
+}
+
+ipcMain.handle('list-capture-interfaces', async (): Promise<{ success: boolean; interfaces?: Array<{ index: string; name: string }>; error?: string }> => {
+    const bin = getCaptureBinary()
+    if (bin === 'tshark') return { success: false, error: PACKET_CAPTURE_UNAVAILABLE }
+    return new Promise((resolve) => {
+        const child = spawn(bin, ['-D'], { stdio: ['ignore', 'pipe', 'pipe'] })
+        let out = ''
+        let err = ''
+        child.stdout?.on('data', (d: Buffer) => { out += d.toString() })
+        child.stderr?.on('data', (d: Buffer) => { err += d.toString() })
+        child.on('error', (e) => resolve({ success: false, error: (e as NodeJS.ErrnoException).code === 'ENOENT' ? PACKET_CAPTURE_UNAVAILABLE : e.message }))
+        child.on('close', (code) => {
+            if (code !== 0) return resolve({ success: false, error: err || out || 'Failed to list interfaces' })
+            const list: Array<{ index: string; name: string }> = []
+            for (const line of out.split(/\n/)) {
+                const m = line.match(/^\s*(\d+)\.\s+(.+)$/)
+                if (m) list.push({ index: m[1], name: m[2].trim() })
+            }
+            resolve({ success: true, interfaces: list })
+        })
+    })
+})
+
+ipcMain.handle('start-packet-capture', async (event, opts: { interface?: string }) => {
+    if (packetCaptureProcess) {
+        try { packetCaptureProcess.kill() } catch { /* ignore */ }
+        packetCaptureProcess = null
+    }
+    const iface = String(opts?.interface ?? '1').trim() || '1'
+    packetCaptureSender = event.sender
+    const bin = getCaptureBinary()
+    if (bin === 'tshark') {
+        packetCaptureSender = null
+        return { success: false, error: PACKET_CAPTURE_UNAVAILABLE }
+    }
+    try {
+        const child = spawn(bin, ['-i', iface, '-T', 'json', '-l'], { stdio: ['ignore', 'pipe', 'pipe'] })
+        packetCaptureProcess = child
+        child.stdout?.on('data', (data: Buffer) => {
+            const lines = data.toString().split(/\n/).filter(Boolean)
+            for (const line of lines) {
+                const p = parseTsharkJsonLine(line)
+                if (p && packetCaptureSender) packetCaptureSender.send('packet-capture-data', p)
+            }
+        })
+        child.stderr?.on('data', (data: Buffer) => {
+            const msg = data.toString().trim()
+            if (msg && packetCaptureSender) packetCaptureSender.send('packet-capture-error', msg)
+        })
+        child.on('error', (err: NodeJS.ErrnoException) => {
+            packetCaptureProcess = null
+            packetCaptureSender = null
+            if (event.sender && !event.sender.isDestroyed()) {
+                const msg = err.code === 'ENOENT' ? PACKET_CAPTURE_UNAVAILABLE : err.message
+                event.sender.send('packet-capture-error', msg)
+            }
+        })
+        child.on('close', (code, signal) => {
+            packetCaptureProcess = null
+            packetCaptureSender = null
+        })
+        return { success: true }
+    } catch (e: unknown) {
+        packetCaptureSender = null
+        const msg = e instanceof Error ? e.message : String(e)
+        const friendly = msg.includes('ENOENT') || msg.includes('spawn') ? PACKET_CAPTURE_UNAVAILABLE : msg
+        return { success: false, error: friendly }
+    }
+})
+
+ipcMain.handle('stop-packet-capture', async () => {
+    if (packetCaptureProcess) {
+        try { packetCaptureProcess.kill() } catch { /* ignore */ }
+        packetCaptureProcess = null
+    }
+    packetCaptureSender = null
+    return { success: true }
 })
 
 // 1. Run PowerShell Command (background, no window)
@@ -1550,7 +2200,6 @@ ipcMain.handle('save-file', async (event, { filename, content, type }) => {
 // Native Pentest Framework
 // ----------------------------------------------------------------------
 
-import * as net from 'net';
 import * as dns from 'dns';
 import { promisify } from 'util';
 import * as tls from 'tls';
@@ -3778,29 +4427,47 @@ function createWindow() {
     win = new BrowserWindow({
         width: 1200,
         height: 800,
-        backgroundColor: '#020617',
+        backgroundColor: '#171717',
         icon: iconExists ? iconPath : undefined, // Only set icon if file exists
+        show: false, // show only after content loads to avoid black flash
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            webSecurity: true,
         },
     })
 
+    // Show window when page is ready (avoids black screen flash)
+    let shown = false
+    const showWin = () => {
+        if (shown || !win) return
+        shown = true
+        win.show()
+    }
+    win.once('ready-to-show', showWin)
+    // Fallback: show after 12s so user isn't stuck with a hidden window if load never "ready"
+    setTimeout(showWin, 12000)
+
     // Test active push message to React
     win.webContents.on('did-finish-load', () => {
+        if (!app.isPackaged) console.log('[Electron] Page did-finish-load')
         win?.webContents.send('main-process-message', (new Date).toLocaleString())
     })
 
-    // In development, normally we wouldn't see VITE_DEV_SERVER_URL without a plugin. 
-    // We'll rely on app.isPackaged to determine dev mode.
+    // Log load failures (helps debug black screen)
+    win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+        console.error('[Electron] Load failed:', errorCode, errorDescription, validatedURL)
+    })
+
+    // In development, load from Vite dev server; in production, load built file
     if (!app.isPackaged) {
-        win.loadURL('http://localhost:5174')
-        // Dev tools disabled - uncomment to enable during development
-        // win.webContents.openDevTools()
+        const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5174'
+        // Clear cache before load to avoid ERR_CACHE_READ_FAILURE (Electron cache + 304)
+        win.webContents.session.clearCache().then(() => {
+            win?.loadURL(devUrl).catch((err: unknown) => console.error('[Electron] loadURL failed:', err))
+        })
     } else {
-        // win.loadFile('dist/index.html')
-        // Correct path for production build
         win.loadFile(path.join(__dirname, '../dist/index.html'))
     }
 }
@@ -3863,7 +4530,7 @@ ipcMain.handle('web-scan-fetch', async (_event, { url, options }) => {
                 }
             }
 
-            const req = net.request({
+            const req = electronNet.request({
                 method: options?.method || 'GET',
                 url,
                 session: requestSession,
