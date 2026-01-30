@@ -2829,10 +2829,24 @@ function App() {
             'Personnel Resources: Cost Code'
         ];
 
+        // Fixed milestone 1 date for new findings; milestone 4 = +30 (High), +60 (Medium), +90 (Low) days after
+        const NEW_FINDING_MILESTONE1_DATE = new Date(2026, 0, 29); // 1/29/2026
+        const formatDate = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+        const addDays = (d: Date, days: number) => {
+            const out = new Date(d);
+            out.setDate(out.getDate() + days);
+            return out;
+        };
+        const MILESTONE_TEXTS = [
+            'The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.',
+            'The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.',
+            'The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.',
+            'Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering.'
+        ] as const;
+
         let poamId = 1;
         const allRows: any[] = [];
 
-        // Date Helpers
         const getDateOut = (days: number) => {
             const d = new Date();
             d.setDate(d.getDate() + days);
@@ -2851,108 +2865,112 @@ function App() {
             return match ? match[0] : String(text).trim();
         };
 
-        // Process STIGs
+        // Aggregate STIG findings by Security Check (ruleId/vulnId) so same check across hosts = one finding with all devices
+        type AggregatedFinding = {
+                            finding: { title: string; severity: string; vulnId: string; ruleId: string; groupId?: string; ccis?: string[]; findingDetails?: string; fixText?: string };
+                            hostnames: Set<string>;
+                            nistControl: string;
+                            comments: string;
+                            securityChecks: string;
+                            stigName: string;
+                            cat: keyof typeof poamConfig.milestones;
+                            maxDays: number;
+                        };
+        const stigAggregated = new Map<string, AggregatedFinding>();
+
         console.group("Processing STIG Checklists");
         poamChecklists.forEach((checklist, cIdx) => {
             console.log(`[STIG ${cIdx + 1}/${poamChecklists.length}] processing: ${checklist.filename}`);
-
             let openFound = 0;
             let skipped = 0;
 
-            checklist.findings.forEach((finding, fIdx) => {
-                // DEBUG: Log the first few findings to check their structure and status
-                if (fIdx < 3) {
-                    console.log(`  - Finding #${fIdx} [${finding.ruleId}]: Status='${finding.status}', Severity='${finding.severity}'`);
-                }
-
-                if (finding.status !== 'Open') {
-                    skipped++;
-                    return;
-                }
+            checklist.findings.forEach((finding) => {
+                if (finding.status !== 'Open') { skipped++; return; }
                 openFound++;
 
-                // Sensing CAT and calculating dates
-                let cat: keyof typeof poamConfig.milestones = 'cat3';
-                let maxDays = 90;
-                const s = String(finding.severity).toLowerCase();
-                if (s.includes('high') || s.includes('cat i') || s === 'i' || s === '1') { cat = 'cat1'; maxDays = 30; }
-                else if (s.includes('medium') || s.includes('cat ii') || s === 'ii' || s === '2') { cat = 'cat2'; maxDays = 60; }
-
-                const milestoneDates = poamConfig.milestones[cat].map((m, idx) => {
-                    if (m.date) {
-                        const [y, mm, dd] = m.date.split('-');
-                        return `${parseInt(mm)}/${parseInt(dd)}/${y}`;
-                    }
-                    const offsets = [0, 14, 21, maxDays];
-                    return getDateOut(offsets[idx]);
-                });
-
-                const controlVulnDesc = finding.title || '';
-
-                // Lookup NIST Controls using our Dictionary
+                const securityCheckKey = `${finding.ruleId || ''}|${finding.vulnId || ''}`.trim() || `finding-${cIdx}-${finding.ruleId}`;
                 const nistControls = new Set<string>();
-                if (finding.ccis && finding.ccis.length > 0) {
-                    finding.ccis.forEach(c => {
-                        const mapped = cciMap[c];
-                        if (mapped) {
-                            // Extract base control or full control? POAM usually wants specific like AC-2(1).
-                            // But usually just the primary designation.
-                            nistControls.add(mapped);
-                        }
-                    });
+                if (finding.ccis?.length) {
+                    finding.ccis.forEach(c => { const m = cciMap[c]; if (m) nistControls.add(m); });
                 } else {
-                    // Fallback to rules lookup
                     const rule = rules.find(r => r.vulnId === finding.vulnId);
-                    if (rule && rule.ccis) {
-                        rule.ccis.forEach(c => {
-                            const mapped = cciMap[c];
-                            if (mapped) nistControls.add(mapped);
-                        });
-                    }
+                    rule?.ccis?.forEach(c => { const m = cciMap[c]; if (m) nistControls.add(m); });
                 }
                 const nistControl = Array.from(nistControls).join('; ');
-
                 const cciNumber = finding.ccis?.[0] || '';
                 const comments = `${cciNumber}\n${finding.findingDetails || ''}`.trim();
                 const securityChecks = `${finding.ruleId || ''}\n${finding.vulnId || ''}\n${finding.groupId || ''}`.trim();
 
-                // Generate 4 rows for this finding (one per milestone)
-                poamConfig.milestones[cat].forEach((m, idx) => {
-                    const row: any = {};
-                    POAM_HEADERS.forEach(h => row[h] = ''); // Init empty
+                let cat: keyof typeof poamConfig.milestones = 'cat3';
+                let maxDays = 90;
+                const sev = String(finding.severity).toLowerCase();
+                if (sev.includes('high') || sev.includes('cat i') || sev === 'i' || sev === '1') { cat = 'cat1'; maxDays = 30; }
+                else if (sev.includes('medium') || sev.includes('cat ii') || sev === 'ii' || sev === '2') { cat = 'cat2'; maxDays = 60; }
 
-                    row['Milestone ID'] = m.id;
-                    row['Milestone with Completion Dates'] = `${m.text} ${milestoneDates[idx]}`;
-
-                    if (idx === 0) {
-                        row['POA&M Item ID'] = poamId;
-                        row['Control Vulnerability Description'] = controlVulnDesc;
-                        row['Controls / APs'] = nistControl;
-                        row['Office/Org'] = poamConfig.officeOrg;
-                        row['Security Checks'] = securityChecks;
-                        row['Resources Required'] = poamConfig.resourcesRequired;
-                        row['Scheduled Completion Date'] = milestoneDates[3]; // Milestone 4 date
-                        row['Source Identifying Vulnerability'] = "Evaluate STIG: " + checklist.stigName;
-                        row['Status'] = poamConfig.status;
-                        row['Comments'] = comments;
-                        row['Raw Severity'] = finding.severity;
-                        row['Devices Affected'] = checklist.hostname;
-                        row['Severity'] = finding.severity;
-                        row['Relevance of Threat'] = finding.severity;
-                        row['Likelihood'] = finding.severity;
-                        row['Impact'] = finding.severity;
-                        row['Residual Risk Level'] = finding.severity;
-                        row['Recommendations'] = finding.fixText;
-                    }
-                    allRows.push(row);
-                });
-                poamId++;
+                const existing = stigAggregated.get(securityCheckKey);
+                if (existing) {
+                    existing.hostnames.add(checklist.hostname);
+                } else {
+                    stigAggregated.set(securityCheckKey, {
+                        finding: { title: finding.title || '', severity: finding.severity, vulnId: finding.vulnId, ruleId: finding.ruleId, groupId: finding.groupId, ccis: finding.ccis, findingDetails: finding.findingDetails, fixText: finding.fixText },
+                        hostnames: new Set([checklist.hostname]),
+                        nistControl,
+                        comments,
+                        securityChecks,
+                        stigName: checklist.stigName,
+                        cat,
+                        maxDays
+                    });
+                }
             });
             console.log(`- Result: ${openFound} 'Open' findings processed, ${skipped} skipped.`);
         });
         console.groupEnd();
 
-        // Process ACAS
+        // Emit 4 rows per aggregated finding: Devices Affected = all hostnames; milestone 1 = 1/29/2026, 4 = +30/60/90
+        stigAggregated.forEach((agg) => {
+            const { finding, hostnames, nistControl, comments, securityChecks, stigName, cat, maxDays } = agg;
+            const devicesAffected = Array.from(hostnames).join('\n');
+            const m1 = NEW_FINDING_MILESTONE1_DATE;
+            const milestoneDates = [
+                formatDate(m1),
+                formatDate(addDays(m1, 14)),
+                formatDate(addDays(m1, 21)),
+                formatDate(addDays(m1, maxDays))
+            ];
+            const milestoneTexts = poamConfig.milestones[cat].map((m, idx) => (m.text && m.text.trim()) ? `${m.text} ${milestoneDates[idx]}` : `${MILESTONE_TEXTS[idx]} ${milestoneDates[idx]}`);
+
+            for (let idx = 0; idx < 4; idx++) {
+                const row: any = {};
+                POAM_HEADERS.forEach(h => row[h] = '');
+                row['Milestone ID'] = idx + 1;
+                row['Milestone with Completion Dates'] = milestoneTexts[idx];
+                if (idx === 0) {
+                    row['POA&M Item ID'] = poamId;
+                    row['Control Vulnerability Description'] = finding.title;
+                    row['Controls / APs'] = nistControl;
+                    row['Office/Org'] = poamConfig.officeOrg;
+                    row['Security Checks'] = securityChecks;
+                    row['Resources Required'] = poamConfig.resourcesRequired;
+                    row['Scheduled Completion Date'] = milestoneDates[3];
+                    row['Source Identifying Vulnerability'] = "Evaluate STIG: " + stigName;
+                    row['Status'] = poamConfig.status;
+                    row['Comments'] = comments;
+                    row['Raw Severity'] = finding.severity;
+                    row['Devices Affected'] = devicesAffected;
+                    row['Severity'] = finding.severity;
+                    row['Relevance of Threat'] = finding.severity;
+                    row['Likelihood'] = finding.severity;
+                    row['Impact'] = finding.severity;
+                    row['Residual Risk Level'] = finding.severity;
+                    row['Recommendations'] = finding.fixText || '';
+                }
+                allRows.push(row);
+            }
+            poamId++;
+        });
+
+        // Process ACAS: 4 rows per item, same milestone texts and 1/29/2026 + 30/60/90 for milestone 4
         if (acasData.length > 0) {
             console.group("Processing ACAS Data");
             console.log(`Processing ${acasData.length} ACAS rows...`);
@@ -2960,24 +2978,21 @@ function App() {
 
             acasData.forEach((r, idx) => {
                 if (idx < 3) console.log(`  - ACAS Row #${idx}:`, r);
-
                 const severity = r['Severity'] || r['C'];
-                // Optional: Filter logic for ACAS could go here
-
                 let cat: keyof typeof poamConfig.milestones = 'cat3';
                 let maxDays = 90;
                 const s = String(severity).toLowerCase();
                 if (s.includes('high') || s.includes('critical') || s === 'i' || s === '1') { cat = 'cat1'; maxDays = 30; }
                 else if (s.includes('medium') || s === 'ii' || s === '2') { cat = 'cat2'; maxDays = 60; }
 
-                const milestoneDates = poamConfig.milestones[cat].map((m, idx) => {
-                    if (m.date) {
-                        const [y, mm, dd] = m.date.split('-');
-                        return `${parseInt(mm)}/${parseInt(dd)}/${y}`;
-                    }
-                    const offsets = [0, 14, 21, maxDays];
-                    return getDateOut(offsets[idx]);
-                });
+                const m1 = NEW_FINDING_MILESTONE1_DATE;
+                const milestoneDates = [
+                    formatDate(m1),
+                    formatDate(addDays(m1, 14)),
+                    formatDate(addDays(m1, 21)),
+                    formatDate(addDays(m1, maxDays))
+                ];
+                const milestoneTexts = poamConfig.milestones[cat].map((m, i) => (m.text && m.text.trim()) ? `${m.text} ${milestoneDates[i]}` : `${MILESTONE_TEXTS[i]} ${milestoneDates[i]}`);
 
                 const controlVulnDesc = r['Synopsis'] || r['F'] || '';
                 const controlsAps = r['Control Family'] || r['I'] || '';
@@ -2987,14 +3002,12 @@ function App() {
                 const comments = r['Description'] || r['G'] || '';
                 const mitigations = r['Mitigation'] || r['J'] || '';
 
-                poamConfig.milestones[cat].forEach((m, idx) => {
+                for (let i = 0; i < 4; i++) {
                     const row: any = {};
                     POAM_HEADERS.forEach(h => row[h] = '');
-
-                    row['Milestone ID'] = m.id;
-                    row['Milestone with Completion Dates'] = `${m.text} ${milestoneDates[idx]}`;
-
-                    if (idx === 0) {
+                    row['Milestone ID'] = i + 1;
+                    row['Milestone with Completion Dates'] = milestoneTexts[i];
+                    if (i === 0) {
                         row['POA&M Item ID'] = poamId;
                         row['Control Vulnerability Description'] = controlVulnDesc;
                         row['Controls / APs'] = controlsAps;
@@ -3016,7 +3029,7 @@ function App() {
                         row['Recommendations'] = recommendations;
                     }
                     allRows.push(row);
-                });
+                }
                 poamId++;
                 acasProcessed++;
             });
