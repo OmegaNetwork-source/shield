@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, BookOpen, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity,     Crosshair, Mail
+    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, BookOpen, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity,     Crosshair, Mail, Bug
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import { buildRuleIndexFromChecklistFiles } from './utils/stig-rule-index';
@@ -51,11 +51,34 @@ interface StigChecklist {
     date?: string;
 }
 
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
+export type TicketSource = 'manual' | 'stig' | 'github' | 'poam' | 'webscan' | 'codescan' | 'blockchain' | 'pentest';
+export type TicketType = 'ticket' | 'bug';
+
+export interface Ticket {
+    id: string;
+    title: string;
+    description: string;
+    status: TicketStatus;
+    priority: TicketPriority;
+    source: TicketSource;
+    sourceRef: string;
+    createdAt: string;
+    updatedAt: string;
+    assignee?: string; // email or name
+    dueDate?: string;
+    type?: TicketType; // 'ticket' | 'bug' — default 'ticket'
+    screenshot?: string; // data URL for pasted screenshot
+}
+
+const LOOKS_LIKE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'network' | 'webscan' | 'blockchain' | 'pentest'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'tickets' | 'network' | 'webscan' | 'blockchain' | 'pentest'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -352,6 +375,49 @@ function App() {
             ]
         }
     });
+
+    // To Dos State (persisted to localStorage)
+    const TICKETS_STORAGE_KEY = 'strix-tickets';
+    const [tickets, setTickets] = useState<Ticket[]>(() => {
+        try {
+            const raw = localStorage.getItem(TICKETS_STORAGE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw) as Ticket[];
+                if (!Array.isArray(parsed)) return [];
+                return parsed.map(t => ({ ...t, type: t.type === 'bug' ? 'bug' : 'ticket' }));
+            }
+        } catch (_) { /* ignore */ }
+        return [];
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+        } catch (_) { /* ignore */ }
+    }, [tickets]);
+    const [ticketFilterStatus, setTicketFilterStatus] = useState<TicketStatus | 'all'>('all');
+    const [ticketFilterSource, setTicketFilterSource] = useState<TicketSource | 'all'>('all');
+    const [ticketFilterAssignee, setTicketFilterAssignee] = useState<string>('all');
+    const [ticketFilterType, setTicketFilterType] = useState<TicketType | 'all'>('all');
+    const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
+    const [ticketForm, setTicketForm] = useState<Partial<Ticket>>({
+        title: '', description: '', status: 'open', priority: 'medium', source: 'manual', sourceRef: '', assignee: '', dueDate: '', type: 'ticket', screenshot: undefined
+    });
+    const ticketAssignees = useMemo(() => {
+        const set = new Set<string>();
+        tickets.forEach(t => { if (t.assignee?.trim()) set.add(t.assignee.trim()); });
+        return Array.from(set).sort();
+    }, [tickets]);
+    const ticketOpenCount = useMemo(() => tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length, [tickets]);
+    const filteredTickets = useMemo(() => {
+        return tickets.filter(t => {
+            if (ticketFilterStatus !== 'all' && t.status !== ticketFilterStatus) return false;
+            if (ticketFilterSource !== 'all' && t.source !== ticketFilterSource) return false;
+            if (ticketFilterType !== 'all' && (t.type ?? 'ticket') !== ticketFilterType) return false;
+            if (ticketFilterAssignee === 'unassigned') { if (t.assignee?.trim()) return false; }
+            else if (ticketFilterAssignee !== 'all' && ticketFilterAssignee !== '') { if (t.assignee?.trim() !== ticketFilterAssignee) return false; }
+            return true;
+        }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    }, [tickets, ticketFilterStatus, ticketFilterSource, ticketFilterAssignee, ticketFilterType]);
 
     // Controls State
     // Rev 4/5 toggle removed as our source map is unified/flat (MITRE cci2nist)
@@ -3110,6 +3176,71 @@ function App() {
         XLSXStyle.writeFile(wb, `POAM_Merged_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
+    // Ticket handlers
+    const openCreateTicket = (defaultType?: TicketType) => {
+        setEditingTicketId(null);
+        setTicketForm({ title: '', description: '', status: 'open', priority: 'medium', source: 'manual', sourceRef: '', assignee: '', dueDate: '', type: defaultType ?? 'ticket', screenshot: undefined });
+    };
+    const openEditTicket = (t: Ticket) => {
+        setEditingTicketId(t.id);
+        setTicketForm({ ...t, assignee: t.assignee ?? '', dueDate: t.dueDate ?? '', type: t.type ?? 'ticket', screenshot: t.screenshot });
+    };
+    const closeTicketForm = () => { setEditingTicketId(null); setTicketForm({ title: '', description: '', status: 'open', priority: 'medium', source: 'manual', sourceRef: '', assignee: '', dueDate: '', type: 'ticket', screenshot: undefined }); };
+    const saveTicket = () => {
+        const now = new Date().toISOString();
+        const typ = (ticketForm.type as TicketType) ?? 'ticket';
+        if (editingTicketId) {
+            setTickets(prev => prev.map(t => t.id === editingTicketId
+                ? { ...t, ...ticketForm, type: typ, updatedAt: now, title: ticketForm.title ?? t.title, description: ticketForm.description ?? t.description, status: (ticketForm.status as TicketStatus) ?? t.status, priority: (ticketForm.priority as TicketPriority) ?? t.priority, source: (ticketForm.source as TicketSource) ?? t.source, sourceRef: ticketForm.sourceRef ?? t.sourceRef, assignee: ticketForm.assignee?.trim() || undefined, screenshot: ticketForm.screenshot }
+                : t));
+        } else {
+            const id = (typ === 'bug' ? 'B-' : 'T-') + `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+            setTickets(prev => [...prev, {
+                id,
+                title: ticketForm.title ?? '',
+                description: ticketForm.description ?? '',
+                status: (ticketForm.status as TicketStatus) ?? 'open',
+                priority: (ticketForm.priority as TicketPriority) ?? 'medium',
+                source: (ticketForm.source as TicketSource) ?? 'manual',
+                sourceRef: ticketForm.sourceRef ?? '',
+                createdAt: now,
+                updatedAt: now,
+                assignee: ticketForm.assignee?.trim() || undefined,
+                dueDate: ticketForm.dueDate || undefined,
+                type: typ,
+                screenshot: ticketForm.screenshot
+            }]);
+        }
+        closeTicketForm();
+    };
+    const deleteTicket = (id: string) => {
+        setTickets(prev => prev.filter(t => t.id !== id));
+        if (editingTicketId === id) closeTicketForm();
+    };
+    /** Call from findings (STIG, GitHub, POA&M, Code Scanner) to create a to-do; optional type (e.g. 'bug' for tasks) */
+    const createTicketFromFinding = (partial: { title: string; description?: string; source: TicketSource; sourceRef: string; priority?: TicketPriority; type?: TicketType }) => {
+        const now = new Date().toISOString();
+        const typ = partial.type ?? 'ticket';
+        const id = (typ === 'bug' ? 'B-' : 'T-') + `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+        const t: Ticket = {
+            id,
+            title: partial.title,
+            description: partial.description ?? '',
+            status: 'open',
+            priority: partial.priority ?? 'medium',
+            source: partial.source,
+            sourceRef: partial.sourceRef,
+            createdAt: now,
+            updatedAt: now,
+            type: typ
+        };
+        setTickets(prev => [...prev, t]);
+        setActiveTab('tickets');
+        setTicketFilterType(typ);
+        setEditingTicketId(id);
+        setTicketForm({ ...t, assignee: '', dueDate: '' });
+    };
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files) return;
         const files = Array.from(e.target.files);
@@ -3513,6 +3644,18 @@ function App() {
                             : (darkMode ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-white/50')}`}>
                             <Info size={14} className="text-blue-500" /> CAT III - Low ({lowCount})
                         </button>
+                    </div>
+
+                    {/* To Dos - at bottom of sidebar */}
+                    <div className={`pt-4 mt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        <SidebarItem
+                            icon={<ClipboardList size={18} />}
+                            label="To Dos"
+                            active={activeTab === 'tickets'}
+                            onClick={() => setActiveTab('tickets')}
+                            darkMode={darkMode}
+                            badge={ticketOpenCount > 0 ? ticketOpenCount : undefined}
+                        />
                     </div>
                 </nav>
 
@@ -5353,6 +5496,7 @@ function App() {
                                                                                 <option value="Not_Applicable">Not Applicable</option>
                                                                             </select>
                                                                         </div>
+                                                                        <button type="button" onClick={() => createTicketFromFinding({ title: f.title || f.vulnId, description: f.findingDetails || f.comments, source: 'stig', sourceRef: f.ruleId || f.vulnId, priority: (f.severity || '').toLowerCase() === 'high' ? 'high' : (f.severity || '').toLowerCase() === 'medium' ? 'medium' : 'low' })} className={`text-xs font-medium px-2 py-1.5 rounded flex items-center gap-1 ${darkMode ? 'text-blue-400 hover:bg-blue-900/30' : 'text-blue-600 hover:bg-blue-50'}`}><ClipboardList size={14} /> Add to To Dos</button>
                                                                     </div>
 
                                                                     <div className="flex items-center gap-2">
@@ -5638,6 +5782,7 @@ function App() {
                                                                     <th className="px-3 py-2 font-medium">Security Checks</th>
                                                                     <th className="px-3 py-2 font-medium">Controls / APs</th>
                                                                     <th className="px-3 py-2 font-medium max-w-[200px] truncate">Description</th>
+                                                                    <th className="px-3 py-2 font-medium w-24">Action</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -5645,11 +5790,16 @@ function App() {
                                                                     const sec = Object.keys(row).find(k => /security\s*checks/i.test(k));
                                                                     const ctrl = Object.keys(row).find(k => /controls?\s*\/\s*aps?/i.test(k));
                                                                     const desc = Object.keys(row).find(k => /description|vulnerability/i.test(k));
+                                                                    const title = (row[desc || ''] as string) || 'POA&M new finding';
+                                                                    const sourceRef = (row[sec || ''] as string) || (row[ctrl || ''] as string) || `new-${i}`;
                                                                     return (
                                                                         <tr key={i} className={darkMode ? 'border-gray-700' : 'border-gray-100'} style={{ borderBottomWidth: 1 }}>
                                                                             <td className="px-3 py-2 font-mono text-xs">{row[sec || ''] || '—'}</td>
                                                                             <td className="px-3 py-2">{row[ctrl || ''] || '—'}</td>
                                                                             <td className="px-3 py-2 max-w-[200px] truncate" title={row[desc || '']}>{row[desc || ''] || '—'}</td>
+                                                                            <td className="px-3 py-2">
+                                                                                <button type="button" onClick={() => createTicketFromFinding({ title, description: title, source: 'poam', sourceRef })} className={`text-xs font-medium px-2 py-1 rounded ${darkMode ? 'text-blue-400 hover:bg-blue-900/30' : 'text-blue-600 hover:bg-blue-50'}`}>Add to To Dos</button>
+                                                                            </td>
                                                                         </tr>
                                                                     );
                                                                 })}
@@ -5678,6 +5828,7 @@ function App() {
                                                                     <th className="px-3 py-2 font-medium">Security Checks</th>
                                                                     <th className="px-3 py-2 font-medium">Controls / APs</th>
                                                                     <th className="px-3 py-2 font-medium max-w-[200px] truncate">Description</th>
+                                                                    <th className="px-3 py-2 font-medium w-24">Action</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -5685,11 +5836,16 @@ function App() {
                                                                     const sec = Object.keys(row).find(k => /security\s*checks/i.test(k));
                                                                     const ctrl = Object.keys(row).find(k => /controls?\s*\/\s*aps?/i.test(k));
                                                                     const desc = Object.keys(row).find(k => /description|vulnerability/i.test(k));
+                                                                    const title = (row[desc || ''] as string) || 'POA&M dropped finding';
+                                                                    const sourceRef = (row[sec || ''] as string) || (row[ctrl || ''] as string) || `dropped-${i}`;
                                                                     return (
                                                                         <tr key={i} className={darkMode ? 'border-gray-700' : 'border-gray-100'} style={{ borderBottomWidth: 1 }}>
                                                                             <td className="px-3 py-2 font-mono text-xs">{row[sec || ''] || '—'}</td>
                                                                             <td className="px-3 py-2">{row[ctrl || ''] || '—'}</td>
                                                                             <td className="px-3 py-2 max-w-[200px] truncate" title={row[desc || '']}>{row[desc || ''] || '—'}</td>
+                                                                            <td className="px-3 py-2">
+                                                                                <button type="button" onClick={() => createTicketFromFinding({ title, description: title, source: 'poam', sourceRef })} className={`text-xs font-medium px-2 py-1 rounded ${darkMode ? 'text-blue-400 hover:bg-blue-900/30' : 'text-blue-600 hover:bg-blue-50'}`}>Add to To Dos</button>
+                                                                            </td>
                                                                         </tr>
                                                                     );
                                                                 })}
@@ -5916,6 +6072,155 @@ function App() {
                             </div>
                             </>
                             )}
+                        </div>
+                    ) : activeTab === 'tickets' ? (
+                        <div className="space-y-6 max-w-4xl mx-auto">
+                            <div className="flex flex-wrap items-center justify-between gap-4">
+                                <div>
+                                    <h2 className={`text-2xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>To Dos</h2>
+                                    <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Notes and tasks—saved locally. Paste a screenshot if you like. Create from STIG, POA&M, or Code Scanner.</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={() => openCreateTicket('ticket')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                                        <ClipboardList size={18} /> New to-do
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Filters */}
+                            <div className={`flex flex-wrap gap-3 p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Type</span>
+                                    <select value={ticketFilterType} onChange={e => setTicketFilterType(e.target.value as TicketType | 'all')} className={`text-sm rounded-lg border px-2 py-1.5 ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-200' : 'bg-gray-50 border-gray-300 text-gray-900'}`}>
+                                        <option value="all">All</option>
+                                        <option value="ticket">Notes</option>
+                                        <option value="bug">Tasks</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {/* Edit form (larger) + Items list (smaller) */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className={`lg:col-span-2 order-2 lg:order-1 rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className={`px-4 py-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                        <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{editingTicketId ? 'Edit to-do' : 'New to-do'}</span>
+                                        {(editingTicketId || ticketForm.title || ticketForm.description) && (
+                                            <button type="button" onClick={closeTicketForm} className={`text-sm ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'}`}>Close</button>
+                                        )}
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Type</label>
+                                                <select value={ticketForm.type ?? 'ticket'} onChange={e => setTicketForm(f => ({ ...f, type: e.target.value as TicketType }))} className={`w-full rounded-lg border px-2 py-1.5 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-200' : 'bg-white border-gray-300 text-gray-900'}`}>
+                                                    <option value="ticket">Note</option>
+                                                    <option value="bug">Task</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Title</label>
+                                                <input type="text" value={ticketForm.title ?? ''} onChange={e => setTicketForm(f => ({ ...f, title: e.target.value }))} placeholder="Title" className={`w-full rounded-lg border px-2 py-1.5 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'}`} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Description</label>
+                                            <textarea value={ticketForm.description ?? ''} onChange={e => setTicketForm(f => ({ ...f, description: e.target.value }))} placeholder="Description" rows={3} className={`w-full rounded-lg border px-3 py-2 text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'}`} />
+                                        </div>
+                                        <div>
+                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Screenshot</label>
+                                            <p className={`text-[11px] mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Paste a screenshot here (Ctrl+V or Cmd+V) or use the button below.</p>
+                                            <div
+                                                className={`min-h-[120px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 p-4 ${darkMode ? 'border-gray-600 bg-gray-700/50 hover:border-gray-500' : 'border-gray-300 bg-gray-50 hover:border-gray-400'}`}
+                                                onPaste={(e) => {
+                                                    const item = e.clipboardData?.items?.[0];
+                                                    if (item?.type?.startsWith('image/')) {
+                                                        e.preventDefault();
+                                                        const blob = item.getAsFile();
+                                                        if (blob) {
+                                                            const reader = new FileReader();
+                                                            reader.onload = () => setTicketForm(f => ({ ...f, screenshot: reader.result as string }));
+                                                            reader.readAsDataURL(blob);
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                {ticketForm.screenshot ? (
+                                                    <div className="relative w-full">
+                                                        <img src={ticketForm.screenshot} alt="Screenshot" className="max-h-48 w-auto mx-auto rounded object-contain" />
+                                                        <button type="button" onClick={() => setTicketForm(f => ({ ...f, screenshot: undefined }))} className={`absolute top-1 right-1 px-2 py-1 rounded text-xs font-medium ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Remove</button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <Camera className={`size-8 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                                        <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Paste screenshot (Ctrl+V)</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    if (typeof navigator.clipboard?.read !== 'function') return;
+                                                                    const items = await navigator.clipboard.read();
+                                                                    for (const item of items) {
+                                                                        const imageType = item.types?.find((t: string) => t.startsWith('image/'));
+                                                                        if (imageType) {
+                                                                            const blob = await item.getType(imageType);
+                                                                            if (blob) {
+                                                                                const reader = new FileReader();
+                                                                                reader.onload = () => setTicketForm(f => ({ ...f, screenshot: reader.result as string }));
+                                                                                reader.readAsDataURL(blob);
+                                                                            }
+                                                                            break;
+                                                                        }
+                                                                    }
+                                                                } catch (_) { /* clipboard read may be denied */ }
+                                                            }}
+                                                            className={`text-xs px-3 py-1.5 rounded font-medium ${darkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+                                                        >
+                                                            Paste from clipboard
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {editingTicketId && (() => {
+                                            const t = tickets.find(x => x.id === editingTicketId);
+                                            if (!t) return null;
+                                            return (
+                                                <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    Created {new Date(t.createdAt).toLocaleString()} · Last updated {new Date(t.updatedAt).toLocaleString()}
+                                                </div>
+                                            );
+                                        })()}
+                                        <div className="flex gap-2 pt-2">
+                                            <button type="button" onClick={saveTicket} className={`flex-1 py-2 rounded-lg font-medium ${darkMode ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}>Save</button>
+                                            {editingTicketId && (
+                                                <button type="button" onClick={() => editingTicketId && deleteTicket(editingTicketId)} className={`px-4 py-2 rounded-lg font-medium ${darkMode ? 'bg-red-900/50 hover:bg-red-800 text-red-300' : 'bg-red-50 hover:bg-red-100 text-red-700'}`}>Delete</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`lg:col-span-1 order-1 lg:order-2 rounded-xl border overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                    <div className={`px-4 py-3 border-b flex items-center justify-between ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                        <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>To dos ({filteredTickets.length})</span>
+                                    </div>
+                                    <div className="max-h-[480px] overflow-auto">
+                                        {filteredTickets.length === 0 ? (
+                                            <p className={`p-6 text-center text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>No to-dos yet. Create one with &quot;New to-do&quot;.</p>
+                                        ) : (
+                                            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {filteredTickets.map(t => (
+                                                    <li key={t.id} className={`block ${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                                                        <button type="button" onClick={() => openEditTicket(t)} className={`w-full text-left px-4 py-3 flex items-start gap-3 ${editingTicketId === t.id ? (darkMode ? 'bg-blue-900/30 border-l-4 border-blue-500' : 'bg-blue-50 border-l-4 border-blue-500') : ''}`}>
+                                                            <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded ${(t.type ?? 'ticket') === 'bug' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>{(t.type ?? 'ticket') === 'bug' ? 'Task' : 'Note'}</span>
+                                                            <span className={`font-medium truncate flex-1 ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{t.title || 'Untitled'}</span>
+                                                        </button>
+                                                        <div className={`px-4 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                                            <span>Updated {new Date(t.updatedAt).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     ) : activeTab === 'controls' ? (
                         <div className="space-y-8 max-w-6xl mx-auto h-full flex flex-col">
@@ -8033,6 +8338,7 @@ function App() {
                                                                                 <option value="notafinding">Not a Finding</option>
                                                                                 <option value="notapplicable">Not Applicable</option>
                                                                             </select>
+                                                                            <button type="button" onClick={() => createTicketFromFinding({ title: finding.title || row.vulnId, description: finding.findingDetails || finding.comments, source: 'stig', sourceRef: finding.ruleId || row.vulnId, priority: (finding.severity || '').toLowerCase().includes('high') ? 'high' : (finding.severity || '').toLowerCase().includes('medium') ? 'medium' : 'low' })} className={`text-xs font-medium px-2 py-1 rounded shrink-0 ${darkMode ? 'text-blue-400 hover:bg-blue-900/30' : 'text-blue-600 hover:bg-blue-50'}`}>Add to To Dos</button>
                                                                         </div>
                                                                     </div>
 
@@ -8778,7 +9084,7 @@ function App() {
                         </div>
                     ) : activeTab === 'codescan' ? (
                         <div className="h-[calc(100vh-100px)] w-full overflow-auto">
-                            <CodeScanner darkMode={darkMode} onScanResultsChange={setCodeScanSeverityCounts} />
+                            <CodeScanner darkMode={darkMode} onScanResultsChange={setCodeScanSeverityCounts} onCreateTicket={createTicketFromFinding} />
                         </div>
                     ) : activeTab === 'blockchain' ? (
                         <div className="space-y-6">
@@ -10974,7 +11280,7 @@ dotenv`}</pre>
 }
 
 // Helper Components
-function SidebarItem({ icon, label, active, onClick, darkMode }: { icon: any, label: string, active: boolean, onClick: () => void, darkMode: boolean }) {
+function SidebarItem({ icon, label, active, onClick, darkMode, badge }: { icon: any, label: string, active: boolean, onClick: () => void, darkMode: boolean, badge?: number }) {
     return (
         <button
             onClick={onClick}
@@ -10986,8 +11292,11 @@ function SidebarItem({ icon, label, active, onClick, darkMode }: { icon: any, la
             <div className={`transition-colors ${active ? (darkMode ? 'text-blue-400' : 'text-blue-600') : 'text-gray-400 group-hover:text-gray-500'}`}>
                 {icon}
             </div>
-            <span className="text-sm">{label}</span>
-            {active && <div className={`ml-auto size-1.5 rounded-full ${darkMode ? 'bg-blue-500' : 'bg-blue-600'}`} />}
+            <span className="text-sm flex-1 text-left">{label}</span>
+            {badge != null && badge > 0 && (
+                <span className={`text-xs font-semibold min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-center ${active ? (darkMode ? 'bg-blue-500/80 text-white' : 'bg-blue-600 text-white') : (darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-300 text-gray-700')}`}>{badge > 99 ? '99+' : badge}</span>
+            )}
+            {active && (badge == null || badge === 0) && <div className={`ml-auto size-1.5 rounded-full ${darkMode ? 'bg-blue-500' : 'bg-blue-600'}`} />}
         </button>
     );
 }

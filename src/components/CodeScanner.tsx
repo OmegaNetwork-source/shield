@@ -8,7 +8,8 @@ import {
     ChevronDown, ChevronUp, ExternalLink, Copy, RefreshCw,
     AlertCircle, Info, Search, Eye, Filter, Download,
     Lock, Key, Database, FileCode, Braces, Terminal,
-    FileWarning, ShieldAlert, ShieldCheck, Bug, Scan, Wallet, DollarSign
+    FileWarning, ShieldAlert, ShieldCheck, Bug, Scan, Wallet, DollarSign,
+    ClipboardList
 } from 'lucide-react';
 import {
     SASTScanner,
@@ -90,12 +91,15 @@ type ScanTab = 'local' | 'paste' | 'github';
 
 export type ScanSeverityCounts = { critical: number; high: number; medium: number; low: number };
 
+export type CreateTicketPayload = { title: string; description?: string; source: 'github' | 'codescan'; sourceRef: string; priority?: 'low' | 'medium' | 'high' | 'critical'; type?: 'ticket' | 'bug' };
+
 interface CodeScannerProps {
     darkMode?: boolean;
     onScanResultsChange?: (counts: ScanSeverityCounts | null) => void;
+    onCreateTicket?: (payload: CreateTicketPayload) => void;
 }
 
-export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScannerProps) {
+export function CodeScanner({ darkMode = true, onScanResultsChange, onCreateTicket }: CodeScannerProps) {
     const [activeTab, setActiveTab] = useState<ScanTab>('paste');
     const [isScanning, setIsScanning] = useState(false);
     const [progress, setProgress] = useState<ScanProgress | GitHubSearchProgress | null>(null);
@@ -864,7 +868,7 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
                             </div>
                         )}
 
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -874,6 +878,18 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
                             >
                                 <Copy className="w-3 h-3" /> Copy Location
                             </button>
+                            {onCreateTicket && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const pri = finding.severity === 'critical' ? 'critical' : finding.severity === 'high' ? 'high' : finding.severity === 'medium' ? 'medium' : 'low';
+                                        onCreateTicket({ title: finding.title, description: finding.description, source: 'codescan', sourceRef: `${finding.location.file}:${finding.location.line}`, priority: pri, type: 'bug' });
+                                    }}
+                                    className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 flex items-center gap-1"
+                                >
+                                    <ClipboardList className="w-3 h-3" /> Add to To Dos
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
@@ -994,6 +1010,18 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
                             >
                                 <Copy className="w-3 h-3" /> Copy URL
                             </button>
+                            {onCreateTicket && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const pri = finding.severity === 'critical' ? 'critical' : finding.severity === 'high' ? 'high' : finding.severity === 'medium' ? 'medium' : 'low';
+                                        onCreateTicket({ title: `${finding.secretType} – ${finding.repository.fullName}`, description: finding.match.snippet, source: 'github', sourceRef: finding.file.url || finding.id, priority: pri, type: 'bug' });
+                                    }}
+                                    className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 flex items-center gap-1"
+                                >
+                                    <ClipboardList className="w-3 h-3" /> Add to To Dos
+                                </button>
+                            )}
 
                             {/* Balance Check Button - shown for crypto findings */}
                             {isCrypto && (
