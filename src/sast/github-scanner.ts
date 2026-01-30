@@ -202,6 +202,15 @@ export const SECRET_DORKS: Record<string, string[]> = {
     ],
 };
 
+/** Shuffle array in place (Fisher–Yates) and return it. */
+function shuffle<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
 export interface GitHubScannerOptions {
     token?: string;
     rateLimit?: number;
@@ -210,6 +219,8 @@ export interface GitHubScannerOptions {
     onFinding?: (finding: GitHubSecretFinding) => void; // Real-time finding callback
     // Activity filter - only include repos active within this many days
     maxRepoAgeDays?: number; // Default: null (no filter), set to 365 for 1 year
+    // Vary results each run: shuffle queries and use random page offset so you don't always get the same repos
+    varyQueries?: boolean; // Default: true
 }
 
 export class GitHubScanner {
@@ -223,6 +234,7 @@ export class GitHubScanner {
     private aborted = false;
     private allFindings: GitHubSecretFinding[] = [];
     private maxRepoAgeDays?: number;
+    private varyQueries: boolean;
     private repoMetadataCache: Map<string, { updatedAt: string; pushedAt: string; stars: number; forks: number }> = new Map();
 
     constructor(options: GitHubScannerOptions = {}) {
@@ -232,6 +244,7 @@ export class GitHubScanner {
         this.onProgress = options.onProgress;
         this.onFinding = options.onFinding;
         this.maxRepoAgeDays = options.maxRepoAgeDays;
+        this.varyQueries = options.varyQueries !== false;
     }
 
     setToken(token: string): void {
@@ -299,7 +312,15 @@ export class GitHubScanner {
         this.allFindings = [];
         const startTime = new Date();
         const errors: ScanError[] = [];
-        const queries = options.query ? [options.query] : SECRET_SEARCH_QUERIES.slice(0, 10);
+        // Vary results: shuffle queries and use random page offset so each run doesn't pull the same repos
+        const queries = options.query
+            ? [options.query]
+            : this.varyQueries
+                ? shuffle([...SECRET_SEARCH_QUERIES]).slice(0, 14)
+                : SECRET_SEARCH_QUERIES.slice(0, 10);
+        const pageOffset = this.varyQueries ? Math.floor(Math.random() * 5) : 0; // 0-4 so pages 1-3, 2-4, ... 4-6
+        const pageStart = 1 + pageOffset;
+        const pageEnd = 3 + pageOffset;
         let repositoriesSearched = 0;
         let totalPages = 0;
 
@@ -311,8 +332,8 @@ export class GitHubScanner {
             const query = queries[i];
 
             try {
-                // Search multiple pages per query
-                for (let page = 1; page <= 3 && !this.aborted; page++) {
+                // Search multiple pages per query (vary which pages to avoid always same results)
+                for (let page = pageStart; page <= pageEnd && !this.aborted; page++) {
                     const searchResults = await this.searchCode(query, {
                         language: options.language,
                         org: options.org,
@@ -404,12 +425,16 @@ export class GitHubScanner {
      * Search using specific dorks for a category
      */
     async searchByCategory(category: keyof typeof SECRET_DORKS): Promise<GitHubScanResult> {
-        const dorks = SECRET_DORKS[category] || [];
+        const rawDorks = SECRET_DORKS[category] || [];
+        const dorks = this.varyQueries ? shuffle([...rawDorks]) : rawDorks;
         this.allFindings = [];
         const errors: ScanError[] = [];
         const startTime = new Date();
         let repositoriesSearched = 0;
         let totalPages = 0;
+        const pageOffset = this.varyQueries ? Math.floor(Math.random() * 3) : 0; // 0-2 so pages 1-2, 2-3, or 3-4
+        const pageStart = 1 + pageOffset;
+        const pageEnd = 2 + pageOffset;
 
         this.aborted = false;
         this.reportProgress(0, 0, 0, dorks[0]);
@@ -418,8 +443,8 @@ export class GitHubScanner {
             const dork = dorks[i];
 
             try {
-                // Search with pagination
-                for (let page = 1; page <= 2 && !this.aborted; page++) {
+                // Search with pagination (vary pages to avoid same repos every run)
+                for (let page = pageStart; page <= pageEnd && !this.aborted; page++) {
                     const searchResults = await this.searchCode(dork, {
                         perPage: 100,
                         page,

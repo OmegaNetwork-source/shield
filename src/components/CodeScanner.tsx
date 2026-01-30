@@ -120,6 +120,7 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
     // GitHub scan options
     const [activeReposOnly, setActiveReposOnly] = useState(true); // Filter to repos active in past year
     const [maxRepoAgeDays, setMaxRepoAgeDays] = useState(365); // Default 1 year
+    const [varyQueries, setVaryQueries] = useState(true); // Shuffle queries and vary pages so each run surfaces different repos
     const [directRepoScan, setDirectRepoScan] = useState(''); // Repo to scan directly (e.g., "owner/repo")
 
     // UI state
@@ -598,8 +599,8 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
             const scanner = new GitHubScanner({
                 token: githubToken,
                 onProgress: (p) => setProgress(p as any),
-                // Apply active repos filter
                 maxRepoAgeDays: activeReposOnly ? maxRepoAgeDays : undefined,
+                varyQueries,
                 // Real-time finding callback - update UI immediately as secrets are found
                 onFinding: (finding) => {
                     setLiveFindings(prev => {
@@ -640,7 +641,7 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
             setIsScanning(false);
             scannerRef.current = null;
         }
-    }, [githubQuery, githubToken, selectedDork, directRepoScan, activeReposOnly, maxRepoAgeDays]);
+    }, [githubQuery, githubToken, selectedDork, directRepoScan, activeReposOnly, maxRepoAgeDays, varyQueries]);
 
     // Abort scan
     const handleAbort = useCallback(() => {
@@ -1662,6 +1663,15 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
 
                         {/* Scan Options */}
                         <div className="mb-4 flex flex-wrap gap-4 items-center">
+                            <label className={`flex items-center gap-2 text-sm ${textSecondary} cursor-pointer`} title="Shuffle queries and vary page offset so each run surfaces different repos">
+                                <input
+                                    type="checkbox"
+                                    checked={varyQueries}
+                                    onChange={(e) => setVaryQueries(e.target.checked)}
+                                    className="rounded accent-cyan-500"
+                                />
+                                Vary results each run
+                            </label>
                             <label className={`flex items-center gap-2 text-sm ${textSecondary} cursor-pointer`}>
                                 <input
                                     type="checkbox"
@@ -1693,6 +1703,7 @@ export function CodeScanner({ darkMode = true, onScanResultsChange }: CodeScanne
                                 {activeReposOnly
                                     ? `Skips repos not updated in ${maxRepoAgeDays} days`
                                     : 'Shows all repos regardless of activity'}
+                                {varyQueries && ' • Shuffles queries and varies pages so each run surfaces different repos'}
                             </span>
                         </div>
 
