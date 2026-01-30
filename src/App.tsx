@@ -3059,7 +3059,7 @@ function App() {
             setPoamComparison(null);
         } catch (err) {
             console.error(err);
-            alert('Failed to read base POA&M file. Ensure it is a valid Excel file with a POA&M tab.');
+            alert('Failed to read base POA&M file. Ensure it is a valid Excel file (.xlsx or .xlsm) with a POA&M tab.');
         }
         e.target.value = '';
     };
@@ -5551,7 +5551,7 @@ function App() {
                                             <h3 className={`font-semibold mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
                                                 <FileSpreadsheet size={18} /> Base POA&M (eMASS)
                                             </h3>
-                                            <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Starts column B, headers row 7. Green header rows 1–6.</p>
+                                            <p className={`text-xs mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Starts column B, headers row 7. Green header rows 1–6. Use .xlsx or .xlsm.</p>
                                             {basePoamFile ? (
                                                 <div className="flex items-center justify-between gap-2">
                                                     <span className="text-sm truncate text-green-600 dark:text-green-400 font-medium">{basePoamFile.name}</span>
@@ -5561,8 +5561,8 @@ function App() {
                                             ) : (
                                                 <label className={`cursor-pointer flex flex-col items-center justify-center py-4 px-3 rounded-lg border-2 border-dashed ${darkMode ? 'border-gray-600 hover:border-gray-500' : 'border-gray-300 hover:border-gray-400'}`}>
                                                     <Upload size={24} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
-                                                    <span className="text-sm mt-1">Upload .xlsx</span>
-                                                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBasePoamFile} />
+                                                    <span className="text-sm mt-1">Upload .xlsx or .xlsm</span>
+                                                    <input type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={handleBasePoamFile} />
                                                 </label>
                                             )}
                                         </div>
