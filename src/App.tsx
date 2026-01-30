@@ -17,6 +17,7 @@ import {
     type PoamComparison,
 } from './utils/poam-analyzer';
 import * as XLSX from 'xlsx';
+import * as XLSXStyle from 'xlsx-js-style';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 import NetworkDiagram from './components/NetworkDiagram';
@@ -3093,7 +3094,7 @@ function App() {
     const exportMergedPoamFile = () => {
         if (!basePoamFile?.parsed || !newPoamFile?.parsed || !poamComparison) return;
         const wb = exportMergedPoam(basePoamFile.parsed, newPoamFile.parsed, poamComparison);
-        XLSX.writeFile(wb, `POAM_Merged_${new Date().toISOString().split('T')[0]}.xlsx`);
+        XLSXStyle.writeFile(wb, `POAM_Merged_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

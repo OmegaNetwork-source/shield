@@ -6,8 +6,50 @@
  */
 
 import * as XLSX from 'xlsx';
+import * as XLSXStyle from 'xlsx-js-style';
 
 const POAM_SHEET_NAME = 'POA&M';
+const NEW_FINDINGS_SHEET = 'New findings';
+const DROPPED_FINDINGS_SHEET = 'Dropped findings';
+
+/** eMASS-style: row 1 = dark green banner + white bold; rows 2-6 = light gray; row 7 = light gray + bold. */
+const DARK_GREEN_FILL = { patternType: 'solid' as const, fgColor: { rgb: '2E7D32' } };
+const LIGHT_GRAY_FILL = { patternType: 'solid' as const, fgColor: { rgb: 'D9D9D9' } };
+const WHITE_FONT = { bold: true, color: { rgb: 'FFFFFF' } };
+const BOLD_FONT = { bold: true };
+
+function setCellStyle(ws: Record<string, XLSXStyle.CellObject>, ref: string, fill: { patternType: string; fgColor: { rgb: string } }, font?: { bold: boolean; color?: { rgb: string } }): void {
+  const cell = ws[ref];
+  const s: XLSXStyle.CellObject['s'] = { fill };
+  if (font) s.font = font;
+  if (cell) {
+    cell.s = { ...(cell.s || {}), ...s };
+  } else {
+    ws[ref] = { v: '', t: 's', s };
+  }
+}
+
+function applyEmassHeaderStyle(ws: XLSXStyle.WorkSheet, maxCol: number): void {
+  const sheet = ws as Record<string, XLSXStyle.CellObject>;
+  for (let c = 0; c <= maxCol; c++) {
+    const colLetter = c < 26 ? String.fromCharCode(65 + c) : String.fromCharCode(64 + Math.floor(c / 26)) + String.fromCharCode(65 + (c % 26));
+    // Row 1: dark green + white bold (banner)
+    setCellStyle(sheet, `${colLetter}1`, DARK_GREEN_FILL, WHITE_FONT);
+    // Rows 2-6: light gray
+    for (let r = 2; r <= 6; r++) {
+      const ref = `${colLetter}${r}`;
+      const cell = sheet[ref];
+      const s: XLSXStyle.CellObject['s'] = { fill: LIGHT_GRAY_FILL };
+      if (cell) {
+        cell.s = { ...(cell.s || {}), ...s };
+      } else {
+        sheet[ref] = { v: '', t: 's', s };
+      }
+    }
+    // Row 7: light gray + bold (data table headers)
+    setCellStyle(sheet, `${colLetter}7`, LIGHT_GRAY_FILL, BOLD_FONT);
+  }
+}
 
 /** Base POA&M: headers at row 7, data from row 8, columns start at B (index 1). */
 export interface BasePoamParsed {
@@ -206,35 +248,72 @@ function mapNewRowToBase(newRow: Record<string, string>, baseHeaders: string[], 
   return out;
 }
 
-/** Export: base template (header block + row 7) + (base data - dropped) + new findings. */
-export function exportMergedPoam(
+/** Build aoa for a sheet: header block (rows 1-6), row 7 headers, then data rows (col A empty, cols B+ from base headers). */
+function buildSheetAoa(
   base: BasePoamParsed,
-  newPoam: NewPoamParsed,
-  comparison: PoamComparison
-): XLSX.WorkBook {
-  const wb = XLSX.utils.book_new();
+  dataRows: Record<string, string>[],
+  mapRow: (row: Record<string, string>) => (string | number)[]
+): (string | number)[][] {
   const aoa: (string | number)[][] = [];
-
   for (let r = 0; r < base.headerBlock.length; r++) {
     aoa.push(base.headerBlock[r].map(c => c));
   }
   aoa.push(['', ...base.headers]);
+  dataRows.forEach(row => aoa.push(mapRow(row)));
+  return aoa;
+}
 
+/** Export: POA&M (merged) + New findings + Dropped findings tabs; eMASS green header on rows 1-6. */
+export function exportMergedPoam(
+  base: BasePoamParsed,
+  newPoam: NewPoamParsed,
+  comparison: PoamComparison
+): XLSXStyle.WorkBook {
+  const wb = XLSXStyle.utils.book_new();
+  const numCols = Math.max(base.headers.length + 1, 20);
+
+  // Sheet 1: POA&M (merged)
+  const mergedRows: (string | number)[][] = [];
+  for (let r = 0; r < base.headerBlock.length; r++) {
+    mergedRows.push(base.headerBlock[r].map(c => c));
+  }
+  mergedRows.push(['', ...base.headers]);
   const droppedSet = new Set<Record<string, string>>(comparison.droppedFindings);
   base.dataRows.forEach(row => {
-    if (!droppedSet.has(row)) aoa.push(['', ...base.headers.map(h => row[h] ?? '')]);
+    if (!droppedSet.has(row)) mergedRows.push(['', ...base.headers.map(h => row[h] ?? '')]);
   });
-
   comparison.newFindings.forEach(row => {
     const mapped: (string | number)[] = [''];
     base.headers.forEach(baseH => {
       const newH = newPoam.headers.find(nh => nh.trim().toLowerCase() === baseH.trim().toLowerCase());
       mapped.push(newH != null ? (row[newH] ?? '') : '');
     });
-    aoa.push(mapped);
+    mergedRows.push(mapped);
   });
+  const wsMerged = XLSXStyle.utils.aoa_to_sheet(mergedRows);
+  applyEmassHeaderStyle(wsMerged, numCols);
+  XLSXStyle.utils.book_append_sheet(wb, wsMerged, POAM_SHEET_NAME);
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  XLSX.utils.book_append_sheet(wb, ws, POAM_SHEET_NAME);
+  // Sheet 2: New findings
+  const newAoa = buildSheetAoa(base, comparison.newFindings, row => {
+    const mapped: (string | number)[] = [''];
+    base.headers.forEach(baseH => {
+      const newH = newPoam.headers.find(nh => nh.trim().toLowerCase() === baseH.trim().toLowerCase());
+      mapped.push(newH != null ? (row[newH] ?? '') : '');
+    });
+    return mapped;
+  });
+  const wsNew = XLSXStyle.utils.aoa_to_sheet(newAoa);
+  applyEmassHeaderStyle(wsNew, numCols);
+  XLSXStyle.utils.book_append_sheet(wb, wsNew, NEW_FINDINGS_SHEET);
+
+  // Sheet 3: Dropped findings
+  const droppedAoa = buildSheetAoa(base, comparison.droppedFindings, row =>
+    ['', ...base.headers.map(h => row[h] ?? '')]
+  );
+  const wsDropped = XLSXStyle.utils.aoa_to_sheet(droppedAoa);
+  applyEmassHeaderStyle(wsDropped, numCols);
+  XLSXStyle.utils.book_append_sheet(wb, wsDropped, DROPPED_FINDINGS_SHEET);
+
   return wb;
 }
