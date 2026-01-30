@@ -78,10 +78,23 @@ export function parseBasePoam(wb: XLSX.WorkBook): BasePoamParsed | null {
     if (v === '' && headers.length > 0) break;
     headers.push(v || `Col${c}`);
   }
+  // Base eMASS often has 3 blank rows after each finding; only count rows that have data (Security Checks or first col).
+  const secColIndex = headers.findIndex(h => /security\s*checks/i.test(String(h)));
+  const dataColIndex = 1; // column B = first data column (0-based sheet col)
+  const secSheetCol = secColIndex >= 0 ? 1 + secColIndex : 1;
+  const MAX_CONSECUTIVE_EMPTY = 20;
+  let consecutiveEmpty = 0;
   const dataRows: Record<string, string>[] = [];
   for (let r = 8; r <= 5000; r++) {
-    const first = cellValue(sheet, r, 1);
-    if (first === '' && dataRows.length > 0) break;
+    const first = cellValue(sheet, r, dataColIndex);
+    const secVal = cellValue(sheet, r, secSheetCol);
+    const hasData = first !== '' || secVal !== '';
+    if (!hasData) {
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) break;
+      continue;
+    }
+    consecutiveEmpty = 0;
     const row: Record<string, string> = {};
     headers.forEach((h, i) => { row[h] = cellValue(sheet, r, i + 1); });
     dataRows.push(row);
@@ -99,12 +112,22 @@ export function parseNewPoam(wb: XLSX.WorkBook): NewPoamParsed | null {
     const v = cellValue(sheet, 1, c);
     headers.push(v || `Col${c}`);
   }
+  const secColIndex = headers.findIndex(h => /security\s*checks/i.test(String(h)));
+  const MAX_CONSECUTIVE_EMPTY = 20;
+  let consecutiveEmpty = 0;
   const dataRows: Record<string, string>[] = [];
   for (let r = 2; r <= Math.min(range.e.r + 1, 5000); r++) {
     const row: Record<string, string> = {};
     headers.forEach((h, i) => { row[h] = cellValue(sheet, r, i); });
-    const first = row[headers[0]];
-    if (first === '' && dataRows.length > 0) break;
+    const first = row[headers[0]] || '';
+    const secVal = secColIndex >= 0 ? (row[headers[secColIndex]] || '') : '';
+    const hasData = first !== '' || secVal !== '';
+    if (!hasData) {
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= MAX_CONSECUTIVE_EMPTY) break;
+      continue;
+    }
+    consecutiveEmpty = 0;
     dataRows.push(row);
   }
   return { headers, dataRows };
