@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trash2, Upload, AlertCircle, Check, X, Search, FileEdit, FolderOpen, FolderTree, FileSpreadsheet, Database, Info, Calendar, Terminal, ChevronRight, ChevronDown, ChevronUp, Copy, Maximize2, Minimize2, XCircle, RotateCw, Play, Shield, Camera, Target, Download, Settings, Image as ImageIcon,
     ShieldCheck, LayoutGrid, Loader2, AlertTriangle, RefreshCw, FileText, Eye, ClipboardList, Monitor, Globe, Moon, Sun, GitCompare, FileWarning, Server, Users, PieChart, CheckCircle2, Filter, FolderClosed,
-    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, BookOpen, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity,     Crosshair, Mail, Bug
+    Wrench, Save, ArrowRight, ChevronLeft, FolderPlus, Cpu, ExternalLink, Book, BookOpen, Network, Zap, Link, Hash, Code, FileCode, Wallet, Activity, Crosshair, Mail, Bug
 } from 'lucide-react';
 import { parseStigXML, generateCheckCommand, evaluateCheckResult, ParsedStigRule, parseCklFile } from './utils/stig-parser';
 import { buildRuleIndexFromChecklistFiles } from './utils/stig-rule-index';
@@ -26,10 +26,13 @@ import CodeScanner from './components/CodeScanner';
 import PentestHub from './components/PentestHub';
 import { analyzeContract, validateAddress, decodeFunctionSelector, parseABI, formatWei, chainInfo, attackVectors, VulnerabilityResult, ContractAnalysis } from './blockchain';
 
+
 // --- Configuration ---
 
 import { STIG_PATHS } from './stig-paths';
 import cciMapRaw from './data/cci2nist.json';
+import { RMF_PYTHON_SCRIPTS } from './rmfPythonScripts';
+import { RMF_SCRIPT_INFO } from './rmfPythonScriptInfo';
 
 const cciMap = cciMapRaw as Record<string, string>;
 
@@ -78,7 +81,7 @@ function App() {
     // --- State ---
     const [rules, setRules] = useState<ParsedStigRule[]>([]);
     const [results, setResults] = useState<Map<string, CheckResult>>(new Map());
-    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'tickets' | 'network' | 'webscan' | 'blockchain' | 'pentest'>(isElectron ? 'scan' : 'checklist');
+    const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'results' | 'report' | 'compare' | 'settings' | 'help' | 'tools' | 'codescan' | 'analyzer' | 'master_copy' | 'copy' | 'evidence' | 'poam' | 'controls' | 'tickets' | 'network' | 'webscan' | 'blockchain' | 'pentest' | 'rmf_python'>(isElectron ? 'scan' : 'checklist');
     const [evidenceList, setEvidenceList] = useState<any[]>([]);
     const [selectedSeverity, setSelectedSeverity] = useState<string | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -132,6 +135,7 @@ function App() {
     const [pentestSectionOpen, setPentestSectionOpen] = useState(false);
     const [pentestSubTab, setPentestSubTab] = useState<'start' | 'quick' | 'shells' | 'msfvenom' | 'exploits' | 'active-exploits' | 'payloads' | 'recon' | 'web' | 'mobile' | 'pe' | 'oscp' | 'phishing' | 'monitor'>('start');
     const [showDocsModal, setShowDocsModal] = useState(false);
+    const [rmfPythonInfoScript, setRmfPythonInfoScript] = useState<string | null>(null);
     const [selectedDocSection, setSelectedDocSection] = useState<string>('intro');
     const [renameFiles, setRenameFiles] = useState<{ file: File; originalName: string; newName: string }[]>([]);
     const [renamePrefix, setRenamePrefix] = useState('');
@@ -256,6 +260,8 @@ function App() {
         rawJson?: any; // Preserve original JSON for proper CKLB export
     }>>([]);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+
 
     // Compare Tab State
     const [compareBase, setCompareBase] = useState<typeof uploadedChecklists[0] | null>(null);
@@ -2933,15 +2939,15 @@ function App() {
 
         // Aggregate STIG findings by Security Check (ruleId/vulnId) so same check across hosts = one finding with all devices
         type AggregatedFinding = {
-                            finding: { title: string; severity: string; vulnId: string; ruleId: string; groupId?: string; ccis?: string[]; findingDetails?: string; fixText?: string };
-                            hostnames: Set<string>;
-                            nistControl: string;
-                            comments: string;
-                            securityChecks: string;
-                            stigName: string;
-                            cat: keyof typeof poamConfig.milestones;
-                            maxDays: number;
-                        };
+            finding: { title: string; severity: string; vulnId: string; ruleId: string; groupId?: string; ccis?: string[]; findingDetails?: string; fixText?: string };
+            hostnames: Set<string>;
+            nistControl: string;
+            comments: string;
+            securityChecks: string;
+            stigName: string;
+            cat: keyof typeof poamConfig.milestones;
+            maxDays: number;
+        };
         const stigAggregated = new Map<string, AggregatedFinding>();
 
         console.group("Processing STIG Checklists");
@@ -3401,6 +3407,7 @@ function App() {
                                 <button onClick={() => { setActiveTab('tools'); setToolsMode('reportanalyzer'); }} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'tools' && toolsMode === 'reportanalyzer' ? (darkMode ? 'bg-gray-800 text-blue-400 font-medium' : 'bg-white text-blue-600 font-medium shadow-sm') : (darkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50' : 'text-gray-500 hover:text-gray-900 hover:bg-white/50')}`}>
                                     <FileSpreadsheet size={16} /> Report Analyzer
                                 </button>
+                                <SidebarItem icon={<FileCode size={16} />} label="Python" active={activeTab === 'rmf_python'} onClick={() => { setRmfSectionOpen(true); setActiveTab('rmf_python'); }} darkMode={darkMode} />
                             </div>
                         )}
                     </div>
@@ -4140,6 +4147,52 @@ function App() {
                                         ))}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    ) : activeTab === 'rmf_python' ? (
+                        /* RMF Python — copy scripts when file uploads are blocked */
+                        <div className="space-y-6">
+                            <div>
+                                <h1 className="text-3xl font-semibold tracking-tight mb-1">Python</h1>
+                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Copy scripts to run RMF features locally (e.g. when file uploads are blocked). Save as .py and run with file paths.</p>
+                            </div>
+                            <div className="space-y-3">
+                                {Object.keys(RMF_PYTHON_SCRIPTS).map((name) => (
+                                    <div
+                                        key={name}
+                                        className={`flex items-center justify-between gap-4 p-4 rounded-xl border ${darkMode ? 'border-gray-600 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <span className={`font-medium ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>{name}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setRmfPythonInfoScript(name)}
+                                                className={`p-1.5 rounded-full transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400 hover:text-blue-400' : 'hover:bg-gray-200 text-gray-500 hover:text-blue-600'}`}
+                                                title="What this script does (copy for troubleshooting)"
+                                            >
+                                                <Info size={18} />
+                                            </button>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const script = RMF_PYTHON_SCRIPTS[name];
+                                                navigator.clipboard.writeText(script).then(() => {
+                                                    const btn = document.activeElement as HTMLButtonElement;
+                                                    if (btn) {
+                                                        const orig = btn.textContent;
+                                                        btn.textContent = 'Copied!';
+                                                        setTimeout(() => { btn.textContent = orig; }, 1500);
+                                                    }
+                                                });
+                                            }}
+                                            className="inline-flex items-center gap-2 bg-black hover:bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                                        >
+                                            <Copy size={16} />
+                                            Copy
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     ) : activeTab === 'report' ? (
@@ -5864,213 +5917,213 @@ function App() {
                                     </div>
                                 </div>
                             ) : (
-                            <>
-                            <div className="flex justify-center -mt-2">
-                                <label className={`cursor-pointer px-6 py-3 rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-3 border ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400' : 'bg-black hover:bg-black/80 text-white border-gray-800'} active:scale-95`}>
-                                    <FolderTree size={20} /> Bulk Folder Upload
-                                    <input
-                                        type="file"
-                                        // @ts-ignore
-                                        webkitdirectory=""
-                                        // @ts-ignore
-                                        directory=""
-                                        multiple
-                                        className="hidden"
-                                        onChange={handleBulkFolderUpload}
-                                    />
-                                </label>
-                            </div>
-
-                            <div className="space-y-6">
-                                {/* Configuration */}
-                                <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                                    <h3 className={`font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
-                                        <Settings size={18} /> Default Configuration
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <div>
-                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Office / Org</label>
+                                <>
+                                    <div className="flex justify-center -mt-2">
+                                        <label className={`cursor-pointer px-6 py-3 rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-3 border ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400' : 'bg-black hover:bg-black/80 text-white border-gray-800'} active:scale-95`}>
+                                            <FolderTree size={20} /> Bulk Folder Upload
                                             <input
-                                                type="text"
-                                                value={poamConfig.officeOrg}
-                                                onChange={e => setPoamConfig({ ...poamConfig, officeOrg: e.target.value })}
-                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                                type="file"
+                                                // @ts-ignore
+                                                webkitdirectory=""
+                                                // @ts-ignore
+                                                directory=""
+                                                multiple
+                                                className="hidden"
+                                                onChange={handleBulkFolderUpload}
                                             />
-                                        </div>
-                                        <div>
-                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Resources Required</label>
-                                            <input
-                                                type="text"
-                                                value={poamConfig.resourcesRequired}
-                                                onChange={e => setPoamConfig({ ...poamConfig, resourcesRequired: e.target.value })}
-                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Default Status</label>
-                                            <input
-                                                type="text"
-                                                value={poamConfig.status}
-                                                onChange={e => setPoamConfig({ ...poamConfig, status: e.target.value })}
-                                                className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
-                                            />
-                                        </div>
+                                        </label>
                                     </div>
 
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-1">
-                                            <label className={`block text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Milestone Templates</label>
-                                            <div className="flex bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                                                {(['cat1', 'cat2', 'cat3'] as const).map(cat => {
-                                                    const isActive = poamActiveCat === cat;
-                                                    return (
-                                                        <button
-                                                            key={cat}
-                                                            onClick={() => setPoamActiveCat(cat)}
-                                                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all focus:outline-none ${isActive
-                                                                ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
-                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                                                                }`}
-                                                        >
-                                                            {cat === 'cat1' ? 'CAT I' : cat === 'cat2' ? 'CAT II' : 'CAT III'}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                            {poamConfig.milestones[poamActiveCat].map((m, idx) => (
-                                                <div key={m.id} className="flex gap-2 items-start group">
-                                                    <div className={`shrink-0 w-8 h-8 rounded-full flex flex-col items-center justify-center border ${darkMode ? 'border-gray-600 bg-gray-700/50 text-gray-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
-                                                        <span className="text-[10px] font-bold">{m.id}</span>
-                                                        <span className="text-[8px] opacity-70">
-                                                            {m.id === 1 ? 'Day 0' : m.id === 2 ? '+14' : m.id === 3 ? '+21' : poamActiveCat === 'cat1' ? '+30' : poamActiveCat === 'cat2' ? '+60' : '+90'}
-                                                        </span>
-                                                    </div>
-                                                    <textarea
-                                                        value={m.text}
-                                                        onChange={e => {
-                                                            setPoamConfig(prev => ({
-                                                                ...prev,
-                                                                milestones: {
-                                                                    ...prev.milestones,
-                                                                    [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, text: e.target.value } : m2)
-                                                                }
-                                                            }));
-                                                        }}
-                                                        rows={2}
-                                                        className={`flex-1 bg-transparent border rounded-lg px-3 py-2 text-xs leading-relaxed ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-all resize-none hover:border-gray-400 dark:hover:border-gray-500`}
+                                    <div className="space-y-6">
+                                        {/* Configuration */}
+                                        <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                                            <h3 className={`font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                                <Settings size={18} /> Default Configuration
+                                            </h3>
+                                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Office / Org</label>
+                                                    <input
+                                                        type="text"
+                                                        value={poamConfig.officeOrg}
+                                                        onChange={e => setPoamConfig({ ...poamConfig, officeOrg: e.target.value })}
+                                                        className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
                                                     />
-                                                    <div className="flex flex-col gap-1 w-28 shrink-0">
-                                                        <div className="relative group/date">
-                                                            <input
-                                                                type="date"
-                                                                value={m.date || ""}
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Resources Required</label>
+                                                    <input
+                                                        type="text"
+                                                        value={poamConfig.resourcesRequired}
+                                                        onChange={e => setPoamConfig({ ...poamConfig, resourcesRequired: e.target.value })}
+                                                        className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Default Status</label>
+                                                    <input
+                                                        type="text"
+                                                        value={poamConfig.status}
+                                                        onChange={e => setPoamConfig({ ...poamConfig, status: e.target.value })}
+                                                        className={`w-full bg-transparent border rounded-lg px-3 py-2 text-sm ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-colors`}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-1">
+                                                    <label className={`block text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Milestone Templates</label>
+                                                    <div className="flex bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
+                                                        {(['cat1', 'cat2', 'cat3'] as const).map(cat => {
+                                                            const isActive = poamActiveCat === cat;
+                                                            return (
+                                                                <button
+                                                                    key={cat}
+                                                                    onClick={() => setPoamActiveCat(cat)}
+                                                                    className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all focus:outline-none ${isActive
+                                                                        ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                                                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                                                                        }`}
+                                                                >
+                                                                    {cat === 'cat1' ? 'CAT I' : cat === 'cat2' ? 'CAT II' : 'CAT III'}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                    {poamConfig.milestones[poamActiveCat].map((m, idx) => (
+                                                        <div key={m.id} className="flex gap-2 items-start group">
+                                                            <div className={`shrink-0 w-8 h-8 rounded-full flex flex-col items-center justify-center border ${darkMode ? 'border-gray-600 bg-gray-700/50 text-gray-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                                                                <span className="text-[10px] font-bold">{m.id}</span>
+                                                                <span className="text-[8px] opacity-70">
+                                                                    {m.id === 1 ? 'Day 0' : m.id === 2 ? '+14' : m.id === 3 ? '+21' : poamActiveCat === 'cat1' ? '+30' : poamActiveCat === 'cat2' ? '+60' : '+90'}
+                                                                </span>
+                                                            </div>
+                                                            <textarea
+                                                                value={m.text}
                                                                 onChange={e => {
                                                                     setPoamConfig(prev => ({
                                                                         ...prev,
                                                                         milestones: {
                                                                             ...prev.milestones,
-                                                                            [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, date: e.target.value } : m2)
+                                                                            [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, text: e.target.value } : m2)
                                                                         }
                                                                     }));
                                                                 }}
-                                                                className={`w-full bg-transparent border rounded-lg pl-2 pr-1 py-1 text-[10px] font-medium appearance-none ${darkMode ? 'border-gray-600 text-gray-300 hover:border-gray-500' : 'border-gray-300 text-gray-600 hover:border-gray-400'} focus:outline-none focus:border-blue-500 transition-colors`}
+                                                                rows={2}
+                                                                className={`flex-1 bg-transparent border rounded-lg px-3 py-2 text-xs leading-relaxed ${darkMode ? 'border-gray-600 text-gray-200 focus:border-blue-500' : 'border-gray-300 text-gray-900 focus:border-blue-500'} focus:ring-0 outline-none transition-all resize-none hover:border-gray-400 dark:hover:border-gray-500`}
                                                             />
-                                                            {m.date ? (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setPoamConfig(prev => ({
-                                                                            ...prev,
-                                                                            milestones: {
-                                                                                ...prev.milestones,
-                                                                                [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, date: "" } : m2)
-                                                                            }
-                                                                        }));
-                                                                    }}
-                                                                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 hover:bg-red-50 hover:text-red-500 rounded transition-colors text-gray-400"
-                                                                    title="Clear fixed date"
-                                                                >
-                                                                    <X size={10} />
-                                                                </button>
-                                                            ) : (
-                                                                <Calendar className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 size-3 opacity-40" />
-                                                            )}
+                                                            <div className="flex flex-col gap-1 w-28 shrink-0">
+                                                                <div className="relative group/date">
+                                                                    <input
+                                                                        type="date"
+                                                                        value={m.date || ""}
+                                                                        onChange={e => {
+                                                                            setPoamConfig(prev => ({
+                                                                                ...prev,
+                                                                                milestones: {
+                                                                                    ...prev.milestones,
+                                                                                    [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, date: e.target.value } : m2)
+                                                                                }
+                                                                            }));
+                                                                        }}
+                                                                        className={`w-full bg-transparent border rounded-lg pl-2 pr-1 py-1 text-[10px] font-medium appearance-none ${darkMode ? 'border-gray-600 text-gray-300 hover:border-gray-500' : 'border-gray-300 text-gray-600 hover:border-gray-400'} focus:outline-none focus:border-blue-500 transition-colors`}
+                                                                    />
+                                                                    {m.date ? (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setPoamConfig(prev => ({
+                                                                                    ...prev,
+                                                                                    milestones: {
+                                                                                        ...prev.milestones,
+                                                                                        [poamActiveCat]: prev.milestones[poamActiveCat].map((m2, i) => i === idx ? { ...m2, date: "" } : m2)
+                                                                                    }
+                                                                                }));
+                                                                            }}
+                                                                            className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 hover:bg-red-50 hover:text-red-500 rounded transition-colors text-gray-400"
+                                                                            title="Clear fixed date"
+                                                                        >
+                                                                            <X size={10} />
+                                                                        </button>
+                                                                    ) : (
+                                                                        <Calendar className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 size-3 opacity-40" />
+                                                                    )}
+                                                                </div>
+                                                                <div className={`text-[8px] text-center font-bold uppercase tracking-tighter ${m.date ? 'text-blue-500' : darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {m.date ? 'Fixed Date' : 'Auto-Calc'}
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className={`text-[8px] text-center font-bold uppercase tracking-tighter ${m.date ? 'text-blue-500' : darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                            {m.date ? 'Fixed Date' : 'Auto-Calc'}
-                                                        </div>
-                                                    </div>
+                                                    ))}
                                                 </div>
-                                            ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                                    {/* STIG Upload */}
-                                    <div className={`p-6 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-                                        <FileSpreadsheet className={`size-12 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                                        <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>STIG Checklists</h3>
-                                        {poamChecklists.length > 0 ? (
-                                            <div className="w-full">
-                                                <div className="text-2xl font-bold text-green-600 mb-2">{poamChecklists.length} Loaded</div>
-                                                <button onClick={() => setPoamChecklists([])} className="text-xs text-red-500 hover:text-red-600 underline">Clear</button>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                                            {/* STIG Upload */}
+                                            <div className={`p-6 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                                <FileSpreadsheet className={`size-12 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                                <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>STIG Checklists</h3>
+                                                {poamChecklists.length > 0 ? (
+                                                    <div className="w-full">
+                                                        <div className="text-2xl font-bold text-green-600 mb-2">{poamChecklists.length} Loaded</div>
+                                                        <button onClick={() => setPoamChecklists([])} className="text-xs text-red-500 hover:text-red-600 underline">Clear</button>
+                                                    </div>
+                                                ) : (
+                                                    <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload .ckl/.cklb files</p>
+                                                )}
+                                                <label className={`mt-4 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
+                                                    <Upload size={14} /> {poamChecklists.length > 0 ? 'Add More' : 'Upload STIGs'}
+                                                    <input type="file" multiple className="hidden" accept=".ckl,.cklb,.json,.xml" onChange={handlePoamUpload} />
+                                                </label>
                                             </div>
-                                        ) : (
-                                            <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload .ckl/.cklb files</p>
-                                        )}
-                                        <label className={`mt-4 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
-                                            <Upload size={14} /> {poamChecklists.length > 0 ? 'Add More' : 'Upload STIGs'}
-                                            <input type="file" multiple className="hidden" accept=".ckl,.cklb,.json,.xml" onChange={handlePoamUpload} />
-                                        </label>
-                                    </div>
 
-                                    {/* ACAS Upload */}
-                                    <div className={`p-6 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
-                                        <Database className={`size-12 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                                        <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>ACAS Scans</h3>
-                                        {acasData.length > 0 ? (
-                                            <div className="w-full">
-                                                <div className="text-2xl font-bold text-blue-600 mb-2">{acasData.length} Rows</div>
-                                                <button onClick={() => setAcasData([])} className="text-xs text-red-500 hover:text-red-600 underline">Clear</button>
+                                            {/* ACAS Upload */}
+                                            <div className={`p-6 rounded-2xl border-2 border-dashed relative text-center flex flex-col items-center justify-center min-h-[250px] ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                                <Database className={`size-12 mb-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                                <h3 className={`font-medium mb-1 ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>ACAS Scans</h3>
+                                                {acasData.length > 0 ? (
+                                                    <div className="w-full">
+                                                        <div className="text-2xl font-bold text-blue-600 mb-2">{acasData.length} Rows</div>
+                                                        <button onClick={() => setAcasData([])} className="text-xs text-red-500 hover:text-red-600 underline">Clear</button>
+                                                    </div>
+                                                ) : (
+                                                    <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload .csv scan results</p>
+                                                )}
+                                                <label className={`mt-4 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
+                                                    <Upload size={14} /> {acasData.length > 0 ? 'Add More' : 'Upload CSV'}
+                                                    <input type="file" multiple className="hidden" accept=".csv" onChange={handleAcasUpload} />
+                                                </label>
                                             </div>
-                                        ) : (
-                                            <p className={`text-xs mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Upload .csv scan results</p>
+                                        </div>
+
+                                        {(poamChecklists.length > 0 || acasData.length > 0) && (
+                                            <div className="flex justify-center pt-4">
+                                                <button
+                                                    onClick={generatePoamProject}
+                                                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-3 transition-transform active:scale-95"
+                                                >
+                                                    <Download size={20} /> Generate Project POA&M
+                                                </button>
+                                            </div>
                                         )}
-                                        <label className={`mt-4 cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
-                                            <Upload size={14} /> {acasData.length > 0 ? 'Add More' : 'Upload CSV'}
-                                            <input type="file" multiple className="hidden" accept=".csv" onChange={handleAcasUpload} />
-                                        </label>
                                     </div>
-                                </div>
 
-                                {(poamChecklists.length > 0 || acasData.length > 0) && (
-                                    <div className="flex justify-center pt-4">
-                                        <button
-                                            onClick={generatePoamProject}
-                                            className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-3 transition-transform active:scale-95"
-                                        >
-                                            <Download size={20} /> Generate Project POA&M
-                                        </button>
+                                    <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-100'}`}>
+                                        <h4 className={`font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-blue-400' : 'text-blue-800'}`}>
+                                            <Info size={18} /> How it works
+                                        </h4>
+                                        <ul className={`list-disc list-inside text-sm space-y-1 ${darkMode ? 'text-gray-400' : 'text-blue-700'}`}>
+                                            <li>Reads all <strong>Open</strong> findings from your checklist.</li>
+                                            <li>Maps STIG Severity to standard CAT I/II/III levels.</li>
+                                            <li>Auto-calculates milestone dates (Today, +14d, +21d) and scheduled completion (+30/60/90d).</li>
+                                            <li>Populates standard POA&M columns including CCIs, descriptions, and comments.</li>
+                                            <li>Outputs a formatted Excel file ready for submission or review.</li>
+                                        </ul>
                                     </div>
-                                )}
-                            </div>
-
-                            <div className={`p-6 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-100'}`}>
-                                <h4 className={`font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-blue-400' : 'text-blue-800'}`}>
-                                    <Info size={18} /> How it works
-                                </h4>
-                                <ul className={`list-disc list-inside text-sm space-y-1 ${darkMode ? 'text-gray-400' : 'text-blue-700'}`}>
-                                    <li>Reads all <strong>Open</strong> findings from your checklist.</li>
-                                    <li>Maps STIG Severity to standard CAT I/II/III levels.</li>
-                                    <li>Auto-calculates milestone dates (Today, +14d, +21d) and scheduled completion (+30/60/90d).</li>
-                                    <li>Populates standard POA&M columns including CCIs, descriptions, and comments.</li>
-                                    <li>Outputs a formatted Excel file ready for submission or review.</li>
-                                </ul>
-                            </div>
-                            </>
+                                </>
                             )}
                         </div>
                     ) : activeTab === 'tickets' ? (
@@ -6521,6 +6574,13 @@ function App() {
                                         >
                                             <Settings size={18} />
                                             <div className="font-medium">Misc</div>
+                                        </button>
+                                        <button
+                                            onClick={() => window.open('/?demo=true', '_blank')}
+                                            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-600'}`}
+                                        >
+                                            <Play size={18} />
+                                            <div className="font-medium">Commercial Demo</div>
                                         </button>
                                     </div>
                                 )}
@@ -10901,6 +10961,43 @@ dotenv`}</pre>
                     </div>
                 )
             }
+
+
+
+            {/* RMF Python Script Info Modal */}
+            {rmfPythonInfoScript && RMF_SCRIPT_INFO[rmfPythonInfoScript] && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setRmfPythonInfoScript(null)}>
+                    <div className={`w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col ${darkMode ? 'bg-gray-800' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{rmfPythonInfoScript} — Script details</h2>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const text = RMF_SCRIPT_INFO[rmfPythonInfoScript];
+                                        if (text) navigator.clipboard.writeText(text);
+                                    }}
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-black text-white hover:bg-black/80"
+                                >
+                                    <Copy size={14} />
+                                    Copy info
+                                </button>
+                                <button
+                                    onClick={() => setRmfPythonInfoScript(null)}
+                                    className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-auto p-4">
+                            <pre className={`whitespace-pre-wrap font-sans text-sm leading-relaxed ${darkMode ? 'text-gray-300' : 'text-gray-800'}`}>
+                                {RMF_SCRIPT_INFO[rmfPythonInfoScript]}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* STRIX Documentation Modal - Root Level */}
             {
