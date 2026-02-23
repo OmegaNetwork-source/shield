@@ -146,7 +146,7 @@ def parse_cklb(content, filename):
     return {"hostname": hostname or filename, "stigName": stig_name, "findings": findings}
 
 def load_checklists(path):
-    """Load all checklists from a file or folder. Returns list of checklist dicts."""
+    """Load all checklists from a file or folder. Searches recursively in folders."""
     path = Path(path)
     checklists = []
     if path.is_file():
@@ -154,8 +154,13 @@ def load_checklists(path):
     else:
         files = []
         for ext in ("*.ckl", "*.cklb", "*.json", "*.xml"):
-            files.extend(path.glob(ext))
+            files.extend(path.rglob(ext))
+        files = list(dict.fromkeys(files))
+    if not files:
+        return checklists
     for f in files:
+        if not f.is_file():
+            continue
         try:
             raw = f.read_text(encoding="utf-8", errors="replace")
             if raw.strip().startswith("{"):
@@ -169,8 +174,8 @@ def load_checklists(path):
 
 def main():
     print("--- STRIX RMF Reports ---")
-    inp = input("Input file or folder path (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\reports\\\\STIG_Report.xlsx): ").strip()
+    inp = input("Input file or folder path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\reports\\\\STIG_Report.xlsx): ").strip().strip('"').strip("'")
     if not inp or not out:
         print("Both paths are required.")
         sys.exit(1)
@@ -184,7 +189,16 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     checklists = load_checklists(path)
     if not checklists:
-        print("No checklist files found or all failed to parse.")
+        num_files = 0
+        if path.is_dir():
+            for ext in ("*.ckl", "*.cklb", "*.json", "*.xml"):
+                num_files += len(list(path.rglob(ext)))
+        else:
+            num_files = 1 if path.is_file() else 0
+        if num_files == 0:
+            print("No .ckl, .cklb, .json, or .xml files found in that path (folder is empty or path is wrong).")
+        else:
+            print("Found files but all failed to parse. Check that they are valid CKL/CKLB. See warnings above.")
         sys.exit(1)
     print(f"Loaded {len(checklists)} checklist(s).")
     stig_groups = defaultdict(list)
@@ -388,9 +402,9 @@ def load_one(path):
 
 def main():
     print("--- STRIX RMF Compare ---")
-    base_inp = input("Base checklist path (.ckl/.cklb): ").strip()
-    new_inp = input("New checklist path (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\output\\\\Compare_Result.xlsx): ").strip()
+    base_inp = input("Base checklist path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    new_inp = input("New checklist path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\output\\\\Compare_Result.xlsx): ").strip().strip('"').strip("'")
     if not base_inp or not new_inp or not out:
         print("All three paths are required.")
         sys.exit(1)
@@ -521,7 +535,11 @@ def parse_cklb(content, filename):
 def load_checklists(path):
     path = Path(path)
     checklists = []
-    files = [path] if path.is_file() else list(path.glob("*.ckl")) + list(path.glob("*.cklb")) + list(path.glob("*.json"))
+    if path.is_file():
+        files = [path]
+    else:
+        files = list(path.rglob("*.ckl")) + list(path.rglob("*.cklb")) + list(path.rglob("*.json")) + list(path.rglob("*.xml"))
+        files = list(dict.fromkeys(files))
     for f in files:
         if not f.is_file():
             continue
@@ -544,8 +562,8 @@ def load_cci2nist():
 
 def main():
     print("--- STRIX RMF POA&M (Generate from CKL) ---")
-    inp = input("Input file or folder path (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\poam\\\\POAM.xlsx): ").strip()
+    inp = input("Input file or folder path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\poam\\\\POAM.xlsx): ").strip().strip('"').strip("'")
     office_org = input("Office/Org (optional): ").strip() or "Organization"
     if not inp or not out:
         print("Input and output paths are required.")
@@ -560,7 +578,7 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     checklists = load_checklists(path)
     if not checklists:
-        print("No checklists found.")
+        print("No checklists found. (Searches folder and all subfolders for .ckl, .cklb, .json.)")
         sys.exit(1)
     cci2nist = load_cci2nist()
     aggregated = defaultdict(lambda: {"finding": None, "hostnames": set(), "nist": set()})
@@ -674,7 +692,11 @@ def parse_cklb(content, filename):
 def load_checklists(path):
     path = Path(path)
     checklists = []
-    files = [path] if path.is_file() else list(path.glob("*.ckl")) + list(path.glob("*.cklb")) + list(path.glob("*.json"))
+    if path.is_file():
+        files = [path]
+    else:
+        files = list(path.rglob("*.ckl")) + list(path.rglob("*.cklb")) + list(path.rglob("*.json")) + list(path.rglob("*.xml"))
+        files = list(dict.fromkeys(files))
     for f in files:
         if not f.is_file():
             continue
@@ -697,8 +719,8 @@ def load_cci2nist():
 
 def main():
     print("--- STRIX RMF Controls ---")
-    inp = input("Input checklist path or folder (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\output\\\\Controls.xlsx): ").strip()
+    inp = input("Input checklist path or folder (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\output\\\\Controls.xlsx): ").strip().strip('"').strip("'")
     if not inp or not out:
         print("Both paths are required.")
         sys.exit(1)
@@ -712,7 +734,7 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     checklists = load_checklists(path)
     if not checklists:
-        print("No checklists found.")
+        print("No checklists found. (Searches folder and all subfolders for .ckl, .cklb, .json.)")
         sys.exit(1)
     cci2nist = load_cci2nist()
     control_findings = defaultdict(list)
@@ -812,9 +834,9 @@ def load_one(path):
 
 def main():
     print("--- STRIX RMF STIG Analyzer ---")
-    old_inp = input("Old checklist path (.ckl/.cklb): ").strip()
-    new_inp = input("New checklist path (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\output\\\\STIG_Analyzer.xlsx): ").strip()
+    old_inp = input("Old checklist path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    new_inp = input("New checklist path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\output\\\\STIG_Analyzer.xlsx): ").strip().strip('"').strip("'")
     if not old_inp or not new_inp or not out:
         print("All three paths are required.")
         sys.exit(1)
@@ -931,9 +953,9 @@ def load_one(path):
 
 def main():
     print("--- STRIX RMF Master Copy ---")
-    src = input("Source checklist path (.ckl/.cklb): ").strip()
-    tgt = input("Target checklist path or folder: ").strip()
-    out = input("Output path (file or folder for .cklb): ").strip()
+    src = input("Source checklist path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    tgt = input("Target checklist path or folder: ").strip().strip('"').strip("'")
+    out = input("Output path (file or folder for .cklb): ").strip().strip('"').strip("'")
     if not src or not tgt or not out:
         print("All three paths are required.")
         sys.exit(1)
@@ -950,7 +972,8 @@ def main():
     if tgt_path.is_file():
         target_files = [tgt_path]
     else:
-        target_files = list(tgt_path.glob("*.ckl")) + list(tgt_path.glob("*.cklb")) + list(tgt_path.glob("*.json"))
+        target_files = list(tgt_path.rglob("*.ckl")) + list(tgt_path.rglob("*.cklb")) + list(tgt_path.rglob("*.json")) + list(tgt_path.rglob("*.xml"))
+        target_files = list(dict.fromkeys(target_files))
     out_path.mkdir(parents=True, exist_ok=True)
     for t in target_files:
         if not t.is_file():
@@ -1070,7 +1093,11 @@ def parse_cklb(content, filename):
 def load_checklists(path):
     path = Path(path)
     checklists = []
-    files = [path] if path.is_file() else list(path.glob("*.ckl")) + list(path.glob("*.cklb")) + list(path.glob("*.json"))
+    if path.is_file():
+        files = [path]
+    else:
+        files = list(path.rglob("*.ckl")) + list(path.rglob("*.cklb")) + list(path.rglob("*.json")) + list(path.rglob("*.xml"))
+        files = list(dict.fromkeys(files))
     for f in files:
         if not f.is_file():
             continue
@@ -1084,8 +1111,8 @@ def load_checklists(path):
 
 def main():
     print("--- STRIX RMF Extractor ---")
-    inp = input("Input file or folder path (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\output\\\\Extract.xlsx): ").strip()
+    inp = input("Input file or folder path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\output\\\\Extract.xlsx): ").strip().strip('"').strip("'")
     if not inp or not out:
         print("Both paths are required.")
         sys.exit(1)
@@ -1104,7 +1131,7 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     checklists = load_checklists(path)
     if not checklists:
-        print("No checklists found.")
+        print("No checklists found. (Searches folder and subfolders for .ckl, .cklb, .json.)")
         sys.exit(1)
     def severity_match(sev):
         s = (sev or "").lower()
@@ -1216,7 +1243,11 @@ def parse_cklb(content, filename):
 def load_checklists(path):
     path = Path(path)
     checklists = []
-    files = [path] if path.is_file() else list(path.glob("*.ckl")) + list(path.glob("*.cklb")) + list(path.glob("*.json"))
+    if path.is_file():
+        files = [path]
+    else:
+        files = list(path.rglob("*.ckl")) + list(path.rglob("*.cklb")) + list(path.rglob("*.json")) + list(path.rglob("*.xml"))
+        files = list(dict.fromkeys(files))
     for f in files:
         if not f.is_file():
             continue
@@ -1258,9 +1289,9 @@ def norm_col(row, *names):
 
 def main():
     print("--- STRIX RMF Report Analyzer ---")
-    base_inp = input("Base report path (.csv or .xlsx): ").strip()
-    ckl_inp = input("Checklist file or folder path (.ckl/.cklb): ").strip()
-    out = input("Output path (e.g. C:\\\\output\\\\Report_Analyzer.xlsx): ").strip()
+    base_inp = input("Base report path (.csv or .xlsx): ").strip().strip('"').strip("'")
+    ckl_inp = input("Checklist file or folder path (.ckl/.cklb): ").strip().strip('"').strip("'")
+    out = input("Output path (e.g. C:\\\\output\\\\Report_Analyzer.xlsx): ").strip().strip('"').strip("'")
     if not base_inp or not ckl_inp or not out:
         print("All three paths are required.")
         sys.exit(1)
