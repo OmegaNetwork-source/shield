@@ -540,7 +540,7 @@ def parse_ckl(content, filename):
             a, d = attr.text.strip(), data.text.strip()
             if a == "Rule_ID": rule_id = d
             elif a == "Vuln_Num": vuln_id = d
-            elif a == "CCI_REF": ccis.append(d)
+            elif a.upper().replace(" ", "_") == "CCI_REF": ccis.append(d)
             elif a == "Fix_Text": fix_text = d
         comments = ("\\n".join(ccis) + ("\\n" + finding_details if finding_details else "")) if ccis else finding_details
         findings.append({
@@ -564,7 +564,12 @@ def parse_cklb(content, filename):
             if s not in ("open", "fail", "failed"):
                 continue
             cci_ref = rule.get("cci_ref")
-            ccis = [cci_ref] if isinstance(cci_ref, str) else (cci_ref or [])
+            if isinstance(cci_ref, list):
+                ccis = [str(x).strip() for x in cci_ref if x]
+            elif isinstance(cci_ref, str) and cci_ref.strip():
+                ccis = [cci_ref.strip()]
+            else:
+                ccis = []
             fd = rule.get("finding_details") or ""
             comments = ("\\n".join(ccis) + ("\\n" + fd if fd else "")) if ccis else fd
             findings.append({
@@ -606,20 +611,42 @@ def load_cci2nist(search_path=None):
     for path in cands:
         if path.exists():
             try:
-                return json.loads(path.read_text(encoding="utf-8"))
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict) and len(data) > 0:
+                    return data
             except Exception:
                 pass
     return json.loads(DEFAULT_CCI2NIST_JSON)
 
+def cci_to_nist(cci, cci2nist):
+    """Try multiple CCI key formats; return NIST control or None."""
+    if not cci or not isinstance(cci, str):
+        return None
+    cci = cci.strip()
+    if not cci:
+        return None
+    if cci in cci2nist:
+        return cci2nist[cci]
+    digits = "".join(c for c in cci if c.isdigit())
+    if digits:
+        key = "CCI-" + digits
+        if key in cci2nist:
+            return cci2nist[key]
+    if not cci.upper().startswith("CCI-"):
+        key = "CCI-" + cci.lstrip("CCI").lstrip("-").strip()
+        if key in cci2nist:
+            return cci2nist[key]
+    return None
+
 def main():
     print("--- STRIX RMF POA&M (Generate from CKL) ---")
     inp = input("Input file or folder path (.ckl/.cklb): ").strip().strip('"').strip("'")
-    out = input("Output path (e.g. C:\\\\poam\\\\POAM.xlsx): ").strip().strip('"').strip("'")
+    out = input("Output path [poam.xlsx]: ").strip().strip('"').strip("'") or "poam.xlsx"
     office_org = input("Office/Org [Organization]: ").strip() or "Organization"
     resources_required = input("Resources Required [TBD]: ").strip() or "TBD"
     status_val = input("Status [Open]: ").strip() or "Open"
-    if not inp or not out:
-        print("Input and output paths are required.")
+    if not inp:
+        print("Input path is required.")
         sys.exit(1)
     path = Path(inp)
     out_path = Path(out)
@@ -640,7 +667,7 @@ def main():
             key = (f.get("ruleId") or "") + "|" + (f.get("vulnId") or "")
             nist = set()
             for cci in f.get("ccis") or []:
-                n = cci2nist.get(cci)
+                n = cci_to_nist(cci, cci2nist)
                 if n:
                     nist.add(n)
             security_checks = (f.get("ruleId") or "") + "\\n" + (f.get("vulnId") or "")
