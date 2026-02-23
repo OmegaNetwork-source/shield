@@ -4,6 +4,15 @@
  * Outputs: .xlsx (Excel) or .cklb as noted per script.
  */
 
+import cci2nistData from './data/cci2nist.json';
+
+// Escaped CCI→NIST JSON for embedding in POA&M script (single-quoted Python string; no backtick/$ in template)
+const POAM_DEFAULT_CCI2NIST = JSON.stringify(cci2nistData as Record<string, string>)
+  .replace(/\\/g, '\\\\')
+  .replace(/'/g, "\\'")
+  .replace(/`/g, '\\`')
+  .replace(/\$/g, '\\$');
+
 export const RMF_PYTHON_SCRIPTS: Record<string, string> = {
   Reports: `#!/usr/bin/env python3
 """
@@ -491,6 +500,8 @@ MILESTONE_TEXTS = [
     "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering."
 ]
 
+DEFAULT_CCI2NIST_JSON = '${POAM_DEFAULT_CCI2NIST}'
+
 def parse_ckl(content, filename):
     root = ET.fromstring(content)
     hostname = ""
@@ -584,14 +595,21 @@ def load_checklists(path):
             print(f"Warning: skip {f}: {e}")
     return checklists
 
-def load_cci2nist():
-    for p in [Path("cci2nist.json"), Path(__file__).parent / "cci2nist.json"]:
-        if p.exists():
+def load_cci2nist(search_path=None):
+    cands = [Path("cci2nist.json"), Path(__file__).parent / "cci2nist.json"]
+    if search_path is not None:
+        p = Path(search_path)
+        if p.is_dir():
+            cands.append(p / "cci2nist.json")
+        else:
+            cands.append(p.parent / "cci2nist.json")
+    for path in cands:
+        if path.exists():
             try:
-                return json.loads(p.read_text(encoding="utf-8"))
+                return json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 pass
-    return {"CCI-000001": "AC-1.3", "CCI-000073": "PM-1.1", "CCI-000117": "AU-1.3", "CCI-000176": "IA-5.2"}
+    return json.loads(DEFAULT_CCI2NIST_JSON)
 
 def main():
     print("--- STRIX RMF POA&M (Generate from CKL) ---")
@@ -615,7 +633,7 @@ def main():
     if not checklists:
         print("No checklists found. (Searches folder and all subfolders for .ckl, .cklb, .json.)")
         sys.exit(1)
-    cci2nist = load_cci2nist()
+    cci2nist = load_cci2nist(path)
     aggregated = defaultdict(lambda: {"finding": None, "hostnames": set(), "nist": set(), "comments": "", "securityChecks": "", "stigName": ""})
     for ckl in checklists:
         for f in ckl["findings"]:
