@@ -61,6 +61,8 @@ TWO MODES IN WEB APP
 - Findings aggregated by Security Check key = ruleId|vulnId; same finding on multiple hosts = one POA&M row with devices listed.
 - NIST controls: from finding.ccis mapped via cci2nist.json (CCI-xxxxx → e.g. AC-1.3). Controls/APs column = semicolon-separated NIST IDs.
 - Excel headers (row 1): POA&M Item ID, Control Vulnerability Description, Controls / APs, Office/Org, Security Checks, Resources Required, Scheduled Completion Date, Milestone ID, Milestone with Completion Dates, Milestone Changes, Source Identifying Vulnerability, Status, Comments, Raw Severity, Devices Affected, Mitigations, Severity, Relevance of Threat, Likelihood, Impact, Impact Description, Residual Risk Level, Recommendations, Identified in CFO Audit or other review, Personnel Resources: Cost Code.
+- Four rows per finding: row 1 has all data; rows 2–4 have only Milestone ID (2,3,4) and Milestone with Completion Dates (default milestone texts + dates: M1, M1+14d, M1+21d, M4 by severity).
+- Prompts: input path, output path, Office/Org, Resources Required, Status (defaults: Organization, TBD, Open).
 - Security Checks column = ruleId + newline + vulnId + newline + groupId (trimmed).
 - Severity: high/CAT I → 30 days; medium/CAT II → 60 days; low/CAT III → 90 days for milestone 4.
 
@@ -70,7 +72,7 @@ TWO MODES IN WEB APP
 - New findings = in new not in base. Dropped = in base not in new. Export: three sheets — POA&M (merged), "New findings", "Dropped findings". Row 1 dark green + white bold; rows 2–7 light gray/bold.
 
 PYTHON SCRIPT MUST
-- Generate: Parse CKL(s), keep only Open findings, aggregate by ruleId|vulnId, map CCI→NIST via cci2nist.json, build rows with all headers; write .xlsx.
+- Generate: Parse CKL(s), keep only Open findings, aggregate by ruleId|vulnId, map CCI→NIST via cci2nist.json. Prompt for Office/Org, Resources Required, Status. Build 4 rows per finding (row 1 full data; rows 2–4 Milestone ID + Milestone with Completion Dates). Write .xlsx with all 25 column headers.
 - Compare: Parse base/new Excel; find "POA&M" sheet; match by Security Checks; produce merged workbook with three sheets.`,
 
   Controls: `STRIX RMF — CONTROLS (Python script parity)

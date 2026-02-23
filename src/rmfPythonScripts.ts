@@ -457,15 +457,16 @@ if __name__ == "__main__":
 
   "POA&M": `#!/usr/bin/env python3
 """
-STRIX RMF POA&M — Generate POA&M Excel from CKL(s). Only OPEN findings. Optional: place cci2nist.json for CCI->NIST.
-Prompts: input file or folder, output path (.xlsx), Office/Org (e.g. your org name).
-Output: Excel with POA&M sheet (eMASS-style headers).
+STRIX RMF POA&M — Generate POA&M Excel from CKL(s). Matches web app: 25 columns, 4 rows per finding with milestones.
+Only OPEN findings. Prompts: input path, output path, Office/Org, Resources Required, Status.
+Optional: place cci2nist.json for CCI->NIST.
 """
 import sys
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from collections import defaultdict
+from datetime import date, timedelta
 
 try:
     import openpyxl
@@ -473,6 +474,22 @@ try:
 except ImportError:
     print("Install: pip install openpyxl")
     sys.exit(1)
+
+POAM_HEADERS = [
+    "POA&M Item ID", "Control Vulnerability Description", "Controls / APs", "Office/Org", "Security Checks",
+    "Resources Required", "Scheduled Completion Date", "Milestone ID", "Milestone with Completion Dates",
+    "Milestone Changes", "Source Identifying Vulnerability", "Status", "Comments", "Raw Severity",
+    "Devices Affected", "Mitigations", "Severity", "Relevance of Threat", "Likelihood", "Impact",
+    "Impact Description", "Residual Risk Level", "Recommendations", "Identified in CFO Audit or other review",
+    "Personnel Resources: Cost Code"
+]
+
+MILESTONE_TEXTS = [
+    "The CMP Implementation Team has identified this finding through EvaluateSTIG, and the CMP Implementation team has been notified to address this finding.",
+    "The CMP Implementation team will begin testing within the USACE CMP environment to ensure this finding has been fixed.",
+    "The CMP Implementation team will have implemented the new updated configuration to the USACE CMP environment.",
+    "Deloitte RMF Team validates the finding has been remediated via manual assessment procedures and evidence gathering."
+]
 
 def parse_ckl(content, filename):
     root = ET.fromstring(content)
@@ -482,10 +499,15 @@ def parse_ckl(content, filename):
         hn = asset.find("HOST_NAME")
         if hn is not None and hn.text:
             hostname = hn.text.strip()
+    stig_ref = root.find(".//STIG_REF")
+    stig_name = stig_ref.text.strip() if stig_ref is not None and stig_ref.text else "Unknown STIG"
+    sid = root.find(".//SID_NAME")
+    if sid is not None and sid.text:
+        stig_name = sid.text.strip()
     findings = []
     for vuln in root.findall(".//VULN"):
-        vuln_id = vuln.find("VULN_NUM")
-        vuln_id = vuln_id.text.strip() if vuln_id is not None and vuln_id.text else ""
+        vuln_num = vuln.find("VULN_NUM")
+        vuln_id = vuln_num.text.strip() if vuln_num is not None and vuln_num.text else ""
         status = vuln.find("STATUS")
         status_val = status.text.strip() if status is not None and status.text else "Not_Reviewed"
         if status_val.lower() not in ("open", "fail", "failed"):
@@ -494,8 +516,11 @@ def parse_ckl(content, filename):
         title = rule_title.text.strip() if rule_title is not None and rule_title.text else ""
         severity_el = vuln.find("SEVERITY")
         severity = severity_el.text.strip() if severity_el is not None and severity_el.text else "low"
+        finding_details_el = vuln.find("FINDING_DETAILS")
+        finding_details = finding_details_el.text.strip() if finding_details_el is not None and finding_details_el.text else ""
         rule_id = ""
         ccis = []
+        fix_text = ""
         for stig_data in vuln.findall("STIG_DATA"):
             attr = stig_data.find("VULN_ATTRIBUTE")
             data = stig_data.find("ATTRIBUTE_DATA")
@@ -505,32 +530,40 @@ def parse_ckl(content, filename):
             if a == "Rule_ID": rule_id = d
             elif a == "Vuln_Num": vuln_id = d
             elif a == "CCI_REF": ccis.append(d)
-        findings.append({"hostname": hostname or filename, "vulnId": vuln_id, "ruleId": rule_id, "status": status_val, "severity": severity, "title": title, "ccis": ccis})
-    return {"hostname": hostname or filename, "findings": findings}
+            elif a == "Fix_Text": fix_text = d
+        comments = ("\\n".join(ccis) + ("\\n" + finding_details if finding_details else "")) if ccis else finding_details
+        findings.append({
+            "hostname": hostname or filename, "stigName": stig_name, "vulnId": vuln_id, "ruleId": rule_id,
+            "status": status_val, "severity": severity, "title": title, "ccis": ccis, "comments": comments, "fixText": fix_text
+        })
+    return {"hostname": hostname or filename, "stigName": stig_name, "findings": findings}
 
 def parse_cklb(content, filename):
     data = json.loads(content)
     hostname = ""
     if isinstance(data.get("target_data"), dict) and data["target_data"].get("host_name"):
         hostname = data["target_data"]["host_name"]
+    stig_name = "Unknown STIG"
     findings = []
     for stig in data.get("stigs") or []:
+        if stig.get("display_name"):
+            stig_name = stig["display_name"]
         for rule in stig.get("rules") or []:
             s = (rule.get("status") or "").lower()
             if s not in ("open", "fail", "failed"):
                 continue
             cci_ref = rule.get("cci_ref")
             ccis = [cci_ref] if isinstance(cci_ref, str) else (cci_ref or [])
+            fd = rule.get("finding_details") or ""
+            comments = ("\\n".join(ccis) + ("\\n" + fd if fd else "")) if ccis else fd
             findings.append({
-                "hostname": hostname or filename,
-                "vulnId": rule.get("group_id") or "",
-                "ruleId": rule.get("rule_id") or "",
-                "status": rule.get("status") or "Open",
-                "severity": rule.get("severity") or "low",
-                "title": rule.get("rule_title") or "",
-                "ccis": ccis,
+                "hostname": hostname or filename, "stigName": stig_name,
+                "vulnId": rule.get("group_id") or "", "ruleId": rule.get("rule_id") or "",
+                "status": rule.get("status") or "Open", "severity": rule.get("severity") or "low",
+                "title": rule.get("rule_title") or "", "ccis": ccis, "comments": comments,
+                "fixText": rule.get("fix_text") or "",
             })
-    return {"hostname": hostname or filename, "findings": findings}
+    return {"hostname": hostname or filename, "stigName": stig_name, "findings": findings}
 
 def load_checklists(path):
     path = Path(path)
@@ -564,7 +597,9 @@ def main():
     print("--- STRIX RMF POA&M (Generate from CKL) ---")
     inp = input("Input file or folder path (.ckl/.cklb): ").strip().strip('"').strip("'")
     out = input("Output path (e.g. C:\\\\poam\\\\POAM.xlsx): ").strip().strip('"').strip("'")
-    office_org = input("Office/Org (optional): ").strip() or "Organization"
+    office_org = input("Office/Org [Organization]: ").strip() or "Organization"
+    resources_required = input("Resources Required [TBD]: ").strip() or "TBD"
+    status_val = input("Status [Open]: ").strip() or "Open"
     if not inp or not out:
         print("Input and output paths are required.")
         sys.exit(1)
@@ -581,38 +616,80 @@ def main():
         print("No checklists found. (Searches folder and all subfolders for .ckl, .cklb, .json.)")
         sys.exit(1)
     cci2nist = load_cci2nist()
-    aggregated = defaultdict(lambda: {"finding": None, "hostnames": set(), "nist": set()})
+    aggregated = defaultdict(lambda: {"finding": None, "hostnames": set(), "nist": set(), "comments": "", "securityChecks": "", "stigName": ""})
     for ckl in checklists:
         for f in ckl["findings"]:
             key = (f.get("ruleId") or "") + "|" + (f.get("vulnId") or "")
-            if key not in aggregated or aggregated[key]["finding"] is None:
-                aggregated[key]["finding"] = f
-            aggregated[key]["hostnames"].add(ckl.get("hostname", ""))
+            nist = set()
             for cci in f.get("ccis") or []:
                 n = cci2nist.get(cci)
                 if n:
-                    aggregated[key]["nist"].add(n)
-    headers = ["POA&M Item ID", "Control Vulnerability Description", "Controls / APs", "Office/Org", "Security Checks", "Resources Required", "Scheduled Completion Date", "Status", "Comments", "Raw Severity", "Devices Affected", "Severity"]
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "POA&M"
-    ws.append(headers)
-    for idx, (key, ag) in enumerate(aggregated.items(), 1):
+                    nist.add(n)
+            security_checks = (f.get("ruleId") or "") + "\\n" + (f.get("vulnId") or "")
+            if aggregated[key]["finding"] is None:
+                aggregated[key]["finding"] = f
+                aggregated[key]["stigName"] = ckl.get("stigName", "Unknown STIG")
+                aggregated[key]["comments"] = f.get("comments", "")
+                aggregated[key]["securityChecks"] = security_checks
+            aggregated[key]["hostnames"].add(ckl.get("hostname", ""))
+            aggregated[key]["nist"].update(nist)
+    all_rows = []
+    poam_id = 1
+    m1 = date(2026, 1, 29)
+
+    def fmt(d):
+        return d.strftime("%m/%d/%Y") if hasattr(d, "strftime") else str(d)
+
+    for key, ag in aggregated.items():
         f = ag["finding"]
         if not f:
             continue
         sev = (f.get("severity") or "").lower()
-        if sev in ("high", "cat i"): sev_disp = "High"
-        elif sev in ("medium", "cat ii"): sev_disp = "Medium"
-        else: sev_disp = "Low"
-        security_checks = (f.get("ruleId") or "") + "\\n" + (f.get("vulnId") or "")
+        if sev in ("high", "cat i"):
+            max_days = 30
+        elif sev in ("medium", "cat ii"):
+            max_days = 60
+        else:
+            max_days = 90
+        milestone_dates = [fmt(m1), fmt(m1 + timedelta(days=14)), fmt(m1 + timedelta(days=21)), fmt(m1 + timedelta(days=max_days))]
+        milestone_texts = [MILESTONE_TEXTS[i] + " " + milestone_dates[i] for i in range(4)]
         devices = "\\n".join(sorted(ag["hostnames"])) if ag["hostnames"] else ""
         nist_str = "; ".join(sorted(ag["nist"])) if ag["nist"] else ""
-        ws.append([idx, f.get("title", ""), nist_str, office_org, security_checks, "", "", f.get("status", ""), "", sev_disp, devices, sev_disp])
-    for i, w in enumerate([10, 45, 25, 18, 25, 18, 18, 12, 30, 12, 30, 10], 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
+        for idx in range(4):
+            row = {h: "" for h in POAM_HEADERS}
+            row["Milestone ID"] = idx + 1
+            row["Milestone with Completion Dates"] = milestone_texts[idx]
+            if idx == 0:
+                row["POA&M Item ID"] = poam_id
+                row["Control Vulnerability Description"] = f.get("title", "")
+                row["Controls / APs"] = nist_str
+                row["Office/Org"] = office_org
+                row["Security Checks"] = ag["securityChecks"]
+                row["Resources Required"] = resources_required
+                row["Scheduled Completion Date"] = milestone_dates[3]
+                row["Source Identifying Vulnerability"] = "Evaluate STIG: " + ag["stigName"]
+                row["Status"] = status_val
+                row["Comments"] = ag["comments"]
+                row["Raw Severity"] = f.get("severity", "")
+                row["Devices Affected"] = devices
+                row["Severity"] = f.get("severity", "")
+                row["Relevance of Threat"] = f.get("severity", "")
+                row["Likelihood"] = f.get("severity", "")
+                row["Impact"] = f.get("severity", "")
+                row["Residual Risk Level"] = f.get("severity", "")
+                row["Recommendations"] = f.get("fixText", "")
+            all_rows.append([row.get(h, "") for h in POAM_HEADERS])
+        poam_id += 1
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "POA&M"
+    ws.append(POAM_HEADERS)
+    for row in all_rows:
+        ws.append(row)
+    for i in range(len(POAM_HEADERS)):
+        ws.column_dimensions[get_column_letter(i + 1)].width = min(20 if i < 5 else 35, 50)
     wb.save(out_path)
-    print(f"Saved: {out_path} ({len(aggregated)} POA&M items)")
+    print(f"Saved: {out_path} ({poam_id - 1} POA&M items, {len(all_rows)} rows)")
 
 if __name__ == "__main__":
     main()
