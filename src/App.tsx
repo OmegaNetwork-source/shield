@@ -1940,6 +1940,54 @@ function App() {
         try {
             const json = JSON.parse(content);
 
+            // Combined CKLB: one file, one host, multiple STIGs (Defender, Server, Edge, etc.)
+            const stigsArray = json.stigs || json.checklist?.stigs || json.data?.stigs;
+            if (stigsArray && Array.isArray(stigsArray) && stigsArray.length > 0) {
+                const hostname = (json.target_data && json.target_data.host_name) ? String(json.target_data.host_name).trim() : (json.hostname || file.name.replace(/\.(ckl|cklb|json|xml)$/i, ''));
+                const stigNames: string[] = [];
+                const allFindings: any[] = [];
+                for (const stig of stigsArray) {
+                    const displayName = stig.display_name || stig.name || stig.title || 'Unknown STIG';
+                    if (displayName && !stigNames.includes(displayName)) stigNames.push(displayName);
+                    const rules = stig.rules || stig.findings || stig.entries || stig.vulns || [];
+                    for (const rule of rules) {
+                        const statusRaw = rule.status || rule.Status || 'Not_Reviewed';
+                        const s = String(statusRaw).toLowerCase().replace(/[\s_]/g, '');
+                        let status = statusRaw;
+                        if (s === 'open' || s === 'fail' || s === 'failed') status = 'Open';
+                        else if (s === 'notafinding' || s === 'pass' || s === 'passed' || s === 'nf') status = 'NotAFinding';
+                        else if (s === 'notapplicable' || s === 'na' || s === 'n/a') status = 'Not_Applicable';
+                        const cciRef = rule.cci_ref;
+                        const ccis = Array.isArray(cciRef) ? cciRef : (typeof cciRef === 'string' && cciRef ? [cciRef] : []);
+                        allFindings.push({
+                            vulnId: rule.group_id || rule.groupId || rule.vulnId || rule.vuln_num || 'Unknown',
+                            groupId: rule.group_id || rule.groupId || '',
+                            status,
+                            severity: rule.severity || rule.Severity || 'medium',
+                            title: rule.rule_title || rule.ruleTitle || rule.title || rule.group_title || 'Unknown Title',
+                            comments: rule.comments || rule.COMMENTS || '',
+                            ruleId: rule.rule_id || rule.ruleId || rule.Rule_ID || '',
+                            fixText: rule.fix_text || rule.fixText || rule.Fix_Text || '',
+                            checkText: rule.check_content || rule.checkText || rule.Check_Content || '',
+                            description: rule.vuln_discussion || rule.description || '',
+                            findingDetails: rule.finding_details || rule.findingDetails || rule.FINDING_DETAILS || '',
+                            classification: rule.classification || 'UNCLASSIFIED',
+                            legacyId: rule.legacy_id || rule.legacyId || '',
+                            ccis: Array.isArray(rule.ccis) ? rule.ccis : ccis
+                        });
+                    }
+                }
+                const stigNameLabel = stigNames.length > 1 ? `Combined (${stigNames.join(', ')})` : (stigNames[0] || 'Imported Checklist');
+                return {
+                    id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    filename: file.name,
+                    hostname,
+                    stigName: stigNameLabel,
+                    findings: allFindings,
+                    rawJson: json
+                };
+            }
+
             // Helper to find the array of vulnerabilities recursively
             const findFindings = (obj: any): any[] => {
                 if (!obj) return [];
@@ -2607,9 +2655,11 @@ function App() {
             // STIG Checklists (.ckl, .cklb, .json, .xml)
             if (name.endsWith('.ckl') || name.endsWith('.cklb') || name.endsWith('.json') || name.endsWith('.xml')) {
                 const parsed = await parseCklFile(file);
-                if (parsed && parsed.findings && parsed.findings.length > 0) {
-                    newChecklists.push(parsed);
-                    stigCount++;
+                if (parsed && parsed.findings && Array.isArray(parsed.findings)) {
+                    if (parsed.findings.length > 0) {
+                        newChecklists.push(parsed);
+                        stigCount++;
+                    }
                 }
             }
             // ACAS CSV
@@ -5918,20 +5968,25 @@ function App() {
                                 </div>
                             ) : (
                                 <>
-                                    <div className="flex justify-center -mt-2">
-                                        <label className={`cursor-pointer px-6 py-3 rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-3 border ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400' : 'bg-black hover:bg-black/80 text-white border-gray-800'} active:scale-95`}>
-                                            <FolderTree size={20} /> Bulk Folder Upload
-                                            <input
-                                                type="file"
-                                                // @ts-ignore
-                                                webkitdirectory=""
-                                                // @ts-ignore
-                                                directory=""
-                                                multiple
-                                                className="hidden"
-                                                onChange={handleBulkFolderUpload}
-                                            />
-                                        </label>
+                                    <div className="space-y-4 -mt-2">
+                                        <div className="flex justify-center">
+                                            <label className={`cursor-pointer px-6 py-3 rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-3 border ${darkMode ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400' : 'bg-black hover:bg-black/80 text-white border-gray-800'} active:scale-95`}>
+                                                <FolderTree size={20} /> Bulk Folder Upload
+                                                <input
+                                                    type="file"
+                                                    // @ts-ignore
+                                                    webkitdirectory=""
+                                                    // @ts-ignore
+                                                    directory=""
+                                                    multiple
+                                                    className="hidden"
+                                                    onChange={handleBulkFolderUpload}
+                                                />
+                                            </label>
+                                        </div>
+                                        <div className={`text-center text-sm max-w-xl mx-auto px-4 py-2 rounded-xl ${darkMode ? 'bg-gray-800/60 border border-gray-700 text-gray-400' : 'bg-blue-50/80 border border-blue-100 text-blue-800'}`}>
+                                            <strong>Bulk folder (combined checklist):</strong> Select a folder that contains both individual CKL/CKLB files (e.g. one host, one app per file) and <strong>combined CKLB files</strong> (one file = one host with multiple STIGs — Defender, Server, Edge, etc.). All files and all STIGs in combined files are included in the POA&M.
+                                        </div>
                                     </div>
 
                                     <div className="space-y-6">
